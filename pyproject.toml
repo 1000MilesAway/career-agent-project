@@ -1,0 +1,48 @@
+[project]
+name = "career-agent"
+version = "0.0.0"
+description = "Пробник career-agent: оценка вакансий по резюме с замером стоимости"
+requires-python = ">=3.12"
+dependencies = [
+    # LLM: OpenAI-совместимый клиент, base_url смотрит на DeepSeek.
+    "openai>=3.13.0",
+    "python-dotenv>=1.2.3",
+    # Источники вакансий: HTTP + разбор HTML страницы вакансии.
+    "httpx>=0.28.1",
+    "selectolax>=0.4.11",
+    # Разбор резюме: PDF и DOCX.
+    "pymupdf>=1.28.2",
+    "python-docx>=1.2.0",
+    # Веб-экран пробника. python-multipart обязателен: web.py принимает Form/UploadFile.
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.4",
+    "python-multipart>=0.0.32",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.7",
+]
+
+# probe/ импортируется как probe.* из корня репозитория и дистрибутивом не является:
+# собирать нечего, поэтому build-system не нужен.
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI-зависимости (File/Form) задаются именно так.
+ignore = ["B008", "E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# probe/ не устанавливается в окружение (package = false), поэтому корень
+# репозитория добавляем в sys.path явно — иначе `import probe` не находится.
+pythonpath = ["."]

@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# личные данные прогона и результаты — в репо не кладём
+data/
+out/
+
+# worktree-каталоги агента: в репозитории им не место
+.claude/worktrees/
