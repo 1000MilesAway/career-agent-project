@@ -16,12 +16,14 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import calibrate, found, history, profiles, proposals, repair, session, tg_scan
-from .defaults import starter_profile
-from .filters import PreScreen, SearchProfile
-from .llm import LLM, USD_RUB, Ledger
-from .pipeline import build_search_profile, load_vacancy, parse_resume, read_document, run_all
-from .sources import habr, habr_api, telegram, tg_channels
+from core import calibrate, profiles, proposals, repair, tg_scan
+from core.defaults import starter_profile
+from core.filters import PreScreen, SearchProfile
+from core.llm import LLM, USD_RUB, Ledger
+from core.pipeline import build_search_profile, load_vacancy, parse_resume, read_document, run_all
+from core.sources import habr, habr_api, telegram, tg_channels
+
+from . import found, history, session
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out"

@@ -17,11 +17,11 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from . import found, history, profiles, proposals, session, tg_scan, triage
-from .defaults import starter_profile
-from .filters import PreScreen, SearchProfile
-from .llm import LLM, USD_RUB, Ledger
-from .pipeline import (
+from core import profiles, proposals, tg_scan, triage
+from core.defaults import starter_profile
+from core.filters import PreScreen, SearchProfile
+from core.llm import LLM, USD_RUB, Ledger
+from core.pipeline import (
     build_search_profile,
     cover_letter,
     interview_prep,
@@ -31,7 +31,9 @@ from .pipeline import (
     run_all,
     tailor_resume,
 )
-from .sources import habr_api, telegram
+from core.sources import habr_api, telegram
+
+from . import found, history, session
 
 ROOT = Path(__file__).resolve().parent.parent
 app = FastAPI(title="career-agent probe")
