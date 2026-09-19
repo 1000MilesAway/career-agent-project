@@ -19,6 +19,7 @@ import asyncio
 import secrets
 import sys
 
+from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
 
 from .core.db import SessionLocal
@@ -32,8 +33,30 @@ def _generate_password() -> str:
     return secrets.token_urlsafe(12)
 
 
+def _valid_email(email: str) -> str | None:
+    """The address, or None if login would reject it.
+
+    Checked with the same validator the API uses, because the CLI is the only
+    way an account is created: without this, `user-add max@career.local`
+    succeeds and the account can never log in — `.local` is a reserved domain
+    that EmailStr refuses. A row nobody can authenticate as is worse than a
+    refusal, because it looks like it worked.
+    """
+    try:
+        return str(TypeAdapter(EmailStr).validate_python(email))
+    except ValidationError:
+        return None
+
+
 async def _user_add(email: str, password: str | None, is_admin: bool) -> int:
     email = email.strip().lower()
+    if _valid_email(email) is None:
+        print(
+            f"Недопустимый адрес: {email}\n"
+            "Войти с ним будет нельзя. Домены вроде .local зарезервированы.",
+            file=sys.stderr,
+        )
+        return 1
     password = password or _generate_password()
 
     async with SessionLocal() as session:
