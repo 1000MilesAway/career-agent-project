@@ -7,6 +7,26 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    services:
+      # The product tests run against a real Postgres: the schema uses JSONB
+      # and a partial unique index, and SQLite would pass tests that Postgres
+      # would fail. Without this service they skip rather than fail, so a
+      # missing database here would quietly stop testing the database layer.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: career
+          POSTGRES_PASSWORD: career
+          POSTGRES_DB: career
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U career"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -24,4 +44,14 @@ jobs:
       # No DEEPSEEK_API_KEY here on purpose: live LLM calls in tests are
       # forbidden by the project conventions. A test that needs the key is a bug.
       - name: Tests
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://career:career@localhost:5433/career_test
         run: uv run pytest -q
+
+      - name: Migrations apply to an empty database
+        # Catches a model changed without a migration, which the test suite
+        # cannot see: it builds the schema from the models, not from Alembic.
+        env:
+          DATABASE_URL: postgresql+asyncpg://career:career@localhost:5433/career
+          SECRET_KEY: ci-not-a-real-key
+        run: uv run alembic upgrade head

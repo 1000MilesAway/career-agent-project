@@ -17,6 +17,13 @@ dependencies = [
     "fastapi>=0.141.1",
     "uvicorn>=0.52.4",
     "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.31.0",
+    "alembic>=1.20.0",
+    "pydantic-settings>=2",
+    "pwdlib[bcrypt]>=0.3.1",
+    "pyjwt>=2.14.0",
+    "email-validator>=2.3.0",
 ]
 
 [dependency-groups]
@@ -39,6 +46,12 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B"]
 # B008: FastAPI-зависимости (File/Form) задаются именно так.
 ignore = ["B008", "E501"]
+
+[tool.ruff.lint.isort]
+# probe/sources — алиас на core.sources, и без этой подсказки isort считает
+# probe.sources.* сторонним пакетом, а probe.* своим: импорты из одного пакета
+# разъезжаются по разным блокам при каждом --fix.
+known-first-party = ["app", "core", "probe", "tests"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

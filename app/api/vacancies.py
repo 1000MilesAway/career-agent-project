@@ -1,0 +1,261 @@
+"""Collect vacancies, look at what was found, triage, shortlist, track."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from core.llm import LLM, Ledger
+from core.triage import build_archetypes, run_triage
+
+from ..core.deps import ResumeDep, SessionDep, UserDep
+from ..models import Vacancy
+from ..services import scan
+from ..services.spend import charge
+from ..services.tracker import STATUSES, set_status
+
+router = APIRouter(prefix="/api/vacancies", tags=["vacancies"])
+
+
+class VacancyResponse(BaseModel):
+    id: uuid.UUID
+    source: str
+    external_id: str
+    url: str | None
+    title: str
+    company: str | None
+    qualification: str | None
+    salary_text: str | None
+    remote: bool | None
+    stage: str
+    screen_reason: str | None
+    triage_verdict: str | None
+    is_saved: bool
+    score: float | None
+    verdict: str | None
+    status: str | None
+
+    @classmethod
+    def of(cls, v: Vacancy) -> VacancyResponse:
+        evaluation = v.evaluations[0] if v.evaluations else None
+        return cls(
+            id=v.id,
+            source=v.source,
+            external_id=v.external_id,
+            url=v.url,
+            title=v.title,
+            company=v.company,
+            qualification=v.qualification,
+            salary_text=v.salary_text,
+            remote=v.remote,
+            stage=v.stage,
+            screen_reason=v.screen_reason,
+            triage_verdict=v.triage_verdict,
+            is_saved=v.is_saved,
+            score=evaluation.score if evaluation else None,
+            verdict=evaluation.verdict if evaluation else None,
+            status=v.application.status if v.application else None,
+        )
+
+
+class ScanRequest(BaseModel):
+    source: Literal["habr", "telegram"] = "habr"
+    pages: int = 1
+    channels: list[str] | None = None
+
+
+@router.post("/scan")
+async def start_scan(
+    body: ScanRequest,
+    session: SessionDep,
+    user: UserDep,
+    resume: ResumeDep,
+) -> dict[str, Any]:
+    """Collect and screen. Free — no model is called anywhere in this path."""
+    if body.source == "habr":
+        result = await scan.collect_habr(
+            session, user.id, resume.search_profile, pages=body.pages
+        )
+    else:
+        result = await scan.collect_telegram(
+            session, user.id, resume.search_profile, channels=body.channels, pages=body.pages
+        )
+    await session.commit()
+    return result
+
+
+@router.get("", response_model=list[VacancyResponse])
+async def listing(
+    session: SessionDep,
+    user: UserDep,
+    stage: str | None = Query(None, description="collected | screened_out | shortlist | evaluated"),
+    saved: bool | None = Query(None),
+) -> list[VacancyResponse]:
+    """What the scan found.
+
+    Dropped postings are returned too, carrying their reason. They are not
+    hidden: the user has to be able to tell a working filter from an
+    over-eager one, which is why career-ops keeps discard.log at all.
+    """
+    query = (
+        select(Vacancy)
+        .where(Vacancy.user_id == user.id)
+        .options(selectinload(Vacancy.evaluations), selectinload(Vacancy.application))
+        .order_by(Vacancy.created_at.desc())
+    )
+    if stage:
+        query = query.where(Vacancy.stage == stage)
+    if saved is not None:
+        query = query.where(Vacancy.is_saved.is_(saved))
+
+    result = await session.execute(query)
+    return [VacancyResponse.of(v) for v in result.scalars()]
+
+
+async def _owned(session: SessionDep, user: UserDep, vacancy_id: uuid.UUID) -> Vacancy:
+    """One vacancy belonging to this user, or 404.
+
+    Scoped by user_id, not just by id: an id from another account must read as
+    "not found" rather than as someone else's vacancy.
+    """
+    result = await session.execute(
+        select(Vacancy)
+        .where(Vacancy.id == vacancy_id, Vacancy.user_id == user.id)
+        .options(selectinload(Vacancy.evaluations), selectinload(Vacancy.application))
+    )
+    vacancy = result.scalar_one_or_none()
+    if vacancy is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Вакансия не найдена")
+    return vacancy
+
+
+@router.post("/triage")
+async def triage(
+    session: SessionDep,
+    user: UserDep,
+    resume: ResumeDep,
+) -> dict[str, Any]:
+    """The cheap stage: one model call over the whole batch.
+
+    Judges listing data only — no page is fetched. Nothing is deleted: every
+    verdict is written back with its reason, and postings the model failed to
+    judge go to `missing` and stay visible. Silently dropping an unjudged
+    vacancy is the worst bug this pipeline can have, so it is not done.
+    """
+    result = await session.execute(
+        select(Vacancy).where(Vacancy.user_id == user.id, Vacancy.stage == scan.SHORTLIST)
+    )
+    rows = list(result.scalars())
+    if not rows:
+        return {"judged": 0, "missing": [], "note": "Нечего сортировать"}
+
+    ledger = Ledger()
+    llm = LLM(ledger=ledger)
+
+    archetypes = resume.archetypes
+    if not archetypes:
+        archetypes = await run_in_threadpool(build_archetypes, llm, resume.profile)
+        resume.archetypes = archetypes
+
+    digests = [
+        {
+            "id": str(v.id),
+            "title": v.title,
+            "company": v.company,
+            "qualification": v.qualification,
+            "salary_text": v.salary_text,
+            "divisions": v.divisions,
+            "skills": v.skills,
+        }
+        for v in rows
+    ]
+    outcome = await run_in_threadpool(run_triage, llm, archetypes, digests)
+
+    by_id = {str(v.id): v for v in rows}
+    for vid, verdict in outcome.verdicts.items():
+        row = by_id.get(vid)
+        if row is None:
+            continue
+        row.triage_verdict = verdict["bucket"]
+        row.screen_reason = verdict.get("reason") or None
+        if verdict["bucket"] == "skip":
+            row.stage = scan.TRIAGED_OUT
+
+    await charge(session, user, ledger)
+    await session.commit()
+
+    return {
+        "judged": len(outcome.verdicts),
+        "counts": outcome.counts(),
+        # Postings the model returned no verdict for. Shown, never backfilled
+        # as "skip": an unjudged vacancy is not a rejected one.
+        "missing": outcome.missing,
+        # Ids the model invented, which are not ours. Reported so a broken
+        # prompt looks broken instead of looking like a short answer.
+        "unknown": outcome.unknown,
+        "cost_rub": round(ledger.rub, 4),
+    }
+
+
+@router.post("/{vacancy_id}/save", response_model=VacancyResponse)
+async def save(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> VacancyResponse:
+    """Put a vacancy on the shortlist. Only a person crosses this line."""
+    vacancy = await _owned(session, user, vacancy_id)
+    if not vacancy.is_saved:
+        vacancy.is_saved = True
+        vacancy.saved_at = datetime.now(UTC)
+        await session.commit()
+        await session.refresh(vacancy)
+    return VacancyResponse.of(vacancy)
+
+
+@router.delete("/{vacancy_id}/save", response_model=VacancyResponse)
+async def unsave(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> VacancyResponse:
+    vacancy = await _owned(session, user, vacancy_id)
+    if vacancy.is_saved:
+        vacancy.is_saved = False
+        vacancy.saved_at = None
+        await session.commit()
+        await session.refresh(vacancy)
+    return VacancyResponse.of(vacancy)
+
+
+class StatusRequest(BaseModel):
+    status: str
+    note: str = ""
+
+
+@router.put("/{vacancy_id}/status", response_model=VacancyResponse)
+async def update_status(
+    vacancy_id: uuid.UUID,
+    body: StatusRequest,
+    session: SessionDep,
+    user: UserDep,
+) -> VacancyResponse:
+    """Move a vacancy along the tracker. Transitions are appended, never lost."""
+    vacancy = await _owned(session, user, vacancy_id)
+    try:
+        set_status(vacancy, body.status, body.note)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    await session.commit()
+    await session.refresh(vacancy)
+    return VacancyResponse.of(vacancy)
+
+
+@router.get("/statuses")
+async def statuses() -> dict[str, dict]:
+    """The tracker's vocabulary, for the UI to render."""
+    return STATUSES
+
+
+@router.get("/{vacancy_id}", response_model=VacancyResponse)
+async def detail(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> VacancyResponse:
+    return VacancyResponse.of(await _owned(session, user, vacancy_id))

@@ -1,0 +1,28 @@
+# Postgres for local development. Production adds the api and worker services;
+# this file only has to make a database exist.
+#
+# Host port 5433, not 5432: a system Postgres already listening on the default
+# port makes `docker compose up` fail with a bind error that reads like a Docker
+# problem rather than a port conflict.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: career-agent-db
+    environment:
+      POSTGRES_USER: career
+      POSTGRES_PASSWORD: career
+      POSTGRES_DB: career
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Migrations and the API both wait on this, so it asks the database
+      # whether it can answer, not just whether the port is open.
+      test: ["CMD-SHELL", "pg_isready -U career -d career"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
