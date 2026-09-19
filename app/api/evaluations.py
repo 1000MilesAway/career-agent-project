@@ -17,7 +17,7 @@ from core.pipeline import evaluate, load_vacancy
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Evaluation, Vacancy
 from ..services import scan
-from ..services.spend import charge, ledger_totals
+from ..services.spend import charge, ensure_can_spend, ledger_totals
 
 router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
 
@@ -98,6 +98,10 @@ async def create(
     for existing in vacancy.evaluations:
         if existing.resume_id == resume.id:
             return EvaluationResponse.of(existing, cached=True)
+
+    # Checked before the call, never after: refusing afterwards would mean the
+    # money is already spent and the user is told they cannot have it.
+    ensure_can_spend(user)
 
     text = await _vacancy_text(vacancy)
 

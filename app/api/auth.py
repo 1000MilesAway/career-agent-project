@@ -11,6 +11,7 @@ from sqlalchemy import select
 from ..core.deps import SessionDep, UserDep
 from ..core.security import create_access_token, verify_password
 from ..models import User
+from ..services.spend import remaining_rub
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -30,6 +31,20 @@ class UserResponse(BaseModel):
     is_admin: bool
     consent_at: datetime | None
     spent_rub: float
+    # What is left of the budget; null when no limit is configured. Shown so
+    # the ceiling is visible before it is hit, rather than arriving as a
+    # surprise 402 mid-click.
+    remaining_rub: float | None
+
+    @classmethod
+    def of(cls, user: User) -> UserResponse:
+        return cls(
+            email=user.email,
+            is_admin=user.is_admin,
+            consent_at=user.consent_at,
+            spent_rub=float(user.spent_rub),
+            remaining_rub=remaining_rub(user),
+        )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -54,12 +69,7 @@ async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: UserDep) -> UserResponse:
-    return UserResponse(
-        email=user.email,
-        is_admin=user.is_admin,
-        consent_at=user.consent_at,
-        spent_rub=float(user.spent_rub),
-    )
+    return UserResponse.of(user)
 
 
 @router.post("/consent", response_model=UserResponse)
@@ -73,9 +83,4 @@ async def give_consent(user: UserDep, session: SessionDep) -> UserResponse:
     if user.consent_at is None:
         user.consent_at = datetime.now(UTC)
         await session.commit()
-    return UserResponse(
-        email=user.email,
-        is_admin=user.is_admin,
-        consent_at=user.consent_at,
-        spent_rub=float(user.spent_rub),
-    )
+    return UserResponse.of(user)

@@ -23,7 +23,7 @@ from core.profiles import STEP_INFO
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Artifact, Evaluation, Vacancy
-from ..services.spend import charge
+from ..services.spend import charge, ensure_can_spend
 
 router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
 
@@ -102,6 +102,8 @@ async def create(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Текст вакансии не сохранён — материалы построить не из чего",
         )
+
+    ensure_can_spend(user)
 
     ledger = Ledger()
     llm = LLM(ledger=ledger)

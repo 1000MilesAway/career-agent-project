@@ -1,23 +1,59 @@
-"""What a user has spent on the model.
+"""What a user has spent on the model, and whether they may spend more.
 
-No limit is enforced: the user chose to open the service to testers without
-one. This exists anyway for two reasons — the number has to be accumulating
-before a limit can ever be switched on retroactively, and while testing it
-answers "what did this account cost me".
+The limit is a per-account budget in roubles, set by SPEND_LIMIT_RUB. It exists
+because the service is reachable from the internet while the owner's DeepSeek
+key pays for every call: without a ceiling, one tester holding F5 spends real
+money, and nothing in the pipeline would stop them.
 
-Turning a limit on later means adding one check in front of the paid steps;
-the data it would read is already here.
+It is checked BEFORE a paid step, never after. Refusing afterwards would mean
+the money is already gone and the user is told they cannot have what they just
+paid for.
+
+SPEND_LIMIT_RUB=0 disables the check, which is the right setting for a laptop
+and the wrong one for a public host.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.llm import Ledger
 
+from ..core.config import get_settings
 from ..models import User
+
+
+def remaining_rub(user: User) -> float | None:
+    """What is left of this account's budget, or None when no limit is set."""
+    limit = get_settings().spend_limit_rub
+    if limit <= 0:
+        return None
+    return max(0.0, limit - float(user.spent_rub))
+
+
+def ensure_can_spend(user: User) -> None:
+    """Refuse a paid step when the budget is gone.
+
+    Raises before the model is called, so a refusal costs nothing. The message
+    names the number, because "лимит исчерпан" without one leaves the user
+    guessing whether they hit a bug.
+    """
+    left = remaining_rub(user)
+    if left is None or left > 0:
+        return
+
+    limit = get_settings().spend_limit_rub
+    raise HTTPException(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        detail=(
+            f"Исчерпан лимит расхода: {limit:.2f} ₽ на аккаунт. "
+            f"Потрачено {float(user.spent_rub):.2f} ₽. "
+            "Уже купленные отчёты и материалы открываются бесплатно."
+        ),
+    )
 
 
 async def charge(session: AsyncSession, user: User, ledger: Ledger) -> float:

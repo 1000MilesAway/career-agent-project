@@ -18,7 +18,7 @@ from core.pipeline import build_search_profile, parse_resume, read_document
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Resume
-from ..services.spend import charge
+from ..services.spend import charge, ensure_can_spend
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
@@ -85,6 +85,8 @@ async def upload(
             detail="Из файла не извлёкся текст — возможно, это скан",
         )
 
+    ensure_can_spend(user)
+
     ledger = Ledger()
     llm = LLM(ledger=ledger)
     profile = await run_in_threadpool(parse_resume, llm, text)
@@ -135,6 +137,8 @@ async def propose_search_profile(
     resume: ResumeDep,
 ) -> SearchProfileProposal:
     """Suggest queries and stop-words from the CV. Stores nothing."""
+    ensure_can_spend(user)
+
     ledger = Ledger()
     llm = LLM(ledger=ledger)
     proposed = await run_in_threadpool(build_search_profile, llm, resume.profile)

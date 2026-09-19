@@ -25,7 +25,7 @@ from core.pipeline import cover_letter, evaluate, interview_prep, tailor_resume
 from .core.db import SessionLocal
 from .models import Artifact, Evaluation, Job, Resume, User, Vacancy
 from .services import scan
-from .services.spend import charge, ledger_totals
+from .services.spend import charge, ledger_totals, remaining_rub
 
 log = logging.getLogger("worker")
 
@@ -156,6 +156,15 @@ async def run_job(session: AsyncSession, job: Job) -> dict:
     resume = await session.get(Resume, uuid.UUID(job.payload["resume_id"]))
     if resume is None or resume.user_id != user.id:
         raise ValueError("резюме не найдено")
+
+    # The same budget the API enforces, checked here too: a job queued while
+    # the account still had money must not run after it ran out. Raised as a
+    # plain error rather than an HTTPException — nobody is holding a request.
+    left = remaining_rub(user)
+    if left is not None and left <= 0 and job.kind != "scan":
+        raise ValueError(
+            f"исчерпан лимит расхода, потрачено {float(user.spent_rub):.2f} ₽"
+        )
 
     if job.kind == "evaluate":
         return await _run_evaluate(session, job, user, resume)

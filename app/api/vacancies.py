@@ -18,7 +18,7 @@ from core.triage import build_archetypes, run_triage
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Vacancy
 from ..services import scan
-from ..services.spend import charge
+from ..services.spend import charge, ensure_can_spend
 from ..services.tracker import STATUSES, set_status
 
 router = APIRouter(prefix="/api/vacancies", tags=["vacancies"])
@@ -155,6 +155,8 @@ async def triage(
     rows = list(result.scalars())
     if not rows:
         return {"judged": 0, "missing": [], "note": "Нечего сортировать"}
+
+    ensure_can_spend(user)
 
     ledger = Ledger()
     llm = LLM(ledger=ledger)

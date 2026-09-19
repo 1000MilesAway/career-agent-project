@@ -1,0 +1,69 @@
+# Production stack: database, API, worker.
+#
+#   docker compose -f compose.prod.yml up -d --build
+#
+# Kept separate from compose.yml, which is the development database alone. One
+# file with profiles would mean a stray `docker compose up` on a laptop tries
+# to build and run the whole stack.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-career}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD не задан}
+      POSTGRES_DB: ${POSTGRES_DB:-career}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No ports section on purpose: the database is reachable only from the
+    # compose network. Exposing 5432 on a host with a public IP is how a
+    # Postgres ends up in someone else's botnet.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-career} -d ${POSTGRES_DB:-career}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build: .
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-career}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-career}
+    ports:
+      # Bound to the host's public interface deliberately: this deployment is
+      # tested by IP, with no domain and therefore no TLS terminator in front.
+      # Everything on this port travels in clear text — see docs/decisions.md.
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-career}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
