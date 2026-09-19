@@ -84,6 +84,68 @@ class TestLifecycle:
         assert current == {"queries": ["Python"]}
 
 
+class TestGuardListsAreUnioned:
+    """A proposal must never shrink the protection the template ships with.
+
+    Regression from 2026-09-14: accepting a generated profile replaced the
+    template's stop-words, and Android/iOS/React vacancies appeared in the
+    results because the words guarding against them were gone.
+    """
+
+    def test_template_stop_words_survive_acceptance(self):
+        p = make(current={"negative": ["Frontend", "Android", "iOS"]},
+                 proposed={"negative": ["word:QA", "аналитик"]})
+        result = p.accept()["negative"]
+        assert "Frontend" in result and "Android" in result and "iOS" in result
+
+    def test_proposed_stop_words_are_added(self):
+        p = make(current={"negative": ["Frontend"]},
+                 proposed={"negative": ["word:QA"]})
+        assert p.accept()["negative"] == ["Frontend", "word:QA"]
+
+    def test_stop_words_are_not_duplicated(self):
+        p = make(current={"negative": ["Frontend", "word:QA"]},
+                 proposed={"negative": ["word:qa", "Android"]})
+        result = p.accept()["negative"]
+        assert result.count("word:QA") == 1
+        assert "word:qa" not in result
+        assert result == ["Frontend", "word:QA", "Android"]
+
+    def test_negative_divisions_are_unioned_too(self):
+        p = make(current={"divisions_negative": ["Фронтенд", "Мобильн"]},
+                 proposed={"divisions_negative": ["Тестирование и QA"]})
+        result = p.accept()["divisions_negative"]
+        assert result == ["Фронтенд", "Мобильн", "Тестирование и QA"]
+
+    def test_queries_are_replaced_not_unioned(self):
+        """The model read the CV, so its queries win outright."""
+        p = make(current={"queries": ["Python", "Golang"]},
+                 proposed={"queries": ["FastAPI разработчик"]})
+        assert p.accept()["queries"] == ["FastAPI разработчик"]
+
+    def test_positive_keywords_are_replaced(self):
+        p = make(current={"positive": ["Python", "Backend"]},
+                 proposed={"positive": ["Golang"]})
+        assert p.accept()["positive"] == ["Golang"]
+
+    def test_min_qualification_is_replaced(self):
+        p = make(current={"min_qualification": "junior"},
+                 proposed={"min_qualification": "senior"})
+        assert p.accept()["min_qualification"] == "senior"
+
+    def test_diff_does_not_promise_a_removal_that_will_not_happen(self):
+        """The table must show what accepting really does."""
+        d = proposals.diff({"negative": ["Frontend", "Android"]},
+                           {"negative": ["word:QA"]})
+        assert len(d) == 1
+        assert d[0].added == ["word:QA"]
+        assert d[0].removed == []
+
+    def test_diff_still_reports_removals_for_replaced_fields(self):
+        d = proposals.diff({"queries": ["Python"]}, {"queries": ["Golang"]})
+        assert d[0].removed == ["Python"]
+
+
 class TestNoop:
     def test_identical_proposal_is_a_noop(self):
         p = make(current={"queries": ["Python"]}, proposed={"queries": ["Python"]})

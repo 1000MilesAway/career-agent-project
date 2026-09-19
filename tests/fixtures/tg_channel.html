@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  Синтетика: сокращённая копия разметки t.me/s/<channel>, написанная руками.
+  Каналы, компании, люди и цифры выдуманы. Настоящую страницу класть нельзя —
+  это чужой контент и живые контакты; см. README.md рядом.
+
+  Сохранены ровно те узлы, на которые смотрит probe/sources/telegram.py:
+  .tgme_widget_message_wrap > .tgme_widget_message[data-post],
+  .tgme_widget_message_text и <time datetime>. Набор постов подобран так, чтобы
+  в нём был каждый случай, который обязан отсеяться бесплатно.
+-->
+<html><head><title>Job Channel</title></head><body>
+<main>
+<section class="tgme_channel_history">
+
+  <!-- 1. Вакансия по шаблону runello_rus_*: Грейд и Стек отдельными полями. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/101">
+      <div class="tgme_widget_message_text js-message_text">
+        Golang разработчик<br/>Грейд: Middle+<br/>Стек: Go, PostgreSQL, Kafka, Redis, REST API<br/><br/>Компания «Ромашка Технологии» развивает платформу для внутренней аналитики. Команда из восьми человек, релизы раз в две недели, удалёнка по России.<br/><br/>Задачи: развивать сервисы на Go, проектировать API, участвовать в ревью и разборе инцидентов.<br/><br/>Ждём опыт от трёх лет, уверенный SQL и понимание очередей.<br/><br/>Отклик: @vymyshlennyj_hr
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T09:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Вакансия с хэштегами первой строкой и указанной вилкой. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/102">
+      <div class="tgme_widget_message_text js-message_text">
+        #вакансия #python #backend #удалёнка<br/>Python-разработчик (FastAPI)<br/>от 250 000 ₽<br/><br/>Выдуманное КБ «Пример» ищет бэкендера в команду биллинга. Стек: Python 3.12, FastAPI, SQLAlchemy, PostgreSQL, Docker.<br/><br/>Что делать: развивать сервис тарификации, покрывать тестами, участвовать в проектировании схемы данных.<br/><br/>Формат: удалённо, оформление по ТК.<br/><br/>Писать: @primer_recruiter
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T10:30:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Резюме соискателя. Слова найма тут тоже есть, но #cv должен победить. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/103">
+      <div class="tgme_widget_message_text js-message_text">
+        #cv #резюме #python #backend #opentowork<br/>Python Backend Developer<br/>Формат: удалённо<br/><br/>Ищу работу в продуктовой команде. Опыт пять лет: Python, Django, FastAPI, PostgreSQL, Docker, CI. Вёл сервис с нагрузкой в тысячу запросов в секунду, делал миграцию монолита на сервисы.<br/><br/>Готов к техническому интервью, рассматриваю предложения от 250 000 ₽.<br/><br/>Связь: @vymyshlennyj_kandidat
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T11:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Реклама курса: длинная, с контактом, но наймом в начале не пахнет. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/104">
+      <div class="tgme_widget_message_text js-message_text">
+        Бесплатный вебинар: Go для тех, кто пишет на Python<br/><br/>Разберём горутины, каналы и контекст на живых примерах. Научим переносить привычные паттерны из Python без боли.<br/><br/>Освой новый стек за два месяца: курс стартует в октябре, по промокоду скидка тридцать процентов.<br/><br/>Регистрируйся: https://example.invalid/webinar<br/>Реклама. ООО «Выдуманная Школа», erid: 0000000000
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T12:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Короткий оффтоп со словом «программист»: длина обязана его отсечь. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/105">
+      <div class="tgme_widget_message_text js-message_text">
+        Сегодня День программиста. Поздравляем всех, кто читает этот канал!
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T13:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Точный повтор поста 102 под новым id: дедуп по тексту, не по id. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/106">
+      <div class="tgme_widget_message_text js-message_text">
+        #вакансия #python #backend #удалёнка<br/>Python-разработчик (FastAPI)<br/>от 250 000 ₽<br/><br/>Выдуманное КБ «Пример» ищет бэкендера в команду биллинга. Стек: Python 3.12, FastAPI, SQLAlchemy, PostgreSQL, Docker.<br/><br/>Что делать: развивать сервис тарификации, покрывать тестами, участвовать в проектировании схемы данных.<br/><br/>Формат: удалённо, оформление по ТК.<br/><br/>Писать: @primer_recruiter
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T14:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Вакансия без контакта: отклик оставлен «в комментариях» — парсить нечего. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/107">
+      <div class="tgme_widget_message_text js-message_text">
+        Ищем Go-разработчика в выдуманный стартап<br/><br/>Небольшая команда строит сервис доставки отчётов. Нужен инженер, готовый взять на себя бэкенд целиком: от схемы базы до выкладки.<br/><br/>Требования: Go от двух лет, PostgreSQL, понимание HTTP и очередей. Плюсом — опыт с Kubernetes.<br/><br/>Подробности расскажем в комментариях к посту.
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T15:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+</section>
+</main>
+</body></html>

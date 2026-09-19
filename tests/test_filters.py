@@ -43,6 +43,54 @@ class TestKeywordCompilation:
     def test_matching_is_case_insensitive(self):
         assert _compile("python").search("Senior PYTHON Developer")
 
+    def test_stem_prefix_demands_the_start_of_a_word(self):
+        """Between the loose default and the strict word:. A plain keyword is
+        loose on both sides and usually only one side was meant."""
+        p = _compile("stem:Rust")
+        assert p.search("Rust Engineer")
+        assert p.search("Rust Engineering")  # suffix still allowed
+        assert not p.search("Zero Trust Engineer")  # mid-word is not
+
+    def test_stem_differs_from_word_on_the_suffix(self):
+        assert _compile("stem:Крипто").search("Криптовалюта")
+        assert not _compile("word:Крипто").search("Криптовалюта")
+
+    def test_and_group_requires_every_term_in_any_order(self):
+        """One entry replaces a matrix of spellings. The live miss on
+        2026-09-15: "Ведущий разработчик Java" matched neither
+        "Java Developer" nor "Java-разработчик" — the words were reordered."""
+        p = _compile("разработчик + java")
+        assert p.search("Ведущий разработчик Java (Микросервисы)")
+        assert p.search("Java-разработчик")
+        assert not p.search("Python разработчик")
+        assert not p.search("Java Engineer")
+
+    def test_and_group_keeps_per_term_anchoring(self):
+        """Each term compiles by the normal rules, so a short one stays anchored."""
+        p = _compile("word:Go + Developer")
+        assert p.search("Go Developer")
+        assert not p.search("Google Developer")
+
+    def test_bare_plus_is_not_a_separator(self):
+        """Splitting on a bare "+" would turn "C++" into "c", which matches
+        almost every title — a silent flood in place of a silent miss."""
+        p = _compile("C++")
+        assert p.search("С++ Developer")
+        assert not p.search("Python разработчик")
+
+    def test_latin_lookalike_inside_a_cyrillic_word_still_matches(self):
+        """A real posting on 2026-09-15 read "Rust paзработчик" — the "pa" is
+        Latin. Without folding, every keyword misses it."""
+        assert _compile("Rust разработчик").search("Rust paзработчик")
+        assert _compile("Разработчик").search("paзработчик")
+
+    def test_folding_leaves_ordinary_latin_words_alone(self):
+        """Only lower-case twins may be folded. Mapping "b"/"h"/"k"/"m"/"t" as
+        well mangles "Backend" into "ьаскеnd" and breaks unrelated keywords."""
+        assert _compile("Backend").search("Senior Backend Developer")
+        assert _compile("Golang").search("Golang-разработчик")
+        assert _compile("PHP").search("Backend-разработчик php (yii2)")
+
 
 class TestPreScreen:
     def test_negative_title_keyword_drops_posting(self):
@@ -73,6 +121,38 @@ class TestPreScreen:
         prof = SearchProfile(positive=[])
         assert PreScreen(prof).check(posting("Что угодно")).keep
 
+    def test_generic_title_needs_a_target_division(self):
+        """"Разработчик" alone proves nothing — it fits every stack there is.
+        On 2026-09-15 it waved through Hadoop, BI, BPMN, C++ and Rust."""
+        prof = SearchProfile(
+            positive=["Python", "Разработчик"],
+            divisions_positive=["Бэкенд разработчик"],
+        )
+        screen = PreScreen(prof)
+        assert not screen.check(posting("Разработчик Hadoop", divisions=["Инженер по данным"])).keep
+        assert screen.check(posting("Разработчик Hadoop", divisions=["Бэкенд разработчик"])).keep
+
+    def test_specific_keyword_passes_any_division(self):
+        prof = SearchProfile(
+            positive=["Python", "Разработчик"],
+            divisions_positive=["Бэкенд разработчик"],
+        )
+        p = posting("Python разработчик", divisions=["Инженер по данным"])
+        assert PreScreen(prof).check(p).keep
+
+    def test_missing_division_does_not_fail_a_generic_title(self):
+        """Judging an absence would drop every posting Habr files under nothing."""
+        prof = SearchProfile(
+            positive=["Python", "Разработчик"],
+            divisions_positive=["Бэкенд разработчик"],
+        )
+        assert PreScreen(prof).check(posting("Разработчик")).keep
+
+    def test_no_target_divisions_means_the_rule_is_off(self):
+        """A profile that never listed target divisions keeps the old behaviour."""
+        prof = SearchProfile(positive=["Разработчик"])
+        assert PreScreen(prof).check(posting("Разработчик Hadoop", divisions=["Что угодно"])).keep
+
     def test_qualification_below_minimum_is_dropped(self):
         prof = SearchProfile(min_qualification="middle")
         assert not PreScreen(prof).check(posting("Разработчик", qualification="Junior")).keep
@@ -98,6 +178,16 @@ class TestPreScreen:
     def test_salary_filter_ignores_unstated_salary(self):
         """No stated figure must never be a rejection — most postings hide it."""
         prof = SearchProfile(salary_min=250_000)
+        assert PreScreen(prof).check(posting("Разработчик")).keep
+
+    def test_no_floor_keeps_every_salary(self):
+        """The web's "искать без зарплаты" box clears salary_min, and that has to
+        switch off both screens: Habr's own `salary` parameter and this one.
+        Leaving the local check armed would hand the box back its own result."""
+        prof = SearchProfile(salary_min=None)
+        low = posting("Разработчик", salary_from=30_000, salary_to=50_000,
+                      salary_text="30 000 – 50 000 ₽")
+        assert PreScreen(prof).check(low).keep
         assert PreScreen(prof).check(posting("Разработчик")).keep
 
     def test_run_splits_kept_and_dropped(self):

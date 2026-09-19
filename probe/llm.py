@@ -16,7 +16,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(ROOT / ".env")
 
 BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
@@ -119,7 +120,11 @@ class LLM:
         system: str,
         user: str | list[dict],
         temperature: float = 0.2,
-        max_tokens: int = 8000,
+        # 8000 was enough until each requirement grew a basis and a JD quote:
+        # a long posting then truncated mid-string and the whole evaluation
+        # failed to parse. Output is billed per token used, not per limit, so
+        # the headroom is free unless it is actually spent.
+        max_tokens: int = 16000,
         retries: int = 1,
     ) -> dict:
         """Ask for JSON, validate it, retry once on malformed output."""

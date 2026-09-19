@@ -57,7 +57,7 @@ PROFILES: dict[str, RunProfile] = {
         steps=("evaluate", "tailor", "letter"),
         rub=0.64,
         seconds=40,
-        hint="Оценка, резюме под вакансию и сопроводительное письмо. Без подготовки к интервью.",
+        hint="Резюме под вакансию и сопроводительное письмо — поверх готовой оценки.",
     ),
     "all": RunProfile(
         name="all",
@@ -65,11 +65,30 @@ PROFILES: dict[str, RunProfile] = {
         steps=ALL_STEPS,
         rub=0.81,
         seconds=54,
-        hint="Всё сразу, включая вопросы к интервью и STAR-истории.",
+        hint="То же плюс вопросы к интервью и STAR-истории.",
     ),
 }
 
 DEFAULT = "evaluate"
+
+# Price and label per single step, because the screen buys them one at a time:
+# each vacancy row carries its own buttons rather than a bundle selector.
+# Derived from the measured profiles above — evaluate is 0.17, evaluate+tailor+
+# letter is 0.64, the full package 0.81 — so tailor+letter ≈ 0.47 and the prep
+# ≈ 0.17. Split evenly between the two; they are close in size.
+STEP_INFO: dict[str, dict] = {
+    "letter": {"title": "Сопровод", "rub": 0.23, "seconds": 13,
+               "hint": "Сопроводительное письмо под эту вакансию"},
+    "tailor": {"title": "Резюме", "rub": 0.24, "seconds": 14,
+               "hint": "Резюме, переупакованное под эту вакансию"},
+    "interview": {"title": "Интервью", "rub": 0.17, "seconds": 14,
+                  "hint": "Вопросы, которые зададут, и STAR-истории"},
+}
+
+
+def steps_as_list() -> list[dict]:
+    """The buyable documents, for the row to render as buttons."""
+    return [{"step": k, **v} for k, v in STEP_INFO.items()]
 
 
 def get(name: str | None) -> RunProfile:

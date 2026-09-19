@@ -91,17 +91,34 @@ class TestEvaluate:
     @pytest.mark.parametrize("name", ["evaluate_apply", "evaluate_skip"])
     def test_requirements_use_the_declared_vocabulary(self, name):
         for req in load(name)["requirements"]:
-            assert req["weight"] in ("must", "nice")
+            assert req["weight"] in (
+                "critical", "high", "meaningful", "preferred", "low_signal")
+            assert req["basis"] in ("stated", "structural", "inferred")
             assert req["match"] in ("full", "partial", "none")
             assert req["evidence"], "evidence обязателен: балл должен быть обоснован"
 
-    def test_unmet_must_requirement_caps_the_score(self):
-        """The rule that keeps the model from giving everyone a 4."""
-        r = load("evaluate_skip")
-        unmet = [q for q in r["requirements"]
-                 if q["weight"] == "must" and q["match"] == "none"]
-        assert unmet, "фикстура должна содержать незакрытое must-требование"
-        assert r["score"] <= 3.0
+    @pytest.mark.parametrize("name", ["evaluate_apply", "evaluate_skip"])
+    def test_a_stated_requirement_quotes_the_posting(self, name):
+        """"The posting says so" is a claim about the posting, so it is quoted."""
+        for req in load(name)["requirements"]:
+            if req["basis"] == "stated":
+                assert req["jd_signal"], req["text"]
+
+    @pytest.mark.parametrize("name", ["evaluate_apply", "evaluate_skip"])
+    def test_a_guess_is_never_binding(self, name):
+        """The gate: market intuition does not create obligations."""
+        for req in load(name)["requirements"]:
+            if req["basis"] == "inferred":
+                assert req["weight"] not in ("critical", "high"), req["text"]
+
+    def test_an_unmet_requirement_does_not_by_itself_cap_the_score(self):
+        """The rule this replaces produced a 2.5 on a posting career-ops
+        scored 4.4: one unmet row out of twelve, core covered. A gap informs
+        the judgement; it does not set a ceiling."""
+        r = load("evaluate_apply")
+        unmet = [q for q in r["requirements"] if q["match"] != "full"]
+        assert unmet, "фикстура должна содержать незакрытое требование"
+        assert r["score"] >= 4.0
 
     def test_a_gap_carries_advice(self):
         """A partial or missing match without advice is a useless report line."""

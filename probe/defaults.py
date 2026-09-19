@@ -17,18 +17,52 @@ from .filters import SearchProfile
 # Habr specializations that almost never fit a backend/ML profile. Checked
 # against the `divisions` field, which is stated per posting — this is what
 # catches a QA vacancy whose title merely mentions Python.
+#
+# These are matched as substrings against the division name Habr actually
+# states, so they are kept as ROOTS ("Фронтенд" catches "Фронтенд разработчик").
+# The names below were read off live postings on 2026-09-14, not guessed:
+# Habr's own labels are "Фронтенд разработчик", "Разработчик мобильных
+# приложений", "DevOps-инженер", "Разработчик баз данных", "Десктоп
+# разработчик", "Инженер встраиваемых систем".
 DIVISIONS_NEGATIVE_IT = [
     "Тестирован",
     "тестирования",
     "QA",
     "Фронтенд",
-    "Мобильн",
+    "Копирайтер",
+    "Бизнес-аналитик",
+    "BI-разработчик",
+    "Инженер по данным",
+    "Промпт-инженер",
     "Дизайн",
     "Менеджер",
     "Маркетинг",
     "Продаж",
     "Поддержк",
     "1С",
+]
+
+# Neighbouring STACKS, not other professions. These are still development work,
+# and Habr's label is often simply wrong — so a specific technology in the title
+# (Python, Golang, ML) overrules them. See PreScreen.check step 2.
+DIVISIONS_SOFT_IT = [
+    "Мобильн",
+    "DevOps",
+    "баз данных",
+    "Десктоп",
+    "встраиваемых",
+]
+
+# Divisions this candidate actually targets. A title that says only "Разработчик"
+# names no technology, so on its own it proves nothing — but inside one of these
+# divisions it is our kind of work. This is what keeps "Principal backend
+# engineer" and "Разработчик бэкенда в Яндекс Образование" while dropping
+# "Разработчик Hadoop" and "BI Developer". See PreScreen.check step 3.
+DIVISIONS_POSITIVE_IT = [
+    "Бэкенд разработчик",
+    "Фулстек разработчик",
+    "ML разработчик",
+    "MLOps-инженер",
 ]
 
 STARTER_IT = SearchProfile(
@@ -39,6 +73,7 @@ STARTER_IT = SearchProfile(
         "Fullstack", "Full Stack", "Full-stack", "Фулстек",
         "word:ML", "Machine Learning", "Computer Vision", "Deep Learning",
         "Inference", "MLOps", "Машинное обучение", "Компьютерное зрение",
+        "глубокому обучению", "глубокое обучение",
         "Разработчик", "Программист", "Инженер-программист",
         "AI-разработчик", "ML-инженер", "ML-разработчик",
         "Golang", "word:Go Developer", "word:Go Engineer",
@@ -52,13 +87,30 @@ STARTER_IT = SearchProfile(
         "word:QA", "QA-", "AQA", "word:QC", "Тестировщик", "Тестирован", "SDET",
         "Automation Engineer", "Quality Assurance",
         "Аналитик", "Analyst", "Аналитика", "Менеджер", "Manager", "Руководитель",
-        "Рекрутер", "Recruiter", "Дизайнер", "Маркетолог", "Продавец", "Юрист",
-        # other stacks
-        "1С", "1C", "PHP", "Java Developer", "Java-разработчик", ".NET", "C#",
+        # "Юрист" needs word: — without it "Нейроюрист", a real ML product
+        # name, drops an ML vacancy.
+        "Рекрутер", "Recruiter", "Дизайнер", "Маркетолог", "Продавец", "word:Юрист",
+        # Other stacks. Title stop-words are the ONLY defence for these: Habr
+        # files PHP, Scala, Oracle and Kotlin vacancies under the division
+        # "Бэкенд разработчик", so the specialization filter never sees them.
+        # "разработчик + java" instead of listing spellings: on 2026-09-15
+        # career-ops surfaced "Ведущий разработчик Java (Микросервисы)", which
+        # neither "Java Developer" nor "Java-разработчик" matched — the words
+        # were simply in the other order.
+        "1С", "1C", "PHP", "разработчик + java", "developer + java", ".NET", "C#",
         "Frontend", "Фронтенд", "Android", "iOS", "DevOps Engineer", "word:SRE",
         "Support Engineer",
+        "Scala", "Oracle", "PL/SQL", "PL PLUS", "Kotlin", "Delphi", "ЦФТ",
+        "Symfony", "Laravel", "Битрикс", "Bitrix",
+        "word:Vue", "Vue.js", "Angular", "word:React",
+        # Stacks filed under "Бэкенд разработчик", where the division filter
+        # cannot reach them. Verified against live listings on 2026-09-15.
+        "C++", "С++", "word:C/C++", "Rust", "Hadoop", "GreenData",
+        "Преподаватель", "AI-тренер", "AI Vibe",
     ],
     divisions_negative=DIVISIONS_NEGATIVE_IT,
+    divisions_soft=DIVISIONS_SOFT_IT,
+    divisions_positive=DIVISIONS_POSITIVE_IT,
     qualifications=["middle", "senior"],
     min_qualification="middle",
     remote_only=False,

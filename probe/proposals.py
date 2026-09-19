@@ -38,6 +38,33 @@ DIFF_FIELDS = (
     "min_qualification",
 )
 
+# Guard lists are added to, never replaced. The shipped template knows the
+# classic traps (frontend, mobile, QA); the model knows this particular CV.
+# Replacing one with the other loses half the knowledge — which is exactly what
+# happened on 2026-09-14: an accepted proposal dropped the template's frontend
+# and mobile stop-words, and Android/iOS/React vacancies walked into the results.
+#
+# Everything else (queries, positive keywords, minimum grade) IS replaced: there
+# the model read the CV and should win.
+UNION_FIELDS = ("negative", "divisions_negative")
+
+
+def merge_profile(current: dict, proposed: dict) -> dict:
+    """Apply a proposal: union the guard lists, replace the rest."""
+    merged = dict(current)
+    for key, value in proposed.items():
+        if key in UNION_FIELDS:
+            existing = current.get(key) or []
+            incoming = value or []
+            # Keep the template's order first, append what the model adds.
+            seen = {str(v).casefold() for v in existing}
+            merged[key] = list(existing) + [
+                v for v in incoming if str(v).casefold() not in seen
+            ]
+        else:
+            merged[key] = value
+    return merged
+
 
 def _as_set(value: Any) -> set[str]:
     if isinstance(value, list):
@@ -70,13 +97,18 @@ class FieldDiff:
 
 
 def diff(current: dict, proposed: dict, fields: tuple[str, ...] = DIFF_FIELDS) -> list[FieldDiff]:
-    """What the proposal would change. Only fields the proposal actually sets."""
+    """What the proposal would change. Only fields the proposal actually sets.
+
+    Shows what accepting really does, so a guard list reports additions only —
+    promising a removal that merge_profile will not perform would be a lie.
+    """
     out: list[FieldDiff] = []
     for name in fields:
         if name not in proposed:
             continue
         before, after = _as_set(current.get(name)), _as_set(proposed.get(name))
-        d = FieldDiff(name, sorted(after - before), sorted(before - after))
+        removed = [] if name in UNION_FIELDS else sorted(before - after)
+        d = FieldDiff(name, sorted(after - before), removed)
         if not d.empty:
             out.append(d)
     return out
@@ -111,9 +143,7 @@ class Proposal:
         """Mark accepted and return the value to write. Writing is the caller's job."""
         self.status = ACCEPTED
         self.decided_at = datetime.now(UTC).isoformat(timespec="seconds")
-        merged = dict(self.current)
-        merged.update(self.proposed)
-        return merged
+        return merge_profile(self.current, self.proposed)
 
     def reject(self) -> dict:
         """Mark rejected and return the value unchanged."""

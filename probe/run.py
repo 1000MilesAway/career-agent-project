@@ -16,12 +16,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import history, profiles, proposals
+from . import calibrate, found, history, profiles, proposals, repair, session, tg_scan
 from .defaults import starter_profile
 from .filters import PreScreen, SearchProfile
 from .llm import LLM, USD_RUB, Ledger
 from .pipeline import build_search_profile, load_vacancy, parse_resume, read_document, run_all
-from .sources import habr, habr_api
+from .sources import habr, habr_api, telegram, tg_channels
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out"
@@ -48,9 +48,13 @@ def _report_summary(report: dict) -> None:
     print(f"\n  Балл: {report.get('score')}  Вердикт: {report.get('verdict')}")
     print(f"  {report.get('role_summary', '')}")
     reqs = report.get("requirements", [])
-    musts = [r for r in reqs if r.get("weight") == "must"]
-    closed = [r for r in musts if r.get("match") == "full"]
-    print(f"  Обязательных требований: {len(musts)}, закрыто полностью: {len(closed)}")
+    # The top two importance bands. A partial counts as half: the candidate who
+    # did the adjacent thing is not in the same place as one who never did it.
+    key = [r for r in reqs if r.get("weight") in ("critical", "high")]
+    if key:
+        full = sum(1 for r in key if r.get("match") == "full")
+        part = sum(1 for r in key if r.get("match") == "partial")
+        print(f"  Важных требований: {len(key)} — закрыто {full}, частично {part}")
     if report.get("red_flags"):
         print("  Красные флаги:")
         for f in report["red_flags"]:
@@ -516,6 +520,168 @@ def _scan2_summary(rows: list[dict], setup: Ledger, collected: int, dropped: int
         print(f"  Фильтры сэкономили примерно {_fmt_money(saved_money)}")
 
 
+def cmd_tg(args: argparse.Namespace) -> int:
+    """Collect from Telegram channels and pre-screen. Free: no model is called.
+
+    Separate from scan2 on purpose. Telegram has no fields to filter on, so the
+    thing worth looking at first is what the free checks keep and throw away —
+    and that costs nothing to inspect.
+
+    The collecting and filtering live in probe.tg_scan, shared with the web
+    screen: a filter that ran here but not there would make the demo lie.
+    """
+    groups = tuple(g.strip() for g in args.groups.split(",") if g.strip())
+    channels = [c.strip() for c in args.channels.split(",")] if args.channels else None
+
+    stored = session.load() or {}
+    profile = None if args.no_filter else stored.get("search_profile")
+
+    names = channels or tg_channels.channel_names(groups=groups)
+    if not names:
+        print("Список каналов пуст: см. data/sources/telegram-channels.json")
+        return 1
+
+    print(f"Каналов: {len(names)} ({', '.join(names[:6])}"
+          f"{', …' if len(names) > 6 else ''})")
+    print(f"Страниц на канал: {args.pages}\n")
+
+    result = tg_scan.collect(
+        channels=channels, groups=groups, pages=args.pages,
+        max_silence_days=args.max_silence, keep_all=args.keep_all,
+        search_profile=profile,
+    )
+
+    for problem in result["problems"]:
+        print(f"  ! {problem['why']}")
+    if result["problems"]:
+        print()
+
+    if not result["collected"]:
+        print("Вакансий не собрано.")
+        return 0
+
+    by_channel: dict[str, int] = {}
+    for post, _why in result["kept"] + result["dropped"]:
+        by_channel[post.channel] = by_channel.get(post.channel, 0) + 1
+
+    print(f"Собрано вакансий: {result['collected']} (без повторов по тексту)")
+    for name, n in sorted(by_channel.items(), key=lambda x: -x[1]):
+        print(f"    {n:>3}  @{name}")
+
+    if result["filtered"]:
+        print(f"\nПосле фильтров по профилю: {len(result['kept'])}, "
+              f"отсеяно: {len(result['dropped'])}")
+        if args.show_dropped:
+            for why, n in sorted(tg_scan.drop_reasons(result["dropped"]).items(),
+                                 key=lambda x: -x[1]):
+                print(f"    {n:>3}  {why}")
+
+    shown = [post for post, _why in result["kept"]]
+
+    print()
+    for p in shown[: args.limit]:
+        salary = " 💰" if p.has_salary else ""
+        grade = f" [{p.grade}]" if p.grade else ""
+        print(f"  {p.title[:64]}{grade}{salary}")
+        print(f"      @{p.channel}  {p.published[:10]}  {p.url}")
+
+    payload = {
+        "channels": result["channels"], "collected": result["collected"],
+        "problems": result["problems"],
+        "posts": [p.as_dict() for p in shown],
+    }
+    print(f"\nПолный отчёт: {_save('tg', payload)}")
+    return 0
+
+
+def cmd_repair(args: argparse.Namespace) -> int:
+    """Put back the guard lists a pre-fix accept() dropped, and re-filter found.json.
+
+    Free: no model is called. Shows what it would do and writes only with --yes,
+    because both files hold state the user confirmed.
+    """
+    stored = session.load() or {}
+    current = stored.get("search_profile")
+    fixed = repair.repair_profile(current)
+
+    print("Профиль поиска")
+    if current is None:
+        print("  сохранённого профиля нет — будет взят шаблон")
+    else:
+        for field in ("negative", "divisions_negative"):
+            before = current.get(field) or []
+            added = [v for v in fixed.get(field, []) if v not in before]
+            print(f"  {field}: было {len(before)}, станет {len(fixed.get(field, []))}")
+            if added:
+                print(f"    вернётся: {', '.join(added)}")
+
+    rows = found.load()
+    cleanup = repair.clean_found(rows, SearchProfile.from_dict(fixed))
+    print(f"\nНайденное: {len(rows)} строк — {cleanup.summary}")
+    if cleanup.removed:
+        reasons: dict[str, int] = {}
+        for _row, why in cleanup.removed:
+            key = why.split(":")[0]
+            reasons[key] = reasons.get(key, 0) + 1
+        for why, n in sorted(reasons.items(), key=lambda x: -x[1]):
+            print(f"    {n:>3}  {why}")
+        if args.show_removed:
+            print()
+            for row, why in cleanup.removed:
+                print(f"    - {row.get('title', '')[:56]:<56} {why}")
+
+    if not args.yes:
+        print("\nНичего не записано. Повторите с --yes, чтобы применить.")
+        return 0
+
+    session.save_search_profile(fixed)
+    found.save(cleanup.kept)
+    print("\nЗаписано: out/resume-state.json, out/found.json")
+    return 0
+
+
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    """Does the scoring still obey its own rules? Free: no model is called.
+
+    career-ops gates CI on `eval-golden.mjs` for the same reason. The failure
+    this catches is a prompt edit that makes the model flatter — cheap to
+    introduce, expensive to notice in production.
+    """
+    if args.source == "golden":
+        try:
+            cases = calibrate.load_golden()
+        except ValueError as e:
+            print(f"Ошибка в золотом наборе: {e}")
+            return 1
+        if not cases:
+            print(f"Золотой набор пуст: положите размеченные случаи в {calibrate.GOLDEN_DIR}")
+            return 1
+        result = calibrate.from_golden(cases)
+        print(f"Золотой набор: {len(cases)} случаев")
+    else:
+        rows = found.load()
+        result = calibrate.from_stored(rows)
+        print(f"Сохранённые отчёты: {result.checked} из {len(rows)} найденных вакансий")
+
+    if not result.checked:
+        print("Нечего проверять — сначала оцените хотя бы одну вакансию.")
+        return 1
+
+    print(f"Разброс баллов: {result.spread} (порог {calibrate.MIN_SPREAD})")
+    if result.labeled:
+        print(f"Совпадение с эталоном: {result.agreed}/{result.labeled}")
+
+    if result.ok:
+        print("\nПравила соблюдаются.")
+        return 0
+
+    print(f"\nНарушений: {len(result.findings)}")
+    for f in result.findings:
+        print(f"  [{f.kind}] {f.case}")
+        print(f"      {f.detail}")
+    return 1
+
+
 def cmd_cost(args: argparse.Namespace) -> int:
     files = sorted(OUT.glob("*.json"))
     if not files:
@@ -560,7 +726,7 @@ def main() -> int:
     scan = sub.add_parser("scan", help="найти вакансии на Хабр Карьере и оценить каждую")
     scan.add_argument("--resume", required=True)
     scan.add_argument("--query", default="", help="поисковый запрос, например python")
-    scan.add_argument("--pages", type=int, default=1, help="страниц выдачи (25 вакансий на странице)")
+    scan.add_argument("--pages", type=int, default=20, help="страниц выдачи (25 вакансий на странице)")
     scan.add_argument("--remote", action="store_true", help="только удалёнка")
     scan.add_argument("--salary", type=int, default=None, help="зарплата от, ₽")
     scan.add_argument("--limit", type=int, default=10, help="сколько вакансий оценить")
@@ -579,7 +745,7 @@ def main() -> int:
 
     sc = sub.add_parser("scan2", help="сканер как в career-ops: фильтры до модели")
     sc.add_argument("--resume", required=True)
-    sc.add_argument("--pages", type=int, default=2, help="страниц на запрос (25 вакансий/стр.)")
+    sc.add_argument("--pages", type=int, default=20, help="страниц на запрос (25 вакансий/стр.)")
     sc.add_argument("--limit", type=int, default=8, help="сколько выживших оценить моделью")
     sc.add_argument("--remote", action="store_true")
     sc.add_argument("--salary", type=int, default=None, help="зарплата от, ₽")
@@ -595,8 +761,34 @@ def main() -> int:
     sc.add_argument("--model", default=None)
     sc.set_defaults(func=cmd_scan2)
 
+    tg = sub.add_parser("tg", help="собрать вакансии из Telegram-каналов (бесплатно, без модели)")
+    tg.add_argument("--channels", default=None,
+                    help="через запятую; по умолчанию — ядро из data/sources/telegram-channels.json")
+    tg.add_argument("--groups", default="core",
+                    help="какие группы списка брать: core, adjacent, special")
+    tg.add_argument("--pages", type=int, default=1, help="страниц на канал (~20 постов на стр.)")
+    tg.add_argument("--limit", type=int, default=25, help="сколько вакансий показать")
+    tg.add_argument("--max-silence", type=int, default=telegram.MAX_SILENCE_DAYS,
+                    help="через сколько дней молчания считать канал мёртвым")
+    tg.add_argument("--keep-all", action="store_true",
+                    help="не отсеивать резюме, рекламу и оффтоп")
+    tg.add_argument("--no-filter", action="store_true",
+                    help="не применять профиль поиска, только собрать")
+    tg.add_argument("--show-dropped", action="store_true", help="показать причины отсева")
+    tg.set_defaults(func=cmd_tg)
+
+    rep = sub.add_parser("repair", help="вернуть потерянные стоп-списки и перефильтровать найденное")
+    rep.add_argument("--yes", action="store_true", help="применить, а не только показать")
+    rep.add_argument("--show-removed", action="store_true", help="перечислить убираемые вакансии")
+    rep.set_defaults(func=cmd_repair)
+
     cost = sub.add_parser("cost", help="сводка расхода по всем прогонам")
     cost.set_defaults(func=cmd_cost)
+
+    cal = sub.add_parser("calibrate", help="проверить, соблюдает ли скоринг свои правила")
+    cal.add_argument("--source", choices=("stored", "golden"), default="stored",
+                     help="stored — по сохранённым отчётам, golden — по размеченному набору")
+    cal.set_defaults(func=cmd_calibrate)
 
     args = p.parse_args()
     return args.func(args)

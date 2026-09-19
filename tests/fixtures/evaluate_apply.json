@@ -5,31 +5,39 @@
   "requirements": [
     {
       "text": "Коммерческий опыт на Python от 4 лет",
-      "weight": "must",
+      "weight": "critical",
       "match": "full",
       "evidence": "6 лет: «Светлый путь» с 2022 года и «Речные системы» с 2019",
-      "gap_advice": null
+      "gap_advice": null,
+      "basis": "stated",
+      "jd_signal": "«Коммерческий опыт на Python от 4 лет»"
     },
     {
       "text": "FastAPI или аналогичный асинхронный фреймворк",
-      "weight": "must",
+      "weight": "critical",
       "match": "full",
       "evidence": "Перевод биллинга на asyncio, FastAPI в списке навыков",
-      "gap_advice": null
+      "gap_advice": null,
+      "basis": "stated",
+      "jd_signal": "«FastAPI или аналогичный асинхронный фреймворк»"
     },
     {
       "text": "PostgreSQL, умение читать план запроса",
-      "weight": "must",
+      "weight": "critical",
       "match": "partial",
       "evidence": "Postgres и SQLAlchemy в опыте, но про оптимизацию запросов в резюме прямо не сказано",
-      "gap_advice": "На собеседовании привести пример с ускорением ночной выгрузки — там наверняка была работа с запросами"
+      "gap_advice": "На собеседовании привести пример с ускорением ночной выгрузки — там наверняка была работа с запросами",
+      "basis": "stated",
+      "jd_signal": "«PostgreSQL, умение читать план запроса»"
     },
     {
       "text": "Kubernetes",
-      "weight": "nice",
+      "weight": "preferred",
       "match": "none",
       "evidence": "В профиле только Docker",
-      "gap_advice": "Не критично: требование желательное, а Docker закрывает базовое понимание"
+      "gap_advice": "Не критично: требование желательное, а Docker закрывает базовое понимание",
+      "basis": "structural",
+      "jd_signal": "раздел «Требования»"
     }
   ],
   "red_flags": [],

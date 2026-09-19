@@ -8,15 +8,27 @@
   :root {
     --bg: #f7f7f5; --card: #fff; --ink: #1a1a18; --muted: #6b6b66;
     --line: #e2e2dd; --accent: #2b6cb0; --ok: #2f855a; --warn: #b7791f; --bad: #c53030;
+    --link: #1f5c94; --link-visited: #5b4a8a;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#1a1a18; --card:#232320; --ink:#ececea; --muted:#9a9a94;
-            --line:#35352f; --accent:#7aa7d9; --ok:#68d391; --warn:#f6ad55; --bad:#fc8181; }
+            --line:#35352f; --accent:#7aa7d9; --ok:#68d391; --warn:#f6ad55; --bad:#fc8181;
+            /* The browser default (#0000EE, #551A8B when visited) is unreadable
+               on this background. These stay in the accent family and keep a
+               visited link legible instead of dropping it into dark purple. */
+            --link:#8fc0f0; --link-visited:#c3aee6; }
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); padding:24px 16px;
          font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   .wrap { max-width: 860px; margin: 0 auto; }
+  a { color:var(--link); text-decoration:underline;
+      text-decoration-color:color-mix(in srgb, var(--link) 45%, transparent);
+      text-underline-offset:2px; }
+  a:visited { color:var(--link-visited);
+              text-decoration-color:color-mix(in srgb, var(--link-visited) 45%, transparent); }
+  a:hover, a:focus-visible { text-decoration-color:currentColor; }
+  a:focus-visible { outline:2px solid var(--link); outline-offset:2px; border-radius:2px; }
   h1 { font-size:20px; margin:0 0 4px; }
   .sub { color:var(--muted); font-size:13px; margin-bottom:20px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
@@ -62,7 +74,37 @@
   .hit__title { font-weight:600; font-size:14px; }
   .hit__meta { color:var(--muted); font-size:12px; margin-top:2px; }
   .hit__score { font-size:20px; font-weight:600; min-width:44px; text-align:right; }
+  /* Triage verdicts. A "skip" row is dimmed, never hidden outright: the model
+     screens on listing data alone and has to stay auditable. */
+  .hit--skip { opacity:.55; }
+  .tag { font-size:11px; padding:2px 7px; border-radius:20px; display:inline-block;
+         margin-top:4px; }
+  .tag--worth { background:rgba(47,133,90,.15); color:var(--ok); }
+  .tag--maybe { background:rgba(183,121,31,.15); color:var(--warn); }
+  .tag--skip  { background:rgba(197,48,48,.15); color:var(--bad); }
   .hit button { padding:5px 11px; font-size:13px; }
+  .hit__acts { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  /* A document already bought: reopening it costs nothing, and the row should
+     say so before the click, not after. */
+  .apply-btn--done { border-color:var(--ok); color:var(--ok); }
+  select { padding:5px 8px; border:1px solid var(--line); border-radius:8px;
+           background:var(--bg); color:var(--ink); font-size:13px; }
+  .nav { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
+  .nav__tab { background:transparent; color:var(--muted); border:1px solid var(--line);
+              padding:8px 16px; font-size:14px; }
+  .nav__tab--on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .nav__tab span { opacity:.75; font-size:12px; }
+  /* A saved vacancy is marked in the search list too: without it the same
+     posting looks unhandled every time the user comes back to the page. */
+  .save-btn--on { border-color:var(--ok); color:var(--ok); }
+  .kv { display:grid; grid-template-columns:minmax(120px,auto) 1fr; gap:4px 14px;
+        font-size:14px; }
+  .kv dt { color:var(--muted); font-size:13px; }
+  .kv dd { margin:0; }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; margin-top:4px; }
+  .chip { font-size:12px; padding:2px 9px; border-radius:20px; border:1px solid var(--line);
+          color:var(--muted); }
+  .chip--neg { border-color:color-mix(in srgb, var(--bad) 40%, transparent); }
 </style>
 </head>
 <body>
@@ -70,62 +112,81 @@
   <h1>career-agent — пробник</h1>
   <div class="sub">Проверка идеи: честно ли модель оценивает и во сколько обходится один пользователь.</div>
 
-  <div class="card">
-    <h2>1. Резюме</h2>
-    <div id="resume-state" class="muted">Резюме не загружено.</div>
-    <div class="row">
-      <input type="file" id="resume-file" accept=".pdf,.docx,.txt,.md">
-      <button id="resume-btn">Загрузить и разобрать</button>
-    </div>
-    <div id="resume-out"></div>
-  </div>
+  <nav class="nav">
+    <button class="nav__tab" data-page="resume">Моё резюме</button>
+    <button class="nav__tab" data-page="search">Поиск</button>
+    <button class="nav__tab" data-page="saved">Избранное <span id="saved-count"></span></button>
+  </nav>
 
-  <div class="card">
-    <h2>2. Вакансия</h2>
-    <div class="tabs">
-      <button class="tab tab--on" data-tab="one">Ссылка или текст</button>
-      <button class="tab" data-tab="scan">Поиск по Хабр Карьере</button>
-      <button class="tab" data-tab="auto">Автоподбор</button>
-    </div>
-
-    <div id="tab-one">
-      <textarea id="vacancy" placeholder="Вставьте ссылку career.habr.com/vacancies/... или текст вакансии целиком"></textarea>
+  <!-- ─────────── Моё резюме ─────────── -->
+  <section class="page" id="page-resume" hidden>
+    <div class="card">
+      <h2>Резюме</h2>
+      <div id="resume-state" class="muted">Резюме не загружено.</div>
       <div class="row">
-        <button id="eval-btn">Оценить</button>
-        <select id="run-profile" style="padding:8px 10px;border-radius:8px;
-          border:1px solid var(--line);background:transparent;color:inherit"></select>
+        <input type="file" id="resume-file" accept=".pdf,.docx,.txt,.md">
+        <button id="resume-btn">Загрузить и разобрать</button>
       </div>
-      <div id="profile-hint" class="cost" style="margin-top:6px"></div>
-      <div id="eval-status" class="muted" style="margin-top:8px"></div>
+      <div id="resume-out"></div>
     </div>
+    <div id="profile-card"></div>
+    <div id="search-profile-card"></div>
+  </section>
 
-    <div id="tab-scan" hidden>
-      <div class="row" style="margin-top:0">
-        <input id="q" type="text" placeholder="python, бухгалтер, продажи…" style="flex:1;min-width:180px">
-        <input id="sal" type="number" placeholder="от, ₽" style="width:110px">
-        <label class="inline"><input type="checkbox" id="rem"> удалёнка</label>
-        <button id="search-btn">Найти</button>
-      </div>
-      <div id="search-status" class="muted" style="margin-top:8px"></div>
-      <div id="search-out"></div>
-    </div>
-
-    <div id="tab-auto" hidden>
+  <!-- ─────────── Поиск ─────────── -->
+  <section class="page" id="page-search" hidden>
+    <div class="card">
+      <h2>Подбор</h2>
       <div class="muted" style="margin-bottom:10px">
         Сканер подбирает запросы и стоп-слова по вашему резюме, собирает вакансии
         и отсеивает лишние <b>бесплатно</b>. Модель считает только то, что прошло отбор.
       </div>
       <div class="row" style="margin-top:0">
         <input id="a-sal" type="number" placeholder="от, ₽" style="width:120px">
+        <label class="inline" title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана."><input type="checkbox" id="a-nosal"> искать без зарплаты</label>
         <label class="inline"><input type="checkbox" id="a-rem" checked> удалёнка</label>
-        <label class="inline">страниц <input id="a-pages" type="number" value="1" min="1" max="5" style="width:60px"></label>
+        <label class="inline">страниц <input id="a-pages" type="number" value="5" min="1" max="20" style="width:60px"></label>
         <button id="auto-btn">Подобрать</button>
       </div>
       <div id="auto-status" class="muted" style="margin-top:8px"></div>
       <div id="proposal"></div>
+      <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <span class="muted">Второй источник:</span>
+        <label class="inline">страниц на канал <input id="tg-pages" type="number" value="1" min="1" max="5" style="width:60px"></label>
+        <label class="inline" title="core — каналы, проверенные на этом профиле; adjacent — другие стеки"><input type="checkbox" id="tg-adjacent"> и смежные каналы</label>
+        <button id="tg-btn" class="tab" title="Публичное превью t.me/s/ — сбор и бесплатные фильтры, модель не вызывается">Telegram-каналы</button>
+      </div>
+      <div id="tg-status" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin:0 0 12px;justify-content:space-between">
+        <h2 style="margin:0">Найденные вакансии</h2>
+        <div class="row" style="margin:0">
+          <button id="triage-btn" class="tab" title="Один дешёвый прогон: разложить список на «стоит посмотреть / может быть / мимо»">Отсеять моделью</button>
+          <button id="forget-btn" class="tab" title="Убрать из списка всё, кроме избранного">Очистить</button>
+        </div>
+      </div>
+      <div id="found-status" class="muted"></div>
+      <div id="spend" class="cost" style="margin-top:6px"></div>
+      <div id="triage-filter" class="row" style="margin:8px 0 0" hidden></div>
       <div id="auto-out"></div>
     </div>
-  </div>
+  </section>
+
+  <!-- ─────────── Избранное ─────────── -->
+  <section class="page" id="page-saved" hidden>
+    <div class="card">
+      <h2>Избранное</h2>
+      <div class="muted" style="margin-bottom:10px">
+        Вакансии, которые вы отложили. Здесь готовятся материалы к отклику
+        и отмечается, на каком этапе вы находитесь. Очистка поиска это не трогает.
+      </div>
+      <div id="saved-status" class="muted"></div>
+      <div id="saved-out"></div>
+    </div>
+  </section>
+
 
   <div id="report"></div>
 </div>
@@ -134,31 +195,332 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
-let RUN_PROFILES = [];
+// Which triage buckets are on screen. "skip" is off by default — the point of
+// the screen is a short list — but one click brings it back.
+const BUCKETS = {worth: 'стоит посмотреть', maybe: 'может быть', skip: 'мимо'};
+let shownBuckets = new Set(['worth', 'maybe', null]);
+let allRows = [];
+// Tracker states, served by the API so the vocabulary lives in one place.
+let STATUSES = {};
+// The buyable documents, served by the API so prices live in one place.
+let APPLY_STEPS = [];
+// Step name -> the key it is stored under. The server owns both; this is the
+// one place the page has to know they differ.
+const STEP_KEY = {tailor: 'tailored_resume', letter: 'cover_letter',
+                  interview: 'interview_prep'};
 
-function showProfileHint() {
-  const p = RUN_PROFILES.find(x => x.name === $('run-profile').value);
-  $('profile-hint').textContent = p
-    ? `${p.hint} Примерно ${p.rub} ₽ и ${p.seconds} с.`
-    : '';
+function renderBucketFilter(rows) {
+  const judged = rows.filter(r => r.triage);
+  const box = $('triage-filter');
+  box.hidden = !judged.length;
+  if (!judged.length) return;
+
+  const counts = {};
+  judged.forEach(r => { counts[r.triage.bucket] = (counts[r.triage.bucket] || 0) + 1; });
+  const unjudged = rows.length - judged.length;
+
+  box.innerHTML = Object.entries(BUCKETS).map(([key, label]) =>
+    `<button class="tab ${shownBuckets.has(key) ? 'tab--on' : ''}" data-bucket="${key}">
+       ${label} ${counts[key] || 0}</button>`
+  ).join('') + (unjudged
+    ? `<button class="tab ${shownBuckets.has(null) ? 'tab--on' : ''}" data-bucket="none">без вердикта ${unjudged}</button>`
+    : '');
+
+  box.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const key = b.dataset.bucket === 'none' ? null : b.dataset.bucket;
+    shownBuckets.has(key) ? shownBuckets.delete(key) : shownBuckets.add(key);
+    renderFound(allRows);
+  });
 }
+
+// Rows come from the server, which remembers them across reloads.
+function renderFound(rows) {
+  allRows = rows;
+  const scored = rows.filter(r => r.score != null).length;
+  $('found-status').innerHTML = rows.length
+    ? `Всего найдено <b>${rows.length}</b>, оценено ${scored}.`
+    : 'Пока ничего не найдено — запустите подбор.';
+  $('forget-btn').hidden = !rows.length;
+  $('triage-btn').hidden = !rows.length;
+  renderBucketFilter(rows);
+
+  const judged = rows.some(r => r.triage);
+  rows = judged ? rows.filter(r => shownBuckets.has(r.triage ? r.triage.bucket : null)) : rows;
+
+  $('auto-out').innerHTML = rows.map((r, i) => {
+    const cls = r.verdict === 'apply' ? 'm-full'
+              : r.verdict === 'skip' ? 'm-none' : 'm-partial';
+    const score = r.score != null ? `<span class="${cls}">${r.score}</span>` : '';
+    const t = r.triage;
+    const tag = t
+      ? `<div><span class="tag tag--${t.bucket}">${BUCKETS[t.bucket] || t.bucket}</span>
+           <span class="hit__meta" style="margin:0 0 0 6px">${esc(t.reason)}</span></div>`
+      : '';
+    return `
+      <div class="hit ${t && t.bucket === 'skip' ? 'hit--skip' : ''}" id="ahit-${i}">
+        <div class="hit__main">
+          <div class="hit__title"><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)}</a></div>
+          <div class="hit__meta">${r.source === 'telegram' ? 'Telegram · ' : ''}${esc(r.company)} · ${esc(r.qualification || 'грейд не указан')}${r.remote ? ' · удалённо' : ''} · ${esc(r.salary_text || 'зарплата не указана')}</div>
+          ${tag}
+        </div>
+        <div class="hit__score" id="ascore-${i}">${score}</div>
+        <div class="hit__acts">
+          <button data-url="${r.url}" data-id="${esc(r.id)}" data-cell="ascore-${i}"
+                  class="score-btn">${r.score != null ? 'Отчёт' : 'Оценить'}</button>
+          <button class="tab save-btn${r.saved ? ' save-btn--on' : ''}" data-id="${esc(r.id)}"
+                  title="${r.saved ? 'Уже в избранном — нажмите, чтобы убрать'
+                                   : 'Отложить: материалы и статусы готовятся там'}"
+            >${r.saved ? 'В избранном ✓' : 'В избранное'}</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  document.querySelectorAll('#auto-out .score-btn').forEach(b => b.onclick = () => scoreOne(b));
+  // Search decides what is worth keeping; the shortlist page does the work on
+  // it. Keeping the materials and the tracker here too made one screen answer
+  // two questions at once.
+  document.querySelectorAll('#auto-out .save-btn').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    await toggleSave(b.dataset.id, !b.classList.contains('save-btn--on'));
+  });
+}
+
+// Running total. The per-call ledger under a report answers "what did this
+// cost"; this answers "what have I spent so far", which is the question a
+// paying user actually asks.
+function renderSpend(s) {
+  const box = $('spend');
+  if (!box || !s || !s.found) { if (box) box.innerHTML = ''; return; }
+  box.innerHTML = `Найдено ${s.found} · оценено ${s.scored} · с материалами ${s.with_artifacts}
+    · потрачено <b>${s.rub.toFixed(2)} ₽</b>`
+    + (s.free_to_reopen ? ` · ${s.free_to_reopen} можно открыть повторно бесплатно` : '');
+}
+
+// One button per document, in the row. Each states its own price, and one
+// already bought reopens for free — so a button says what it will do instead
+// of hiding three documents behind a single label.
+function applyButtons(r) {
+  if (r.score == null) return '';
+  const have = r.artifacts || {};
+  return APPLY_STEPS.map(s => {
+    const done = !!have[s.key];
+    const tip = done ? `${s.hint} — готово, показ бесплатный` : `${s.hint} — ${s.rub} ₽`;
+    return `<button class="tab apply-btn${done ? ' apply-btn--done' : ''}"
+              data-url="${r.url}" data-id="${esc(r.id)}" data-step="${s.step}"
+              title="${esc(tip)}">${esc(s.title)}${done ? ' ✓' : ''}</button>`;
+  }).join('');
+}
+
+// The tracker. Only the user moves a vacancy; no scan and no model does.
+function statusPicker(r) {
+  if (r.score == null) return '';
+  const now = r.status || 'none';
+  const opts = Object.entries(STATUSES).map(([k, v]) =>
+    `<option value="${k}" ${k === now ? 'selected' : ''}>${esc(v.title)}</option>`).join('');
+  return `<select class="status-sel" data-id="${esc(r.id)}" title="Статус отклика">${opts}</select>`;
+}
+
+async function moveStatus(sel) {
+  const fd = new FormData();
+  fd.append('vacancy_id', sel.dataset.id);
+  fd.append('status', sel.value);
+  const res = await fetch('/api/status', {method:'POST', body:fd});
+  const d = await res.json();
+  if (d.error) { $('found-status').innerHTML = `<span class="err">${esc(d.error)}</span>`; return; }
+  renderFound(d.rows || []);
+}
+
+async function buyArtifacts(btn) {
+  btn.disabled = true;
+  const was = btn.textContent;
+  btn.textContent = 'Готовлю…';
+  const fd = new FormData();
+  fd.append('url', btn.dataset.url);
+  fd.append('vacancy_id', btn.dataset.id);
+  fd.append('step', btn.dataset.step);
+  try {
+    const res = await fetch('/api/artifacts', {method:'POST', body:fd});
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'ошибка');
+    const stored = allRows.find(r => String(r.id) === String(btn.dataset.id));
+    // Show only the document just asked for. Dumping all three would bury it
+    // and suggest the others were bought too.
+    const key = STEP_KEY[d.step];
+    render({
+      results: {report: null, [key]: d.artifacts[key]},
+      usage: d.usage, vacancy: null,
+    });
+    window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+    if (!d.cached) refreshState();
+  } catch (e) {
+    $('found-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  }
+  btn.disabled = false;
+  btn.textContent = was;
+}
+
+// ── "Моё резюме" ─────────────────────────────────────────────────────────
+// The parsed profile, readable. It used to sit behind a <details> as raw JSON,
+// which is fine for debugging and useless for checking whether the model read
+// the CV correctly — and that check is exactly what decides every later score.
+async function loadProfilePage() {
+  const d = await fetch('/api/profile').then(r => r.json());
+  renderProfileCard(d.profile);
+  renderSearchProfileCard(d.search_profile, d.search_profile_accepted);
+}
+
+function renderProfileCard(p) {
+  const box = $('profile-card');
+  if (!p) { box.innerHTML = ''; return; }
+  const list = xs => (xs || []).map(x => `<span class="chip">${esc(x)}</span>`).join('');
+  const rows = [
+    ['Имя', esc(p.name || '—')],
+    ['Целевая роль', esc(p.target_role || '—')],
+    // seniority is the level the experience actually shows, target_role is what
+    // the person calls themselves. They differ, and the difference used to cost
+    // a point on every senior posting — see docs/decisions.md.
+    ['Уровень по опыту', esc(p.seniority || 'не определён')],
+    ['Опыт', p.years_experience ? `${p.years_experience} лет` : '—'],
+    ['Сфера', esc(p.field || '—')],
+  ];
+  if (p.directions?.length) rows.push(['Направления', `<div class="chips">${list(p.directions)}</div>`]);
+  if (p.skills?.length) rows.push(['Навыки', `<div class="chips">${list(p.skills)}</div>`]);
+
+  let h = `<div class="card"><h2>Профиль</h2><dl class="kv">`;
+  h += rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  h += '</dl>';
+  if (p.experience?.length) {
+    h += '<h2 style="margin-top:18px">Опыт</h2>';
+    h += p.experience.map(e => `
+      <div style="margin-bottom:12px">
+        <div><b>${esc(e.role)}</b> — ${esc(e.company)}</div>
+        <div class="hit__meta">${esc(e.period)}</div>
+        <ul style="margin:4px 0">${(e.achievements || []).map(a => `<li>${esc(a)}</li>`).join('')}</ul>
+      </div>`).join('');
+  }
+  h += `<details><summary>Исходный JSON</summary><pre>${esc(JSON.stringify(p, null, 2))}</pre></details></div>`;
+  box.innerHTML = h;
+}
+
+// The lists the scan actually searches by. Shown because a filter the user
+// cannot see is a filter they cannot correct.
+function renderSearchProfileCard(sp, accepted) {
+  const box = $('search-profile-card');
+  if (!sp) { box.innerHTML = ''; return; }
+  const chips = (xs, cls = '') => (xs || []).length
+    ? `<div class="chips">${xs.map(x => `<span class="chip ${cls}">${esc(x)}</span>`).join('')}</div>`
+    : '<span class="muted">пусто</span>';
+  box.innerHTML = `<div class="card">
+    <h2>Профиль поиска</h2>
+    <div class="muted" style="margin-bottom:10px">
+      ${accepted ? 'Принят вами.' : 'Пока стартовый шаблон — модель предложит свой при первом подборе.'}
+      Правится вручную в <code>out/search-profile.json</code>.
+    </div>
+    <dl class="kv">
+      <dt>Запросы</dt><dd>${chips(sp.queries)}</dd>
+      <dt>Ключевые слова</dt><dd>${chips(sp.positive)}</dd>
+      <dt>Стоп-слова</dt><dd>${chips(sp.negative, 'chip--neg')}</dd>
+      <dt>Не та специализация</dt><dd>${chips(sp.divisions_negative, 'chip--neg')}</dd>
+      <dt>Минимальный грейд</dt><dd>${esc(sp.min_qualification || 'любой')}</dd>
+    </dl></div>`;
+}
+
+// ── "Избранное" ──────────────────────────────────────────────────────────
+async function loadSaved() {
+  const d = await fetch('/api/saved').then(r => r.json());
+  STATUSES = d.statuses || STATUSES;
+  const rows = d.rows || [];
+  $('saved-status').innerHTML = rows.length
+    ? `В работе <b>${rows.length}</b>.`
+    : 'Пусто. Отложите вакансию кнопкой «В избранное» на странице поиска.';
+  $('saved-count').textContent = rows.length || '';
+
+  $('saved-out').innerHTML = rows.map((r, i) => {
+    const cls = r.verdict === 'apply' ? 'm-full'
+              : r.verdict === 'skip' ? 'm-none' : 'm-partial';
+    const score = r.score != null ? `<span class="${cls}">${r.score}</span>` : '';
+    return `
+      <div class="hit" id="shit-${i}">
+        <div class="hit__main">
+          <div class="hit__title"><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)}</a></div>
+          <div class="hit__meta">${r.source === 'telegram' ? 'Telegram · ' : ''}${esc(r.company)} · ${esc(r.salary_text || 'зарплата не указана')}</div>
+        </div>
+        <div class="hit__score" id="sscore-${i}">${score}</div>
+        <div class="hit__acts">
+          <button data-url="${r.url}" data-id="${esc(r.id)}" data-cell="sscore-${i}"
+                  class="score-btn">${r.score != null ? 'Отчёт' : 'Оценить'}</button>
+          ${applyButtons(r)}
+          ${statusPicker(r)}
+          <button class="tab unsave-btn" data-id="${esc(r.id)}" title="Убрать из избранного">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  $('saved-out').querySelectorAll('.score-btn').forEach(b => b.onclick = () => scoreOne(b));
+  $('saved-out').querySelectorAll('.apply-btn').forEach(b => b.onclick = () => buyArtifacts(b));
+  $('saved-out').querySelectorAll('.status-sel').forEach(s => s.onchange = () => moveStatus(s));
+  $('saved-out').querySelectorAll('.unsave-btn').forEach(b => b.onclick = async () => {
+    await toggleSave(b.dataset.id, false);
+    loadSaved();
+  });
+}
+
+async function toggleSave(id, on) {
+  const fd = new FormData();
+  fd.append('vacancy_id', id);
+  fd.append('saved', on ? '1' : '0');
+  const d = await fetch('/api/save', {method: 'POST', body: fd}).then(r => r.json());
+  renderFound(d.rows || []);
+  $('saved-count').textContent = (d.saved || []).length || '';
+  return d;
+}
+
+// ── Pages ────────────────────────────────────────────────────────────────
+// Three stages, three pages: describe yourself, find work, work the shortlist.
+// The hash keeps the current page across a reload — a scan that took a minute
+// should not dump the user back on the resume page.
+const PAGES = ['resume', 'search', 'saved'];
+
+function showPage(name) {
+  if (!PAGES.includes(name)) name = 'search';
+  PAGES.forEach(p => { $('page-' + p).hidden = p !== name; });
+  document.querySelectorAll('.nav__tab').forEach(b =>
+    b.classList.toggle('nav__tab--on', b.dataset.page === name));
+  if (location.hash.slice(1) !== name) location.hash = name;
+  // The report panel belongs to whichever page produced it; carrying it over
+  // would show a stale evaluation under an unrelated list.
+  $('report').innerHTML = '';
+  if (name === 'saved') loadSaved();
+  if (name === 'resume') loadProfilePage();
+}
+
+document.querySelectorAll('.nav__tab').forEach(b =>
+  b.onclick = () => showPage(b.dataset.page));
+window.addEventListener('hashchange', () => showPage(location.hash.slice(1)));
 
 async function refreshState() {
   const r = await fetch('/api/state').then(r => r.json());
+  STATUSES = r.statuses || {};
+  APPLY_STEPS = (r.apply_steps || []).map(s => ({...s, key: STEP_KEY[s.step]}));
+  renderSpend(r.spend);
   $('resume-state').textContent = r.has_resume
     ? `Загружено: ${r.resume_name} — ${r.profile.target_role ?? '?'}, ${r.profile.years_experience ?? '?'} лет, ${r.profile.field ?? '?'}`
     : 'Резюме не загружено.';
 
-  // The run profile is a price decision, so the cost is stated before the click.
-  if (r.run_profiles && !RUN_PROFILES.length) {
-    RUN_PROFILES = r.run_profiles;
-    $('run-profile').innerHTML = RUN_PROFILES
-      .map(p => `<option value="${p.name}">${esc(p.title)} · ${p.rub} ₽</option>`).join('');
-    $('run-profile').onchange = showProfileHint;
-    showProfileHint();
-  }
+  // Everything found so far, including scores already paid for.
+  renderFound(r.found || []);
+  const saved = (r.found || []).filter(x => x.saved).length;
+  $('saved-count').textContent = saved ? saved : '';
 }
-refreshState();
+
+// Land on the resume page until there is a resume: searching without one is
+// the first thing the scan refuses to do.
+(async () => {
+  await refreshState();
+  const start = location.hash.slice(1);
+  showPage(PAGES.includes(start) ? start
+           : ($('resume-state').textContent.startsWith('Загружено') ? 'search' : 'resume'));
+})();
 
 $('resume-btn').onclick = async () => {
   const f = $('resume-file').files[0];
@@ -179,67 +541,37 @@ $('resume-btn').onclick = async () => {
   $('resume-btn').disabled = false;
 };
 
-$('eval-btn').onclick = async () => {
-  const text = $('vacancy').value.trim();
-  if (!text) { $('eval-status').innerHTML = '<span class="err">Вставьте текст вакансии</span>'; return; }
-  $('eval-btn').disabled = true;
-  $('report').innerHTML = '';
-  const started = Date.now();
-  const tick = setInterval(() => {
-    $('eval-status').textContent = `Считаю… ${((Date.now()-started)/1000).toFixed(0)} с`;
-  }, 500);
-  const fd = new FormData();
-  fd.append('vacancy', text);
-  fd.append('steps', $('run-profile').value || 'evaluate');
+$('triage-btn').onclick = async () => {
+  const btn = $('triage-btn');
+  btn.disabled = true;
+  btn.textContent = 'Отсеиваю…';
   try {
-    const res = await fetch('/api/evaluate', {method:'POST', body:fd});
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || 'ошибка');
-    render(d);
-    $('eval-status').textContent = '';
-  } catch (e) {
-    $('eval-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    const d = await fetch('/api/triage', {method:'POST'}).then(r => r.json());
+    if (d.error) { $('found-status').innerHTML = `<span class="err">${esc(d.error)}</span>`; return; }
+    renderFound(d.rows || []);
+    if (d.note) {
+      $('found-status').innerHTML += ` ${esc(d.note)}`;
+    } else {
+      const rub = d.usage ? (d.usage.total_rub || 0).toFixed(3) : '?';
+      $('found-status').innerHTML += ` Отсев: судили ${d.judged}, потрачено ${rub} ₽.`;
+      // A short reply leaves postings unjudged; say so rather than let them
+      // quietly look like they were considered.
+      if (d.missing && d.missing.length) {
+        $('found-status').innerHTML +=
+          ` <span class="err">Без вердикта осталось ${d.missing.length}.</span>`;
+      }
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Отсеять моделью';
   }
-  clearInterval(tick);
-  $('eval-btn').disabled = false;
 };
 
-document.querySelectorAll('.tab').forEach(t => {
-  t.onclick = () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('tab--on', x === t));
-    $('tab-one').hidden = t.dataset.tab !== 'one';
-    $('tab-scan').hidden = t.dataset.tab !== 'scan';
-    $('tab-auto').hidden = t.dataset.tab !== 'auto';
-  };
-});
-
-$('search-btn').onclick = async () => {
-  $('search-btn').disabled = true;
-  $('search-status').textContent = 'Ищу…';
-  $('search-out').innerHTML = '';
-  const fd = new FormData();
-  fd.append('query', $('q').value.trim());
-  if ($('rem').checked) fd.append('remote', '1');
-  if ($('sal').value.trim()) fd.append('salary', $('sal').value.trim());
-  try {
-    const res = await fetch('/api/search', {method:'POST', body:fd});
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || 'ошибка');
-    $('search-status').textContent = `Найдено ${d.rows.length}. Оценка каждой — примерно 0.2 ₽ и 15 с.`;
-    $('search-out').innerHTML = d.rows.map((r, i) => `
-      <div class="hit" id="hit-${i}">
-        <div class="hit__main">
-          <div class="hit__title"><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)}</a></div>
-          <div class="hit__meta">${esc(r.company)} · ${esc(r.meta || '')} · ${esc(r.salary || r.predicted_salary || 'зарплата не указана')}</div>
-        </div>
-        <div class="hit__score" id="score-${i}"></div>
-        <button data-url="${r.url}" data-cell="score-${i}" class="score-btn">Оценить</button>
-      </div>`).join('');
-    document.querySelectorAll('.score-btn').forEach(b => b.onclick = () => scoreOne(b));
-  } catch (e) {
-    $('search-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
-  }
-  $('search-btn').disabled = false;
+$('forget-btn').onclick = async () => {
+  const d = await fetch('/api/forget', {method:'POST'}).then(r => r.json());
+  renderFound(d.rows || []);
+  $('report').innerHTML = '';
+  $('auto-status').textContent = '';
 };
 
 $('auto-btn').onclick = async () => {
@@ -249,7 +581,8 @@ $('auto-btn').onclick = async () => {
   const fd = new FormData();
   if ($('a-rem').checked) fd.append('remote', '1');
   if ($('a-sal').value.trim()) fd.append('salary', $('a-sal').value.trim());
-  fd.append('pages', $('a-pages').value || '1');
+  if ($('a-nosal').checked) fd.append('any_salary', '1');
+  fd.append('pages', $('a-pages').value || '5');
   try {
     const res = await fetch('/api/scan', {method:'POST', body:fd});
     const d = await res.json();
@@ -258,25 +591,46 @@ $('auto-btn').onclick = async () => {
     const reasons = Object.entries(d.drop_reasons || {})
       .sort((a,b) => b[1]-a[1]).map(([k,v]) => `${v} ${k}`).join(' · ');
     $('auto-status').innerHTML =
-      `Собрано ${d.collected} → отсеяно бесплатно ${d.dropped} → осталось <b>${d.rows.length}</b>` +
+      `Собрано ${d.collected} → отсеяно бесплатно ${d.dropped} → новых <b>${d.new_count}</b>` +
       (d.seen_before ? ` (${d.seen_before} уже показывали)` : '') +
       (reasons ? `<div class="cost" style="margin-top:4px">Причины отсева: ${esc(reasons)}</div>` : '') +
       `<div class="cost">Запросы: ${esc((d.profile.queries||[]).join(', '))}</div>`;
-    if (!d.rows.length) { $('auto-out').innerHTML = '<div class="muted">Новых подходящих вакансий нет.</div>'; }
-    else $('auto-out').innerHTML = d.rows.map((r, i) => `
-      <div class="hit" id="ahit-${i}">
-        <div class="hit__main">
-          <div class="hit__title"><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)}</a></div>
-          <div class="hit__meta">${esc(r.company)} · ${esc(r.qualification || 'грейд не указан')}${r.remote ? ' · удалённо' : ''} · ${esc(r.salary_text || 'зарплата не указана')}</div>
-        </div>
-        <div class="hit__score" id="ascore-${i}"></div>
-        <button data-url="${r.url}" data-cell="ascore-${i}" class="score-btn">Оценить</button>
-      </div>`).join('');
-    document.querySelectorAll('#auto-out .score-btn').forEach(b => b.onclick = () => scoreOne(b));
+    // The server hands back everything accumulated, not just this scan.
+    renderFound(d.rows || []);
   } catch (e) {
     $('auto-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
   }
   $('auto-btn').disabled = false;
+};
+
+$('tg-btn').onclick = async () => {
+  const btn = $('tg-btn');
+  btn.disabled = true;
+  $('tg-status').textContent = 'Читаю каналы…';
+  const fd = new FormData();
+  fd.append('pages', $('tg-pages').value || '1');
+  fd.append('groups', $('tg-adjacent').checked ? 'core,adjacent' : 'core');
+  try {
+    const res = await fetch('/api/scan_tg', {method:'POST', body:fd});
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'ошибка');
+    const reasons = Object.entries(d.drop_reasons || {})
+      .sort((a,b) => b[1]-a[1]).map(([k,v]) => `${v} ${k}`).join(' · ');
+    $('tg-status').innerHTML =
+      `Каналов ${d.channels.length} → собрано ${d.collected}` +
+      (d.filtered ? ` → отсеяно бесплатно ${d.dropped}` : ' (профиль поиска не принят — фильтры не применялись)') +
+      ` → новых <b>${d.new_count}</b>` +
+      (d.seen_before ? ` (${d.seen_before} уже показывали)` : '') +
+      (reasons ? `<div class="cost" style="margin-top:4px">Причины отсева: ${esc(reasons)}</div>` : '') +
+      // A silent or unreachable channel is said out loud: a dead channel still
+      // answers 200 with last year's posts, so it must not pass for healthy.
+      ((d.problems || []).length
+        ? `<div class="cost" style="margin-top:4px">Пропущены: ${d.problems.map(p => esc(p.why)).join(' · ')}</div>` : '');
+    renderFound(d.rows || []);
+  } catch (e) {
+    $('tg-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  }
+  btn.disabled = false;
 };
 
 // The agent proposes a search profile; nothing is stored until the user says yes.
@@ -313,7 +667,9 @@ async function decideProposal(accept) {
 async function scoreOne(btn) {
   const cell = $(btn.dataset.cell);
   btn.disabled = true; btn.textContent = 'Считаю…';
-  const fd = new FormData(); fd.append('url', btn.dataset.url);
+  const fd = new FormData();
+  fd.append('url', btn.dataset.url);
+  fd.append('vacancy_id', btn.dataset.id || '');
   try {
     const res = await fetch('/api/score_one', {method:'POST', body:fd});
     const d = await res.json();
@@ -322,17 +678,78 @@ async function scoreOne(btn) {
     if (cell) cell.innerHTML = `<span class="${cls}">${d.report.score}</span>`;
     btn.textContent = 'Отчёт';
     btn.disabled = false;
-    btn.onclick = () => { render({results:{report:d.report}, usage:d.usage, vacancy:d.vacancy});
-                          window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); };
+    // A stored report costs nothing to show again.
+    const show = () => { render({results:{report:d.report}, usage:d.usage, vacancy:d.vacancy});
+                         window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); };
+    btn.onclick = show;
+    show();
+    // A fresh score changed what is stored; redraw the list so the count agrees.
+    if (!d.cached) refreshState();
   } catch (e) {
     if (cell) cell.innerHTML = `<span class="err" style="font-size:12px">${esc(e.message)}</span>`;
     btn.textContent = 'Оценить'; btn.disabled = false;
   }
 }
 
+// The apply artifacts are documents the user copies out, not payloads. Raw JSON
+// on screen is unreadable and hides the one thing worth checking: that nothing
+// was invented. `changes` is kept visible for exactly that reason.
+function renderArtifact(kind, v) {
+  const list = (xs, f) => (xs || []).map(f).join('');
+
+  if (kind === 'cover_letter') {
+    return (v.angles?.length ? `<div class="muted" style="margin-bottom:8px">Углы: ${v.angles.map(esc).join(' · ')}</div>` : '')
+      + `<pre>${esc(v.letter)}</pre>`;
+  }
+
+  if (kind === 'tailored_resume') {
+    let h = v.summary ? `<div style="margin-bottom:12px">${esc(v.summary)}</div>` : '';
+    h += list(v.experience, e => `
+      <div style="margin-bottom:12px">
+        <div><b>${esc(e.role)}</b> — ${esc(e.company)} <span class="muted">${esc(e.period)}</span></div>
+        <ul style="margin:4px 0">${list(e.bullets, b => `<li>${esc(b)}</li>`)}</ul>
+      </div>`);
+    if (v.skills?.length) h += `<div class="muted">Навыки: ${v.skills.map(esc).join(', ')}</div>`;
+    if (v.ats_keywords?.length) h += `<div class="muted">Ключевые слова: ${v.ats_keywords.map(esc).join(', ')}</div>`;
+    // What the model changed, and why. This is where an invention would show up.
+    if (v.changes?.length) {
+      h += `<h2 style="margin-top:16px">Что изменено</h2><ul>${list(v.changes, c => `<li>${esc(c)}</li>`)}</ul>`;
+    }
+    return h;
+  }
+
+  if (kind === 'interview_prep') {
+    let h = '';
+    if (v.questions?.length) {
+      h += '<div class="overflow"><table><tr><th>вопрос</th><th>почему спросят</th><th>на что опереться</th></tr>';
+      h += list(v.questions, q => `<tr><td>${esc(q.question)}</td><td class="muted">${esc(q.why)}</td><td>${esc(q.answer_hint)}</td></tr>`);
+      h += '</table></div>';
+    }
+    if (v.star_stories?.length) {
+      h += '<h2 style="margin-top:16px">STAR-истории</h2>';
+      h += list(v.star_stories, s => `
+        <div style="margin-bottom:12px"><b>${esc(s.title)}</b>
+          <div class="muted">Ситуация: ${esc(s.situation)}</div>
+          <div class="muted">Задача: ${esc(s.task)}</div>
+          <div>Действия: ${esc(s.action)}</div>
+          <div>Результат: ${esc(s.result)}</div></div>`);
+    }
+    if (v.to_brush_up?.length) {
+      h += `<h2 style="margin-top:16px">Подтянуть</h2><ul>${list(v.to_brush_up, t => `<li>${esc(t)}</li>`)}</ul>`;
+    }
+    return h;
+  }
+
+  return `<pre>${esc(JSON.stringify(v, null, 2))}</pre>`;
+}
+
 function render(d) {
   const r = d.results.report, u = d.usage;
-  let h = '<div class="card"><h2>Отчёт</h2>';
+  let h = '';
+  // Buying the apply artifacts alone renders without a report block: the
+  // evaluation is already on screen and was already paid for.
+  if (!r) { h = ''; } else {
+  h = '<div class="card"><h2>Отчёт</h2>';
   if (d.vacancy) {
     h += `<div class="muted" style="margin-bottom:10px"><a href="${d.vacancy.url}" target="_blank" rel="noopener">${esc(d.vacancy.title)}</a> — ${esc(d.vacancy.company)}${d.vacancy.location ? ' · ' + esc(d.vacancy.location) : ''}</div>`;
   }
@@ -362,18 +779,20 @@ function render(d) {
     h += '</ul>';
   }
   h += '</div>';
+  }
 
   const extras = [['cover_letter','Сопроводительное'],['tailored_resume','Резюме под вакансию'],['interview_prep','Подготовка к интервью']];
   for (const [k, title] of extras) {
     if (!d.results[k]) continue;
-    const v = d.results[k];
-    h += `<div class="card"><h2>${title}</h2>`;
-    if (k === 'cover_letter') {
-      h += `<div class="muted">Углы: ${v.angles?.map(esc).join(' · ')}</div><pre>${esc(v.letter)}</pre>`;
-    } else {
-      h += `<details open><summary>JSON</summary><pre>${esc(JSON.stringify(v, null, 2))}</pre></details>`;
-    }
-    h += '</div>';
+    h += `<div class="card"><h2>${title}</h2>${renderArtifact(k, d.results[k])}</div>`;
+  }
+
+  // A report read back from disk has no ledger — it was already paid for.
+  if (!u) {
+    h += '<div class="card"><h2>Чего это стоило</h2><div class="cost">'
+       + 'Отчёт сохранён с прошлой оценки — показ бесплатный.</div></div>';
+    $('report').innerHTML = h;
+    return;
   }
 
   h += '<div class="card"><h2>Чего это стоило</h2>';
