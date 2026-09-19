@@ -22,6 +22,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY core/ ./core/
+# app/ carries app/static/index.html, the cabinet itself — there is no build
+# step and no second container to serve one file.
 COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./

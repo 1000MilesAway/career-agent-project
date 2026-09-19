@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from core.llm import LLM, Ledger
 from core.pipeline import cover_letter, interview_prep, tailor_resume
-from core.profiles import STEP_INFO
+from core.profiles import steps_as_list
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Artifact, Evaluation, Vacancy
@@ -57,8 +57,13 @@ class ArtifactResponse(BaseModel):
 
 @router.get("/kinds")
 async def kinds() -> list[dict]:
-    """What can be bought, with the price, so the UI states it before charging."""
-    return [{"kind": k, **v} for k, v in STEP_INFO.items()]
+    """What can be bought, with the price, so the UI states it before charging.
+
+    The key is `step`, matching what /api/state returns and what core.profiles
+    calls it. Two names for one thing across two endpoints is how a screen ends
+    up reading `undefined` from the wrong one.
+    """
+    return steps_as_list()
 
 
 @router.post("/{vacancy_id}/{kind}", response_model=ArtifactResponse)

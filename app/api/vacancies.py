@@ -252,6 +252,26 @@ async def update_status(
     return VacancyResponse.of(vacancy)
 
 
+@router.post("/clear")
+async def clear(session: SessionDep, user: UserDep) -> dict[str, int]:
+    """Drop the search results — but never the shortlist.
+
+    "Очистить" lives on the search page and means "this batch was not useful".
+    A vacancy the user deliberately shortlisted is the opposite of that, and it
+    carries reports and materials they paid for. Dropping those from a button
+    labelled "clear the list of results" would be data loss the label never
+    warned about.
+    """
+    result = await session.execute(
+        select(Vacancy).where(Vacancy.user_id == user.id, Vacancy.is_saved.is_(False))
+    )
+    rows = list(result.scalars())
+    for row in rows:
+        await session.delete(row)
+    await session.commit()
+    return {"deleted": len(rows)}
+
+
 @router.get("/statuses")
 async def statuses() -> dict[str, dict]:
     """The tracker's vocabulary, for the UI to render."""

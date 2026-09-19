@@ -5,11 +5,16 @@ JSON only — the SPA is a separate build, per docs/decisions.md 2026-09-12.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
-from .api import artifacts, auth, evaluations, health, jobs, resumes, vacancies
+from .api import artifacts, auth, evaluations, health, jobs, resumes, state, vacancies
 from .core.config import get_settings
+
+STATIC = Path(__file__).resolve().parent / "static"
 
 settings = get_settings()
 
@@ -41,6 +46,7 @@ app.add_middleware(
 for router in (
     health.router,
     auth.router,
+    state.router,
     resumes.router,
     vacancies.router,
     evaluations.router,
@@ -48,3 +54,18 @@ for router in (
     jobs.router,
 ):
     app.include_router(router)
+
+
+@app.get("/", include_in_schema=False)
+async def index() -> FileResponse:
+    """The cabinet itself.
+
+    Served by the API rather than by a separate nginx: there is one page and
+    no build step, and a second container to hand over one file would be
+    infrastructure with nothing to do. When the React SPA replaces this, it
+    gets its own static serving.
+
+    Read from disk on each request, as the demo did — editing the page and
+    pressing F5 should be enough to see the change.
+    """
+    return FileResponse(STATIC / "index.html")
