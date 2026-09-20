@@ -171,10 +171,8 @@
         <label class="inline"><input type="checkbox" id="a-rem" checked> удалёнка</label>
         <label class="inline">страниц <input id="a-pages" type="number" value="5" min="1" max="20" style="width:60px"></label>
         <button id="auto-btn">Подобрать</button>
-        <button id="propose-btn" class="tab" title="Модель предложит запросы и стоп-слова по вашему резюме. Ничего не сохранится, пока вы не примете диff">Настроить поиск моделью</button>
       </div>
       <div id="auto-status" class="muted" style="margin-top:8px"></div>
-      <div id="proposal"></div>
       <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
         <span class="muted">Второй источник:</span>
         <label class="inline">страниц на канал <input id="tg-pages" type="number" value="1" min="1" max="5" style="width:60px"></label>
@@ -525,8 +523,7 @@ function renderSearchProfileCard(sp, accepted) {
   box.innerHTML = `<div class="card">
     <h2>Профиль поиска</h2>
     <div class="muted" style="margin-bottom:10px">
-      ${accepted ? 'Принят вами.' : 'Пока стартовый шаблон — модель предложит свой при первом подборе.'}
-      Правится вручную в <code>out/search-profile.json</code>.
+      ${accepted ? 'Составлен моделью по вашему резюме.' : 'Пока стартовый шаблон — модель составит свой по резюме при первом подборе.'}
     </div>
     <dl class="kv">
       <dt>Запросы</dt><dd>${chips(sp.queries)}</dd>
@@ -727,89 +724,6 @@ $('tg-btn').onclick = async () => {
   }
   btn.disabled = false;
 };
-
-// The agent proposes a search profile; nothing is stored until the user says yes.
-function renderProposal(p) {
-  const box = $('proposal');
-  if (!p || !p.changes?.length) { box.innerHTML = ''; return; }
-  const rows = p.changes.map(c => {
-    const add = c.added.length ? `<span class="m-full">+ ${c.added.map(esc).join(', ')}</span>` : '';
-    const rem = c.removed.length ? `<span class="m-none">− ${c.removed.map(esc).join(', ')}</span>` : '';
-    return `<tr><td>${esc(c.field)}</td><td>${add}${add && rem ? '<br>' : ''}${rem}</td></tr>`;
-  }).join('');
-  box.innerHTML = `<div class="card"><h2>Модель предлагает настроить поиск</h2>
-    <div class="muted" style="margin-bottom:8px">Сканирование идёт по стартовому шаблону,
-      пока вы не примете эти изменения.</div>
-    <div class="overflow"><table><tr><th>поле</th><th>что изменится</th></tr>${rows}</table></div>
-    ${p.rationale ? `<div class="cost" style="margin-top:8px">${esc(p.rationale)}</div>` : ''}
-    <div class="row" style="margin-top:10px">
-      <button id="prop-yes">Принять</button>
-      <button id="prop-no" class="tab">Отклонить</button>
-    </div></div>`;
-  $('prop-yes').onclick = () => decideProposal('1');
-  $('prop-no').onclick = () => decideProposal('0');
-}
-
-// What the model last proposed, held on the page only. Nothing reaches the
-// server until the user presses "Принять" — the agent proposes, the user
-// accepts, and silence is a refusal.
-let pendingProfile = null;
-
-async function decideProposal(accept) {
-  try {
-    if (accept === '1' && pendingProfile) {
-      await api('/api/resumes/search-profile', {method: 'PUT', json: pendingProfile});
-      $('proposal').innerHTML =
-        '<div class="card muted">Профиль поиска принят. Запустите подбор ещё раз.</div>';
-      await refreshState();
-    } else {
-      $('proposal').innerHTML =
-        '<div class="card muted">Отклонено — остаётся стартовый шаблон.</div>';
-    }
-  } catch (e) {
-    $('proposal').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
-  }
-  pendingProfile = null;
-}
-
-// Asking the model for a search profile costs money, so it is a button rather
-// than something a scan does on its own.
-$('propose-btn').onclick = async () => {
-  const btn = $('propose-btn');
-  btn.disabled = true;
-  $('proposal').innerHTML = '<div class="card muted">Модель подбирает запросы…</div>';
-  try {
-    const d = await api('/api/resumes/search-profile/propose', {method: 'POST'});
-    pendingProfile = d.proposed;
-    renderProposal(diffProfiles(d.current, d.proposed));
-  } catch (e) {
-    $('proposal').innerHTML = `<div class="card err">${esc(e.message)}</div>`;
-  }
-  btn.disabled = false;
-};
-
-/** What would change if the proposal were accepted.
- *
- * Computed here because the product stores the accepted profile and returns
- * both sides, rather than keeping a proposal entity as the demo did. The table
- * is the point: the user is agreeing to specific edits, not to a black box.
- */
-function diffProfiles(current, proposed) {
-  const changes = [];
-  for (const field of Object.keys(proposed || {})) {
-    const before = current?.[field], after = proposed[field];
-    if (Array.isArray(after)) {
-      const was = new Set(Array.isArray(before) ? before : []);
-      const now = new Set(after);
-      const added = after.filter(x => !was.has(x));
-      const removed = [...was].filter(x => !now.has(x));
-      if (added.length || removed.length) changes.push({field, added, removed});
-    } else if (String(before ?? '') !== String(after ?? '')) {
-      changes.push({field, added: [String(after ?? '')], removed: before == null ? [] : [String(before)]});
-    }
-  }
-  return {changes};
-}
 
 async function scoreOne(btn) {
   const cell = $(btn.dataset.cell);

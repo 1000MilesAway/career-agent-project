@@ -91,6 +91,13 @@ async def upload(
     llm = LLM(ledger=ledger)
     profile = await run_in_threadpool(parse_resume, llm, text)
 
+    # Built here rather than proposed for confirmation: a CV with no search
+    # profile behind it left the scan with nothing to filter on, and the empty
+    # profile that resulted kept the whole Habr catalogue. Both calls are on
+    # the same upload, so the user pays once and lands in a state that works.
+    # The profile stays editable afterwards — see docs/decisions.md.
+    search_profile = await run_in_threadpool(build_search_profile, llm, profile)
+
     # A new CV replaces the old active one rather than deleting it: evaluations
     # point at the resume they judged against, and dropping it would take
     # paid-for reports with it.
@@ -105,6 +112,7 @@ async def upload(
         filename=file.filename or "resume",
         raw_text=text,
         profile=profile,
+        search_profile=search_profile,
         is_active=True,
     )
     session.add(resume)
@@ -146,7 +154,7 @@ async def propose_search_profile(
     await session.commit()
 
     return SearchProfileProposal(
-        current=resume.search_profile or starter_profile(),
+        current=resume.search_profile or starter_profile().as_dict(),
         proposed=proposed,
     )
 

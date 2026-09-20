@@ -65,20 +65,11 @@ async def enqueue(
     the user may upload a new CV while the job waits, and the report must say
     which resume it actually judged.
 
-    A scan without an accepted search profile is refused here rather than run
-    on an empty one. An empty SearchProfile states no stop-word and no keyword,
-    so PreScreen keeps everything and the catalogue walk asks for everything:
-    a real run produced 125 rows including SMM and legal vacancies, none of
-    them carrying a rejection reason. Uploading a CV does not accept a profile
-    — that is a separate confirmation — so the failure is easy to reach.
+    A scan needs a search profile, but does not refuse without one: the worker
+    derives it from the stored CV first (see `_run_scan`). What must never
+    happen is a scan on an EMPTY profile, which filters nothing — that is
+    guarded in `collect_habr`.
     """
-    if body.kind == "scan" and not resume.search_profile:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Профиль поиска не принят: подбор без него собрал бы весь каталог. "
-                   "Откройте резюме и подтвердите профиль поиска.",
-        )
-
     job = Job(
         user_id=user.id,
         kind=body.kind,
