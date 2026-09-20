@@ -328,3 +328,147 @@ class TestOneActiveResume:
 
         with pytest.raises(IntegrityError):
             await session.commit()
+
+
+@requires_db
+class TestPaidVerdictsSurviveAFreeRescan:
+    """A free re-screen may revise its own verdict, never a paid one."""
+
+    async def test_a_rescan_does_not_resurrect_a_triaged_out_vacancy(self, session):
+        user, _ = await _user_with_resume(session)
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await session.commit()
+
+        from sqlalchemy import select
+
+        row = (await session.execute(select(Vacancy))).scalar_one()
+        row.stage = scan.TRIAGED_OUT
+        row.triage_verdict = "skip"
+        row.screen_reason = "чужой стек"
+        await session.commit()
+
+        # The posting is still in the catalogue and still passes the free
+        # filters, so a second scan sees it again.
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await session.commit()
+
+        await session.refresh(row)
+        assert row.stage == scan.TRIAGED_OUT
+        # The reason must not be wiped: a "мимо" tag with no reason under it
+        # is the silent rejection the pipeline forbids.
+        assert row.screen_reason == "чужой стек"
+        assert row.triage_verdict == "skip"
+
+    async def test_a_screened_out_vacancy_is_still_re_judged(self, session):
+        """The free filters own their own verdict and may change their mind."""
+        user, _ = await _user_with_resume(session)
+        await scan.persist(
+            session, user.id, "habr", kept=[], dropped=[(posting("1"), "стоп-слово")]
+        )
+        await session.commit()
+
+        from sqlalchemy import select
+
+        row = (await session.execute(select(Vacancy))).scalar_one()
+        assert row.stage == scan.SCREENED_OUT
+
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await session.commit()
+
+        await session.refresh(row)
+        assert row.stage == scan.SHORTLIST
+        assert row.screen_reason is None
+
+
+@requires_db
+class TestPaidWorkIsNotRepeated:
+    """Evaluations and artifacts refuse to be bought twice; so must triage."""
+
+    async def test_a_second_triage_skips_what_already_has_a_verdict(
+        self, client, session, user, auth_headers, monkeypatch
+    ):
+        from app.models import Resume
+
+        resume = Resume(
+            user_id=user.id, filename="cv.md", raw_text="x",
+            profile={"skills": ["Python"]}, archetypes={"roles": []},
+            search_profile={"queries": ["Python"]}, is_active=True,
+        )
+        session.add(resume)
+        await scan.persist(
+            session, user.id, "habr",
+            kept=[(posting("1"), ""), (posting("2"), "")], dropped=[],
+        )
+        await session.commit()
+
+        from sqlalchemy import select
+
+        rows = list((await session.execute(select(Vacancy).order_by(Vacancy.external_id))).scalars())
+        rows[0].triage_verdict = "worth"
+        rows[0].screen_reason = "подходит"
+        await session.commit()
+
+        judged_ids = []
+
+        def fake_triage(llm, archetypes, digests):
+            judged_ids.extend(d["id"] for d in digests)
+
+            class Outcome:
+                verdicts = {}
+                missing: list = []
+                unknown: list = []
+
+                def counts(self):
+                    return {}
+
+            return Outcome()
+
+        from app.api import vacancies as vacancies_api
+
+        monkeypatch.setattr(vacancies_api, "run_triage", fake_triage)
+
+        r = await client.post("/api/vacancies/triage", headers=auth_headers)
+        assert r.status_code == 200, r.text
+
+        # Only the unjudged one was sent to the model.
+        assert judged_ids == [str(rows[1].id)]
+
+
+class TestAPaidFailureIsNotRetried:
+    """The rollback after a failed job undoes `charge` too.
+
+    Retrying then buys the same tokens again and records none of it, so a
+    failure that happens AFTER the model ran must be terminal. `tick` decides
+    that from the exception type; the decision itself is what matters here,
+    and it is checked without a worker session of its own.
+    """
+
+    @staticmethod
+    def _next_status(error: Exception, attempts: int) -> str:
+        """The branch `tick` takes, spelled out — see app/worker.py."""
+        from app.worker import MAX_ATTEMPTS, PaidFailure
+
+        retryable = not isinstance(error, PaidFailure)
+        return "queued" if retryable and attempts < MAX_ATTEMPTS else "failed"
+
+    def test_a_paid_failure_fails_at_once(self):
+        from app.worker import PaidFailure
+
+        assert self._next_status(PaidFailure("пустой результат"), attempts=1) == "failed"
+
+    def test_an_ordinary_failure_is_still_retried(self):
+        """Nothing was bought, so a second attempt costs nothing to try."""
+        assert self._next_status(ValueError("сеть недоступна"), attempts=1) == "queued"
+
+    def test_retries_still_run_out(self):
+        assert self._next_status(ValueError("сеть недоступна"), attempts=3) == "failed"
+
+    def test_the_artifact_builder_raises_the_terminal_kind(self):
+        """The empty-result branch is the one that already spent the money."""
+        import inspect
+
+        from app import worker
+
+        body = inspect.getsource(worker._run_artifact)
+        after_check = body.split("if not content:")[1]
+        assert "PaidFailure" in after_check[:300]

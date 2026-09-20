@@ -64,7 +64,7 @@ class TestScanDerivesAMissingProfile:
             calls.append(profile)
             return DERIVED
 
-        async def fake_collect(session_, user_id, search_profile, pages=1):
+        async def fake_collect(session_, user_id, search_profile, pages=1, **kw):
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
         monkeypatch.setattr(scan, "build_search_profile", fake_build)
@@ -92,7 +92,7 @@ class TestScanDerivesAMissingProfile:
         def fail_build(llm, profile):  # pragma: no cover - must not run
             raise AssertionError("the stored profile was rebuilt")
 
-        async def fake_collect(session_, user_id, search_profile, pages=1):
+        async def fake_collect(session_, user_id, search_profile, pages=1, **kw):
             assert search_profile == DERIVED
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
@@ -132,7 +132,7 @@ class TestTheScanEndpointDerivesItToo:
         def fake_build(llm, profile):
             return DERIVED
 
-        async def fake_collect(session_, user_id, search_profile, pages=1):
+        async def fake_collect(session_, user_id, search_profile, pages=1, **kw):
             # `any_salary` defaults to true, which clears the threshold for
             # this run; everything else is the derived profile untouched.
             assert search_profile == {**DERIVED, "salary_min": None}
@@ -160,17 +160,21 @@ class TestScanFormOverrides:
 
     @staticmethod
     def _capture(monkeypatch, seen):
-        async def fake_collect(session_, user_id, search_profile, pages=1):
+        async def fake_collect(session_, user_id, search_profile, pages=1, **kw):
             seen.update(search_profile)
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
         monkeypatch.setattr(scan, "build_search_profile", lambda llm, profile: DERIVED)
         monkeypatch.setattr(scan, "collect_habr", fake_collect)
 
-    async def test_any_salary_clears_the_threshold(
+    async def test_any_salary_keeps_the_threshold_for_the_free_filter(
         self, client, auth_headers, resume_without_search_profile, monkeypatch
     ):
-        """Habr drops every posting without a stated range once a floor is sent."""
+        """The tick controls what Habr is asked, not what PreScreen judges.
+
+        Clearing the threshold here made a typed number filter nothing at all,
+        while the hint under the field promised it would.
+        """
         seen: dict = {}
         self._capture(monkeypatch, seen)
 
@@ -180,7 +184,7 @@ class TestScanFormOverrides:
             json={"source": "habr", "salary_min": 250000, "any_salary": True},
         )
         assert r.status_code == 200, r.text
-        assert seen["salary_min"] is None
+        assert seen["salary_min"] == 250000
 
     async def test_a_threshold_is_passed_when_any_salary_is_off(
         self, client, auth_headers, resume_without_search_profile, monkeypatch
@@ -195,6 +199,24 @@ class TestScanFormOverrides:
         )
         assert r.status_code == 200, r.text
         assert seen["salary_min"] == 250000
+
+    async def test_an_empty_field_clears_a_stored_threshold(
+        self, client, session, auth_headers, resume_without_search_profile, monkeypatch
+    ):
+        """Wiping the box must mean no threshold, not "keep the old one"."""
+        resume_without_search_profile.search_profile = {**DERIVED, "salary_min": 300000}
+        await session.commit()
+
+        seen: dict = {}
+        self._capture(monkeypatch, seen)
+
+        r = await client.post(
+            "/api/vacancies/scan",
+            headers=auth_headers,
+            json={"source": "habr", "any_salary": False},
+        )
+        assert r.status_code == 200, r.text
+        assert seen["salary_min"] is None
 
     async def test_the_stored_profile_is_not_rewritten_by_the_form(
         self, client, session, auth_headers, resume_without_search_profile, monkeypatch

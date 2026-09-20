@@ -669,8 +669,19 @@ function showPage(name) {
   // The report panel belongs to whichever page produced it; carrying it over
   // would show a stale evaluation under an unrelated list.
   $('report').innerHTML = '';
-  if (name === 'saved') loadSaved();
-  if (name === 'resume') loadProfilePage();
+  // Both fetch. Unhandled, a failed request left the previous page's content
+  // or an empty block on screen with nothing to say it had failed — an empty
+  // "Избранное" reads as "nothing saved", not as "could not load".
+  if (name === 'saved') {
+    loadSaved().catch(e => {
+      $('saved-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    });
+  }
+  if (name === 'resume') {
+    loadProfilePage().catch(e => {
+      $('resume-state').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    });
+  }
 }
 
 document.querySelectorAll('.nav__tab').forEach(b =>
@@ -787,11 +798,11 @@ function renderSalaryHint() {
   if (!value) {
     hint.textContent = 'Без порога — покажем всё, что пройдёт фильтры по заголовку.';
   } else if (anySalary) {
-    hint.innerHTML = `Ищем от <b>${formatSalary(value)} ₽</b>, вакансии без указанной `
-      + `зарплаты тоже покажем.`;
+    hint.innerHTML = `Отсеем всё, где вилка ниже <b>${formatSalary(value)} ₽</b>. `
+      + `Вакансии без указанной зарплаты останутся — их судим по заголовку.`;
   } else {
-    hint.innerHTML = `Ищем от <b>${formatSalary(value)} ₽</b>. Вакансии без указанной `
-      + `зарплаты Хабр не отдаст — их не будет.`;
+    hint.innerHTML = `Ищем только от <b>${formatSalary(value)} ₽</b>. Вакансии без `
+      + `указанной зарплаты Хабр не отдаст — их не будет вовсе.`;
   }
 
   // A preset is "on" only while it matches exactly what is typed.
@@ -1014,20 +1025,34 @@ function render(d) {
   if (d.run_profile) {
     const p = d.run_profile;
     const model = u.calls?.[0]?.model ?? '?';
-    const diff = u.total_rub - p.rub;
+    const diff = (Number(u.total_rub) || 0) - p.rub;
     const sign = diff >= 0 ? '+' : '−';
     h += `<div class="cost" style="margin-bottom:10px">
       Режим: <b>${esc(p.title)}</b> · шаги: ${p.steps.join(' → ')} · модель: ${esc(model)}<br>
-      Обещано ${p.rub} ₽ / ${p.seconds} с, вышло ${u.total_rub.toFixed(3)} ₽ / ${u.total_seconds.toFixed(0)} с
+      Обещано ${p.rub} ₽ / ${p.seconds} с, вышло ${(Number(u.total_rub) || 0).toFixed(3)} ₽ / ${(Number(u.total_seconds) || 0).toFixed(0)} с
       (${sign}${Math.abs(diff).toFixed(3)} ₽)</div>`;
   }
 
-  h += '<div class="overflow"><table><tr><th>шаг</th><th>вход</th><th>из кэша</th><th>выход</th><th>сек</th><th>₽</th></tr>';
-  for (const c of u.calls) {
-    h += `<tr><td>${c.step}</td><td>${c.cache_hit + c.cache_miss}</td><td>${c.cache_hit}</td><td>${c.output}</td><td>${c.seconds.toFixed(1)}</td><td>${(c.usd * u.usd_rub).toFixed(3)}</td></tr>`;
+  // The API returns a total, not a per-call ledger — only the CLI has one.
+  // Iterating it unguarded threw, and the throw escaped into the caller's
+  // catch, so a report that had just been PAID FOR was replaced by an English
+  // TypeError in the score cell. A missing breakdown is not an error.
+  if (u.calls?.length) {
+    h += '<div class="overflow"><table><tr><th>шаг</th><th>вход</th><th>из кэша</th><th>выход</th><th>сек</th><th>₽</th></tr>';
+    for (const c of u.calls) {
+      const cost = u.usd_rub ? (c.usd * u.usd_rub).toFixed(3) : '—';
+      h += `<tr><td>${esc(c.step)}</td><td>${c.cache_hit + c.cache_miss}</td><td>${c.cache_hit}</td><td>${c.output}</td><td>${c.seconds.toFixed(1)}</td><td>${cost}</td></tr>`;
+    }
+    h += '</table></div>';
   }
-  h += `</table></div><div class="cost" style="margin-top:10px">Итого: <b>${u.total_rub.toFixed(3)} ₽</b> (${u.total_usd.toFixed(5)} $), ${u.total_seconds.toFixed(0)} с.
-        При 30 вакансиях в месяц — примерно <b>${(u.total_rub * 30).toFixed(1)} ₽</b> на пользователя. Цены off-peak, в пик вдвое дороже.</div></div>`;
+
+  const totalRub = Number(u.total_rub) || 0;
+  const totalSec = Number(u.total_seconds) || 0;
+  h += `<div class="cost" style="margin-top:10px">Итого: <b>${totalRub.toFixed(3)} ₽</b>`
+     + (typeof u.total_usd === 'number' ? ` (${u.total_usd.toFixed(5)} $)` : '')
+     + (totalSec ? `, ${totalSec.toFixed(0)} с` : '') + '.'
+     + ` При 30 вакансиях в месяц — примерно <b>${(totalRub * 30).toFixed(1)} ₽</b> на пользователя.`
+     + ' Цены off-peak, в пик вдвое дороже.</div></div>';
 
   $('report').innerHTML = h;
 }

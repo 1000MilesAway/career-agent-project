@@ -32,6 +32,16 @@ log = logging.getLogger("worker")
 POLL_SECONDS = 2.0
 MAX_ATTEMPTS = 3
 
+
+class PaidFailure(Exception):
+    """A failure that happened AFTER the model was billed. Never retried.
+
+    The rollback that follows a failed job also rolls back `charge`, so a
+    retry buys the same tokens again and records none of it: three empty
+    replies in a row meant three paid calls and a spend total still reading
+    zero. Retrying is only safe while nothing has been bought yet.
+    """
+
 BUILDERS = {
     "tailor": tailor_resume,
     "letter": cover_letter,
@@ -133,8 +143,10 @@ async def _run_artifact(
     )
     if not content:
         # Empty is a failure, not a document: storing it would make the row
-        # count as "has materials" and hide the failure behind a label.
-        raise ValueError("модель вернула пустой результат")
+        # count as "has materials" and hide the failure behind a label. The
+        # tokens are already spent, so this must not come back for a second
+        # and third attempt.
+        raise PaidFailure("модель вернула пустой результат")
 
     artifact = Artifact(
         evaluation_id=evaluation.id,
@@ -203,9 +215,11 @@ async def tick() -> bool:
             if job is None:
                 return True
             job.error = f"{type(e).__name__}: {e}"[:2000]
-            # Retry only while attempts remain. A job that fails three times is
-            # failing for a reason a fourth run will not fix.
-            job.status = "queued" if job.attempts < MAX_ATTEMPTS else "failed"
+            # Retry only while attempts remain, and never when the model was
+            # already billed: the rollback above undid the charge too, so a
+            # retry would buy the same tokens again off the books.
+            retryable = not isinstance(e, PaidFailure)
+            job.status = "queued" if retryable and job.attempts < MAX_ATTEMPTS else "failed"
             job.finished_at = datetime.now(UTC) if job.status == "failed" else None
             await session.commit()
             log.warning("job %s failed (%s/%s): %s", job.id, job.attempts, MAX_ATTEMPTS, e)

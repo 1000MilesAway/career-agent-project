@@ -126,7 +126,12 @@ async def persist(
         for field, value in _listing_fields(posting).items():
             if value is not None:
                 setattr(row, field, value)
-        if row.stage in (COLLECTED, SCREENED_OUT, TRIAGED_OUT):
+        # A free re-screen may revise its own verdict, never a paid one.
+        # TRIAGED_OUT used to be in this list: a rescan then pushed the row
+        # back to SHORTLIST and cleared `screen_reason` while `triage_verdict`
+        # stayed "skip" — a red "мимо" tag with no reason under it, hidden by
+        # the default bucket filter, and queued for another paid triage.
+        if row.stage in (COLLECTED, SCREENED_OUT):
             row.stage = stage
             row.screen_reason = reason or None
 
@@ -190,6 +195,7 @@ async def collect_habr(
     user_id: uuid.UUID,
     search_profile: dict[str, Any] | None,
     pages: int = 1,
+    ask_habr_for_salary: bool = True,
 ) -> dict[str, Any]:
     """Stage 1-2 for Habr: fetch the catalogue, screen it for free.
 
@@ -218,13 +224,19 @@ async def collect_habr(
     if not profile.queries:
         raise ValueError("в профиле поиска нет ни одного запроса")
 
+    # `salary_min` does two jobs, and they are not the same job. Sent to Habr
+    # it drops every posting that states no range at all; kept in the profile
+    # it feeds PreScreen step 6, which judges only postings that DO state one
+    # and lets the silent ones through. Clearing it for both — the old
+    # behaviour of the "искать без зарплаты" tick — meant a typed threshold
+    # filtered nothing, while the hint promised it would.
     postings = await run_in_threadpool(
         habr_api.search_many,
         profile.queries,
         pages=pages,
         remote=profile.remote_only,
         qualifications=profile.qualifications,
-        salary_from=profile.salary_min,
+        salary_from=profile.salary_min if ask_habr_for_salary else None,
     )
 
     kept, dropped = screen_postings(postings, profile)

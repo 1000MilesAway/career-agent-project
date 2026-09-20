@@ -93,11 +93,14 @@ def _with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[s
     """
     merged = dict(search_profile)
 
-    if body.any_salary:
-        # Asking Habr for a floor drops everything without a stated range.
-        merged["salary_min"] = None
-    elif body.salary_min is not None:
-        merged["salary_min"] = body.salary_min or None
+    # The form owns the threshold outright, including "cleared": leaving the
+    # stored value in place when the field is empty meant the user wiped the
+    # box and kept filtering by a number no screen ever showed them.
+    #
+    # `any_salary` does NOT clear it — that was the bug. It only decides
+    # whether Habr is asked for a floor (which hides every posting with no
+    # stated range); PreScreen keeps judging the ones that do state a range.
+    merged["salary_min"] = body.salary_min or None
 
     if body.remote_only is not None:
         merged["remote_only"] = body.remote_only
@@ -124,7 +127,8 @@ async def start_scan(
 
     if body.source == "habr":
         result = await scan.collect_habr(
-            session, user.id, search_profile, pages=body.pages
+            session, user.id, search_profile, pages=body.pages,
+            ask_habr_for_salary=not body.any_salary,
         )
     else:
         result = await scan.collect_telegram(
@@ -193,12 +197,21 @@ async def triage(
     judge go to `missing` and stay visible. Silently dropping an unjudged
     vacancy is the worst bug this pipeline can have, so it is not done.
     """
+    # Only the unjudged. A verdict survives in `triage_verdict` after the
+    # batch runs, but a "worth"/"maybe" row stays in SHORTLIST — selecting by
+    # stage alone sent the whole surviving list back through a paid call every
+    # time the button was pressed. Evaluations and artifacts both refuse to be
+    # bought twice; this one did not.
     result = await session.execute(
-        select(Vacancy).where(Vacancy.user_id == user.id, Vacancy.stage == scan.SHORTLIST)
+        select(Vacancy).where(
+            Vacancy.user_id == user.id,
+            Vacancy.stage == scan.SHORTLIST,
+            Vacancy.triage_verdict.is_(None),
+        )
     )
     rows = list(result.scalars())
     if not rows:
-        return {"judged": 0, "missing": [], "note": "Нечего сортировать"}
+        return {"judged": 0, "missing": [], "note": "Нечего сортировать — всё уже отсеяно"}
 
     ensure_can_spend(user)
 

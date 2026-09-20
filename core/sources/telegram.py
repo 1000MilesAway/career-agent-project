@@ -186,7 +186,12 @@ def _parse_post(node, channel: str) -> Post | None:
 
     holder = node.css_first(".tgme_widget_message")
     post_path = (holder.attributes.get("data-post") if holder else "") or ""
-    post_id = post_path.split("/")[-1] if post_path else ""
+    # "channel/101", not "101". Telegram numbers posts within a channel, so
+    # the bare number collides across channels — and the product stores it as
+    # `external_id`, unique per (user, source, external_id). Two channels with
+    # a post 101 collapsed into one row that kept the first post's text under
+    # the second one's title and link, so an evaluation judged the wrong ad.
+    post_id = post_path
 
     when = ""
     stamp = node.css_first("time[datetime]")

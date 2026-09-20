@@ -51,9 +51,18 @@ class TestParsing:
 
     def test_reads_id_url_and_date(self):
         first = parse_fixture()[0]
-        assert first.id == "101"
+        # Channel-qualified, because Telegram numbers posts per channel: a
+        # bare "101" collides with post 101 of every other channel, and the
+        # product stores this as the row's external_id.
+        assert first.id == "jobchannel/101"
         assert first.url == "https://t.me/jobchannel/101"
         assert first.published.startswith("2099-09-16")
+
+    def test_the_id_carries_the_channel_so_posts_cannot_collide(self):
+        """Two channels both have a post 101; they must stay two rows."""
+        first = parse_fixture()[0]
+        assert first.id.startswith(f"{first.channel}/")
+        assert first.id != first.id.split("/")[-1]
 
     def test_reads_the_runello_template_fields(self):
         """"Грейд:"/"Стек:" are the only real structure Telegram ever offers."""
