@@ -102,3 +102,42 @@ class TestOverTheApi:
         )
         assert r.status_code == 402
         assert "лимит" in r.json()["detail"].lower()
+
+
+@requires_db
+class TestTheScanPathRespectsTheBudget:
+    """Deriving a search profile is a paid call, and it sits on the scan path.
+
+    Every other paid step checks the budget at its own entry point; this one
+    was reached from POST /api/vacancies/scan, which has no check of its own,
+    so an account out of money could still buy a profile.
+    """
+
+    async def test_a_scan_that_would_derive_a_profile_is_refused(
+        self, client, session, user, auth_headers, limited, monkeypatch
+    ):
+        from app.models import Resume
+        from app.services import scan
+
+        user.spent_rub = Decimal("10")
+        resume = Resume(
+            user_id=user.id,
+            filename="cv.md",
+            raw_text="Python developer",
+            profile={"skills": ["Python"]},
+            search_profile=None,
+            is_active=True,
+        )
+        session.add(resume)
+        await session.commit()
+
+        def must_not_run(llm, profile):  # pragma: no cover - the point of the test
+            raise AssertionError("the model was called despite an exhausted budget")
+
+        monkeypatch.setattr(scan, "build_search_profile", must_not_run)
+
+        r = await client.post(
+            "/api/vacancies/scan", headers=auth_headers, json={"source": "habr"}
+        )
+        assert r.status_code == 402
+        assert "лимит" in r.json()["detail"].lower()

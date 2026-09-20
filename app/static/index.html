@@ -431,7 +431,14 @@ function renderFound(rows) {
   // two questions at once.
   document.querySelectorAll('#auto-out .save-btn').forEach(b => b.onclick = async () => {
     b.disabled = true;
-    await toggleSave(b.dataset.id, !b.classList.contains('save-btn--on'));
+    try {
+      await toggleSave(b.dataset.id, !b.classList.contains('save-btn--on'));
+    } catch (e) {
+      // Without this the button stays dead until a reload, and the failure is
+      // never shown: the row simply stops responding.
+      $('found-status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+      b.disabled = false;
+    }
   });
 }
 

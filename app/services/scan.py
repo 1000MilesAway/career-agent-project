@@ -35,7 +35,7 @@ from core.sources import habr_api
 from core.sources.habr_api import Posting
 
 from ..models import Resume, User, Vacancy
-from .spend import charge
+from .spend import charge, ensure_can_spend
 
 # Stages a vacancy can be in. Ordered by how far it got.
 COLLECTED = "collected"
@@ -150,6 +150,10 @@ async def ensure_search_profile(
     """
     if resume.search_profile:
         return resume.search_profile
+
+    # The only paid call on the scan path, so it is the only one that can slip
+    # past a budget: every other paid step checks at its own entry point.
+    ensure_can_spend(user)
 
     ledger = Ledger()
     llm = LLM(ledger=ledger)
