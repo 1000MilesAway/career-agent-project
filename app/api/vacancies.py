@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -70,6 +70,36 @@ class ScanRequest(BaseModel):
     pages: int = 1
     channels: list[str] | None = None
 
+    # Overrides for this run only; the stored search profile is not touched.
+    # `salary_min` of 0 means "no threshold", which is not the same as None:
+    # None leaves whatever the profile says, 0 clears it for this scan.
+    salary_min: int | None = Field(default=None, ge=0, le=100_000_000)
+    # Habr returns only postings WITH a stated range once a threshold is sent,
+    # so a threshold silently hides every vacancy that does not publish
+    # numbers. Keeping those is the default: the free filters judge them by
+    # title anyway, and a hidden vacancy cannot be judged at all.
+    any_salary: bool = True
+    remote_only: bool | None = None
+
+
+def _with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[str, Any]:
+    """The stored profile plus this run's form settings.
+
+    A copy: the form is a per-scan choice, and writing it back would let a
+    stray click redefine the profile the user keeps.
+    """
+    merged = dict(search_profile)
+
+    if body.any_salary:
+        # Asking Habr for a floor drops everything without a stated range.
+        merged["salary_min"] = None
+    elif body.salary_min is not None:
+        merged["salary_min"] = body.salary_min or None
+
+    if body.remote_only is not None:
+        merged["remote_only"] = body.remote_only
+    return merged
+
 
 @router.post("/scan")
 async def start_scan(
@@ -87,6 +117,7 @@ async def start_scan(
     nothing to do about it.
     """
     search_profile = await scan.ensure_search_profile(session, user, resume)
+    search_profile = _with_overrides(search_profile, body)
 
     if body.source == "habr":
         result = await scan.collect_habr(

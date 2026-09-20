@@ -105,6 +105,27 @@
   .chip { font-size:12px; padding:2px 9px; border-radius:20px; border:1px solid var(--line);
           color:var(--muted); }
   .chip--neg { border-color:color-mix(in srgb, var(--bad) 40%, transparent); }
+
+  /* Salary input. A bare number box gave no unit, no thousands separator and
+     no idea what the number would do, so people typed "250" and got nothing. */
+  .salary { margin-top:4px; }
+  .salary__label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .salary__field { display:inline-flex; align-items:center; gap:8px;
+                   border:1px solid var(--line); border-radius:8px; padding:0 12px 0 0;
+                   background:var(--bg); transition:border-color .15s; }
+  .salary__field:focus-within { border-color:var(--accent, #6ea8fe); }
+  .salary__field input { border:none; background:none; padding:10px 0 10px 12px;
+                         font-size:17px; width:150px; letter-spacing:.3px; }
+  .salary__field input:focus { outline:none; }
+  .salary__unit { font-size:13px; color:var(--muted); white-space:nowrap; }
+  .salary__presets { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  /* A preset is a button, not a decoration: it must look pressable. */
+  .chip--pick { cursor:pointer; background:none; font-family:inherit;
+                transition:border-color .15s, color .15s; }
+  .chip--pick:hover { border-color:var(--muted); color:var(--fg, inherit); }
+  .chip--pick[aria-pressed="true"] { border-color:var(--accent, #6ea8fe);
+                                     color:var(--accent, #6ea8fe); }
+  .salary__hint { font-size:12px; margin-top:7px; min-height:16px; }
 </style>
 </head>
 <body>
@@ -165,10 +186,25 @@
         Сканер подбирает запросы и стоп-слова по вашему резюме, собирает вакансии
         и отсеивает лишние <b>бесплатно</b>. Модель считает только то, что прошло отбор.
       </div>
-      <div class="row" style="margin-top:0">
-        <input id="a-sal" type="number" placeholder="от, ₽" style="width:120px">
-        <label class="inline" title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана."><input type="checkbox" id="a-nosal"> искать без зарплаты</label>
-        <label class="inline"><input type="checkbox" id="a-rem" checked> удалёнка</label>
+      <div class="salary">
+        <label class="salary__label" for="a-sal">Желаемая зарплата</label>
+        <div class="salary__field">
+          <input id="a-sal" type="text" inputmode="numeric" autocomplete="off"
+                 placeholder="например, 250 000" aria-describedby="a-sal-hint">
+          <span class="salary__unit">₽ в месяц</span>
+        </div>
+        <div class="salary__presets" id="a-sal-presets">
+          <button type="button" class="chip chip--pick" data-salary="150000">150 000</button>
+          <button type="button" class="chip chip--pick" data-salary="200000">200 000</button>
+          <button type="button" class="chip chip--pick" data-salary="250000">250 000</button>
+          <button type="button" class="chip chip--pick" data-salary="300000">300 000</button>
+          <button type="button" class="chip chip--pick" data-salary="400000">400 000</button>
+        </div>
+        <div id="a-sal-hint" class="salary__hint muted"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label class="inline" title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана — их оценят бесплатные фильтры по заголовку."><input type="checkbox" id="a-nosal" checked> учитывать вакансии без указанной зарплаты</label>
+        <label class="inline"><input type="checkbox" id="a-rem" checked> только удалёнка</label>
         <label class="inline">страниц <input id="a-pages" type="number" value="5" min="1" max="20" style="width:60px"></label>
         <button id="auto-btn">Подобрать</button>
       </div>
@@ -684,6 +720,72 @@ $('forget-btn').onclick = async () => {
   }
 };
 
+/* ── Желаемая зарплата ──────────────────────────────────────────────
+ * Typed as digits, shown with thousands separators, sent as a number. The
+ * old control was a bare <input type=number>: no unit, no grouping, and
+ * nothing said what the threshold does — people typed "250" meaning
+ * thousands and got an empty result they could not explain.
+ */
+function salaryValue() {
+  const digits = ($('a-sal').value || '').replace(/\D/g, '');
+  return digits ? Number(digits) : null;
+}
+
+function formatSalary(n) {
+  // NBSP, so a wrapped line never splits "250 000" in half.
+  return n.toLocaleString('ru-RU').replace(/\s/g, '\u00A0');
+}
+
+function renderSalaryHint() {
+  const value = salaryValue();
+  const anySalary = $('a-nosal').checked;
+  const hint = $('a-sal-hint');
+
+  if (!value) {
+    hint.textContent = 'Без порога — покажем всё, что пройдёт фильтры по заголовку.';
+  } else if (anySalary) {
+    hint.innerHTML = `Ищем от <b>${formatSalary(value)} ₽</b>, вакансии без указанной `
+      + `зарплаты тоже покажем.`;
+  } else {
+    hint.innerHTML = `Ищем от <b>${formatSalary(value)} ₽</b>. Вакансии без указанной `
+      + `зарплаты Хабр не отдаст — их не будет.`;
+  }
+
+  // A preset is "on" only while it matches exactly what is typed.
+  document.querySelectorAll('#a-sal-presets .chip--pick').forEach(b => {
+    b.setAttribute('aria-pressed', String(Number(b.dataset.salary) === value));
+  });
+}
+
+$('a-sal').addEventListener('input', (e) => {
+  const input = e.target;
+  // Caret would jump to the end on every keystroke once separators are
+  // inserted, so it is restored by counting digits, not characters.
+  const digitsBeforeCaret = (input.value.slice(0, input.selectionStart).match(/\d/g) || []).length;
+  const digits = input.value.replace(/\D/g, '').slice(0, 9);
+  input.value = digits ? formatSalary(Number(digits)) : '';
+
+  let seen = 0, pos = 0;
+  for (; pos < input.value.length && seen < digitsBeforeCaret; pos++) {
+    if (/\d/.test(input.value[pos])) seen++;
+  }
+  input.setSelectionRange(pos, pos);
+  renderSalaryHint();
+});
+
+$('a-sal-presets').onclick = (e) => {
+  const btn = e.target.closest('.chip--pick');
+  if (!btn) return;
+  const value = Number(btn.dataset.salary);
+  // Pressing the active preset clears it: otherwise the only way back to
+  // "no threshold" is to select the text and delete it.
+  $('a-sal').value = salaryValue() === value ? '' : formatSalary(value);
+  renderSalaryHint();
+};
+
+$('a-nosal').addEventListener('change', renderSalaryHint);
+renderSalaryHint();
+
 $('auto-btn').onclick = async () => {
   $('auto-btn').disabled = true;
   $('auto-out').innerHTML = '';
@@ -691,7 +793,13 @@ $('auto-btn').onclick = async () => {
   try {
     const d = await api('/api/vacancies/scan', {
       method: 'POST',
-      json: {source: 'habr', pages: Number($('a-pages').value || 5)},
+      json: {
+        source: 'habr',
+        pages: Number($('a-pages').value || 5),
+        salary_min: salaryValue(),
+        any_salary: $('a-nosal').checked,
+        remote_only: $('a-rem').checked,
+      },
     });
     $('auto-status').innerHTML =
       `Собрано ${d.collected} → отсеяно бесплатно ${d.dropped} → новых <b>${d.new}</b>`;

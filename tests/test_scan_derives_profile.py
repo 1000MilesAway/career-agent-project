@@ -133,7 +133,9 @@ class TestTheScanEndpointDerivesItToo:
             return DERIVED
 
         async def fake_collect(session_, user_id, search_profile, pages=1):
-            assert search_profile == DERIVED
+            # `any_salary` defaults to true, which clears the threshold for
+            # this run; everything else is the derived profile untouched.
+            assert search_profile == {**DERIVED, "salary_min": None}
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
         monkeypatch.setattr(scan, "build_search_profile", fake_build)
@@ -146,3 +148,71 @@ class TestTheScanEndpointDerivesItToo:
 
         await session.refresh(resume_without_search_profile)
         assert resume_without_search_profile.search_profile == DERIVED
+
+
+@requires_db
+class TestScanFormOverrides:
+    """The scan form's salary settings reach the collector.
+
+    They used to reach nothing: the page read `a-sal` and `a-nosal` and sent
+    neither, so the threshold the user typed did nothing at all.
+    """
+
+    @staticmethod
+    def _capture(monkeypatch, seen):
+        async def fake_collect(session_, user_id, search_profile, pages=1):
+            seen.update(search_profile)
+            return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
+
+        monkeypatch.setattr(scan, "build_search_profile", lambda llm, profile: DERIVED)
+        monkeypatch.setattr(scan, "collect_habr", fake_collect)
+
+    async def test_any_salary_clears_the_threshold(
+        self, client, auth_headers, resume_without_search_profile, monkeypatch
+    ):
+        """Habr drops every posting without a stated range once a floor is sent."""
+        seen: dict = {}
+        self._capture(monkeypatch, seen)
+
+        r = await client.post(
+            "/api/vacancies/scan",
+            headers=auth_headers,
+            json={"source": "habr", "salary_min": 250000, "any_salary": True},
+        )
+        assert r.status_code == 200, r.text
+        assert seen["salary_min"] is None
+
+    async def test_a_threshold_is_passed_when_any_salary_is_off(
+        self, client, auth_headers, resume_without_search_profile, monkeypatch
+    ):
+        seen: dict = {}
+        self._capture(monkeypatch, seen)
+
+        r = await client.post(
+            "/api/vacancies/scan",
+            headers=auth_headers,
+            json={"source": "habr", "salary_min": 250000, "any_salary": False},
+        )
+        assert r.status_code == 200, r.text
+        assert seen["salary_min"] == 250000
+
+    async def test_the_stored_profile_is_not_rewritten_by_the_form(
+        self, client, session, auth_headers, resume_without_search_profile, monkeypatch
+    ):
+        """A per-scan choice must not redefine the profile the user keeps."""
+        resume_without_search_profile.search_profile = {**DERIVED, "salary_min": 300000}
+        await session.commit()
+
+        seen: dict = {}
+        self._capture(monkeypatch, seen)
+
+        r = await client.post(
+            "/api/vacancies/scan",
+            headers=auth_headers,
+            json={"source": "habr", "salary_min": 100000, "any_salary": False},
+        )
+        assert r.status_code == 200, r.text
+        assert seen["salary_min"] == 100000
+
+        await session.refresh(resume_without_search_profile)
+        assert resume_without_search_profile.search_profile["salary_min"] == 300000
