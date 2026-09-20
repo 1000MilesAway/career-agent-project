@@ -234,6 +234,7 @@ async def collect_telegram(
     search_profile: dict[str, Any] | None,
     channels: list[str] | None = None,
     pages: int = 1,
+    groups: tuple[str, ...] = ("core",),
 ) -> dict[str, Any]:
     """Stage 1-2 for Telegram, reusing the collector the CLI and demo use.
 
@@ -244,6 +245,7 @@ async def collect_telegram(
     result = await run_in_threadpool(
         tg_scan.collect,
         channels=channels,
+        groups=groups,
         pages=pages,
         search_profile=search_profile,
     )

@@ -55,13 +55,19 @@ class TestAsPosting:
 
 
 class TestCollect:
-    def test_without_a_profile_nothing_is_filtered(self, no_network):
-        """The user never configured a filter, so nothing may be thrown away."""
-        no_network([post("1"), post("2", title="Бариста")])
+    def test_without_a_profile_the_starter_template_screens(self, no_network):
+        """An unconfigured run must not dump raw posts into the found list.
+
+        Telegram survivors share that list with Habr's, so passing everything
+        through fills the screen with posts nobody asked for and no reason
+        attached — the Habr bug of 2026-09-19 by another route.
+        """
+        no_network([post("1"), post("2", title="SMM-менеджер")])
         r = tg_scan.collect(channels=["chan"], search_profile=None)
-        assert r["filtered"] is False
-        assert len(r["kept"]) == 2
-        assert r["dropped"] == []
+        assert r["filtered"] is True
+        assert r["filtered_by"] == "starter"
+        assert [p.id for p, _ in r["kept"]] == ["1"]
+        assert [p.id for p, _ in r["dropped"]] == ["2"]
 
     def test_with_a_profile_the_free_filters_run(self, no_network):
         no_network([post("1"), post("2", title="Бариста в кофейню")])

@@ -817,7 +817,11 @@ $('tg-btn').onclick = async () => {
   try {
     const d = await api('/api/vacancies/scan', {
       method: 'POST',
-      json: {source: 'telegram', pages: Number($('tg-pages').value || 1)},
+      json: {
+        source: 'telegram',
+        pages: Number($('tg-pages').value || 1),
+        groups: $('tg-adjacent').checked ? ['core', 'adjacent'] : ['core'],
+      },
     });
     $('tg-status').innerHTML =
       `Каналов ${(d.channels || []).length} → собрано ${d.collected}` +

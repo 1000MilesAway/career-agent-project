@@ -69,6 +69,9 @@ class ScanRequest(BaseModel):
     source: Literal["habr", "telegram"] = "habr"
     pages: int = 1
     channels: list[str] | None = None
+    # "и смежные каналы" on the scan form. The checkbox existed but was read
+    # by nobody, so adjacent channels were unreachable from the product.
+    groups: list[str] = Field(default_factory=lambda: ["core"])
 
     # Overrides for this run only; the stored search profile is not touched.
     # `salary_min` of 0 means "no threshold", which is not the same as None:
@@ -125,7 +128,8 @@ async def start_scan(
         )
     else:
         result = await scan.collect_telegram(
-            session, user.id, search_profile, channels=body.channels, pages=body.pages
+            session, user.id, search_profile,
+            channels=body.channels, pages=body.pages, groups=tuple(body.groups),
         )
     await session.commit()
     return result

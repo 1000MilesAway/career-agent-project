@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .defaults import starter_profile
 from .filters import PreScreen, SearchProfile
 from .sources import habr_api, telegram, tg_channels
 
@@ -56,17 +57,14 @@ def collect(
         skip_non_vacancies=not keep_all,
     )
 
-    if not search_profile:
-        return {
-            "channels": names,
-            "collected": len(posts),
-            "problems": [{"channel": c, "why": w} for c, w in problems],
-            "kept": [(p, "") for p in posts],
-            "dropped": [],
-            "filtered": False,
-        }
-
-    screen = PreScreen(SearchProfile.from_dict(search_profile))
+    # Returning everything unscreened was the Habr bug by another route:
+    # Telegram survivors land in the same list, so an unfiltered pass fills it
+    # with posts nobody asked for and no reason attached. Callers derive the
+    # profile before getting here; the template is the last line of defence.
+    profile = (
+        SearchProfile.from_dict(search_profile) if search_profile else starter_profile()
+    )
+    screen = PreScreen(profile)
     kept: list[tuple[telegram.Post, str]] = []
     dropped: list[tuple[telegram.Post, str]] = []
     for p in posts:
@@ -80,6 +78,7 @@ def collect(
         "kept": kept,
         "dropped": dropped,
         "filtered": True,
+        "filtered_by": "profile" if search_profile else "starter",
     }
 
 
