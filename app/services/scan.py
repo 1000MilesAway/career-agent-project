@@ -29,10 +29,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import tg_scan
 from core.filters import PreScreen, SearchProfile
+from core.llm import LLM, Ledger
+from core.pipeline import build_search_profile
 from core.sources import habr_api
 from core.sources.habr_api import Posting
 
-from ..models import Vacancy
+from ..models import Resume, User, Vacancy
+from .spend import charge
 
 # Stages a vacancy can be in. Ordered by how far it got.
 COLLECTED = "collected"
@@ -128,6 +131,34 @@ async def persist(
             row.screen_reason = reason or None
 
     return {"new": new_count, "kept": len(kept), "dropped": len(dropped)}
+
+
+async def ensure_search_profile(
+    session: AsyncSession, user: User, resume: Resume
+) -> dict[str, Any]:
+    """The resume's search profile, derived from the CV the first time.
+
+    Every scan path goes through here. Keeping the derivation in one place is
+    the point: a scan reached collect_habr from three callers (the jobs worker,
+    POST /api/vacancies/scan, the CLI), and a fallback added to only some of
+    them is how the same unfiltered run comes back through the door nobody
+    patched.
+
+    Costs one cheap call, once per resume, and is stored — a second scan
+    reuses it. Uploading a CV derives it up front, so this fires only for CVs
+    stored before that.
+    """
+    if resume.search_profile:
+        return resume.search_profile
+
+    ledger = Ledger()
+    llm = LLM(ledger=ledger)
+    resume.search_profile = await run_in_threadpool(
+        build_search_profile, llm, resume.profile
+    )
+    await charge(session, user, ledger)
+    await session.commit()
+    return resume.search_profile
 
 
 def screen_postings(

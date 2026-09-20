@@ -17,6 +17,7 @@ import pytest
 
 from app import worker
 from app.models import Resume
+from app.services import scan
 from tests.dbmark import requires_db
 
 DERIVED = {
@@ -66,7 +67,7 @@ class TestScanDerivesAMissingProfile:
         async def fake_collect(session_, user_id, search_profile, pages=1):
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
-        monkeypatch.setattr(worker, "build_search_profile", fake_build)
+        monkeypatch.setattr(scan, "build_search_profile", fake_build)
         monkeypatch.setattr(worker.scan, "collect_habr", fake_collect)
 
         from app.models import Job
@@ -95,7 +96,7 @@ class TestScanDerivesAMissingProfile:
             assert search_profile == DERIVED
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
-        monkeypatch.setattr(worker, "build_search_profile", fail_build)
+        monkeypatch.setattr(scan, "build_search_profile", fail_build)
         monkeypatch.setattr(worker.scan, "collect_habr", fake_collect)
 
         from app.models import Job
@@ -115,3 +116,33 @@ class TestScanDerivesAMissingProfile:
             json={"kind": "evaluate", "payload": {"vacancy_id": str(uuid.uuid4())}},
         )
         assert r.status_code == 201
+
+
+@requires_db
+class TestTheScanEndpointDerivesItToo:
+    """POST /api/vacancies/scan is what the "Подобрать" button calls.
+
+    It reaches collect_habr without going through the worker, so the fallback
+    added to the worker alone left this path raising ValueError -> 500.
+    """
+
+    async def test_scanning_without_a_profile_does_not_fail(
+        self, client, session, auth_headers, resume_without_search_profile, monkeypatch
+    ):
+        def fake_build(llm, profile):
+            return DERIVED
+
+        async def fake_collect(session_, user_id, search_profile, pages=1):
+            assert search_profile == DERIVED
+            return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
+
+        monkeypatch.setattr(scan, "build_search_profile", fake_build)
+        monkeypatch.setattr(scan, "collect_habr", fake_collect)
+
+        r = await client.post(
+            "/api/vacancies/scan", headers=auth_headers, json={"source": "habr", "pages": 1}
+        )
+        assert r.status_code == 200, r.text
+
+        await session.refresh(resume_without_search_profile)
+        assert resume_without_search_profile.search_profile == DERIVED

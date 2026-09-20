@@ -78,14 +78,23 @@ async def start_scan(
     user: UserDep,
     resume: ResumeDep,
 ) -> dict[str, Any]:
-    """Collect and screen. Free — no model is called anywhere in this path."""
+    """Collect and screen.
+
+    Free, except for one case: a CV stored before the search profile was
+    derived on upload has none, and screening without one is what kept the
+    whole catalogue. The profile is derived here (one cheap call, stored, so
+    it happens once) rather than refused, which left the user with a 500 and
+    nothing to do about it.
+    """
+    search_profile = await scan.ensure_search_profile(session, user, resume)
+
     if body.source == "habr":
         result = await scan.collect_habr(
-            session, user.id, resume.search_profile, pages=body.pages
+            session, user.id, search_profile, pages=body.pages
         )
     else:
         result = await scan.collect_telegram(
-            session, user.id, resume.search_profile, channels=body.channels, pages=body.pages
+            session, user.id, search_profile, channels=body.channels, pages=body.pages
         )
     await session.commit()
     return result

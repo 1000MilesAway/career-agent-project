@@ -20,13 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.llm import LLM, Ledger
-from core.pipeline import (
-    build_search_profile,
-    cover_letter,
-    evaluate,
-    interview_prep,
-    tailor_resume,
-)
+from core.pipeline import cover_letter, evaluate, interview_prep, tailor_resume
 
 from .core.db import SessionLocal
 from .models import Artifact, Evaluation, Job, Resume, User, Vacancy
@@ -186,23 +180,11 @@ async def _run_scan(
 ) -> dict:
     """Collect and screen Habr, deriving the search profile if there is none.
 
-    A CV uploaded before this behaviour existed has no search profile, and a
-    scan on an empty one keeps the whole catalogue: 125 unscreened rows on
-    2026-09-19, none carrying a reason. Rather than refusing and leaving the
-    user stuck, the profile is derived from the stored CV here and saved, so
-    the next scan reuses it instead of paying again.
+    The derivation lives in the scan service, not here: the same gap exists in
+    POST /api/vacancies/scan, and two copies drift.
     """
-    if not resume.search_profile:
-        ledger = Ledger()
-        llm = LLM(ledger=ledger)
-        resume.search_profile = await asyncio.to_thread(
-            build_search_profile, llm, resume.profile
-        )
-        await charge(session, user, ledger)
-        await session.commit()
-        log.info("job %s: derived a search profile for resume %s", job.id, resume.id)
-
-    return await scan.collect_habr(session, user.id, resume.search_profile)
+    search_profile = await scan.ensure_search_profile(session, user, resume)
+    return await scan.collect_habr(session, user.id, search_profile)
 
 
 async def tick() -> bool:
