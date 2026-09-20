@@ -105,6 +105,8 @@
   .chip { font-size:12px; padding:2px 9px; border-radius:20px; border:1px solid var(--line);
           color:var(--muted); }
   .chip--neg { border-color:color-mix(in srgb, var(--bad) 40%, transparent); }
+  .linkish { background:none; border:none; padding:0; font:inherit; cursor:pointer;
+             color:var(--muted); text-decoration:underline; }
 
   /* Salary input. A bare number box gave no unit, no thousands separator and
      no idea what the number would do, so people typed "250" and got nothing. */
@@ -384,14 +386,33 @@ function renderBucketFilter(rows) {
 }
 
 // Rows come from the server, which remembers them across reloads.
+// Postings the free filters threw out. They must stay reachable — the user
+// has to be able to tell a working filter from an over-eager one — but they
+// are not findings, and counting them as such made a screened-out SMM
+// vacancy look like something the scan had found for you.
+const DROPPED_STAGES = new Set(['screened_out', 'triaged_out']);
+let showDropped = false;
+
 function renderFound(rows) {
   allRows = rows;
-  const scored = rows.filter(r => r.score != null).length;
+  const dropped = rows.filter(r => DROPPED_STAGES.has(r.stage));
+  const kept = rows.filter(r => !DROPPED_STAGES.has(r.stage));
+  const scored = kept.filter(r => r.score != null).length;
+
   $('found-status').innerHTML = rows.length
-    ? `Всего найдено <b>${rows.length}</b>, оценено ${scored}.`
+    ? `Найдено <b>${kept.length}</b>, оценено ${scored}.`
+      + (dropped.length
+          ? ` <button class="linkish" id="toggle-dropped">${showDropped ? 'скрыть' : 'показать'}`
+            + ` отсеянные (${dropped.length})</button>`
+          : '')
     : 'Пока ничего не найдено — запустите подбор.';
   $('forget-btn').hidden = !rows.length;
-  $('triage-btn').hidden = !rows.length;
+  $('triage-btn').hidden = !kept.length;
+
+  const toggle = $('toggle-dropped');
+  if (toggle) toggle.onclick = () => { showDropped = !showDropped; renderFound(allRows); };
+
+  rows = showDropped ? rows : kept;
   renderBucketFilter(rows);
 
   const judged = rows.some(r => r.triage);
@@ -406,10 +427,18 @@ function renderFound(rows) {
       ? `<div><span class="tag tag--${t.bucket}">${BUCKETS[t.bucket] || t.bucket}</span>
            <span class="hit__meta" style="margin:0 0 0 6px">${esc(t.reason)}</span></div>`
       : '';
+    const isDropped = DROPPED_STAGES.has(r.stage);
+    // A drop without its reason is exactly the silent rejection the pipeline
+    // forbids, so the reason rides along with the row.
+    const dropTag = isDropped
+      ? `<div class="hit__meta"><span class="chip chip--neg">отсеяно</span>
+           <span style="margin-left:6px">${esc(r.screen_reason || 'без причины')}</span></div>`
+      : '';
     return `
-      <div class="hit ${t && t.bucket === 'skip' ? 'hit--skip' : ''}" id="ahit-${i}">
+      <div class="hit ${t && t.bucket === 'skip' || isDropped ? 'hit--skip' : ''}" id="ahit-${i}">
         <div class="hit__main">
           <div class="hit__title"><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)}</a></div>
+          ${dropTag}
           <div class="hit__meta">${r.source === 'telegram' ? 'Telegram · ' : ''}${esc(r.company)} · ${esc(r.qualification || 'грейд не указан')}${r.remote ? ' · удалённо' : ''} · ${esc(r.salary_text || 'зарплата не указана')}</div>
           ${tag}
         </div>
@@ -706,6 +735,13 @@ $('triage-btn').onclick = async () => {
       if (d.missing && d.missing.length) {
         $('found-status').innerHTML +=
           ` <span class="err">Без вердикта осталось ${d.missing.length}.</span>`;
+      }
+      // Ids the model invented. Saying so makes a broken prompt look broken,
+      // instead of looking like a short but honest answer.
+      if (d.unknown && d.unknown.length) {
+        $('found-status').innerHTML +=
+          ` <span class="err">Модель вернула ${d.unknown.length} чужих id —`
+          + ` вердикты по ним отброшены.</span>`;
       }
     }
   } catch (e) {
