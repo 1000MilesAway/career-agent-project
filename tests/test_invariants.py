@@ -95,6 +95,37 @@ class TestRejectionIsNeverSilent:
 
 
 @requires_db
+class TestAScanNeedsAnAcceptedProfile:
+    """CLAUDE.md: «Ни один платный вызов не делается до бесплатных ступеней».
+
+    An empty profile states no stop-word and no keyword, so PreScreen keeps
+    everything: a real run on 2026-09-19 stored 125 rows — SMM, legal, product
+    management — none carrying a rejection reason. Free-stage damage, but it is
+    the shortlist a paid triage runs on next.
+    """
+
+    async def test_a_scan_without_a_profile_is_refused(self, session):
+        user, _ = await _user_with_resume(session)
+
+        with pytest.raises(ValueError, match="профиль поиска не принят"):
+            await scan.collect_habr(session, user.id, None)
+
+    async def test_an_empty_profile_is_refused_too(self, session):
+        """`{}` reaches PreScreen as "keep everything", same as None."""
+        user, _ = await _user_with_resume(session)
+
+        with pytest.raises(ValueError, match="профиль поиска не принят"):
+            await scan.collect_habr(session, user.id, {})
+
+    async def test_a_profile_without_queries_is_refused(self, session):
+        """An empty query asks Habr for the whole catalogue — the same flood."""
+        user, _ = await _user_with_resume(session)
+
+        with pytest.raises(ValueError, match="нет ни одного запроса"):
+            await scan.collect_habr(session, user.id, {"positive": ["Python"]})
+
+
+@requires_db
 class TestARescanNeverDestroysWhatWasPaidFor:
     """The demo's merge rule: refresh the listing, never the judgement."""
 

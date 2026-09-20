@@ -161,13 +161,31 @@ async def collect_habr(
     No model is called. What survives is stored as `shortlist` and waits for
     the user to ask for a triage or an evaluation. The argument list mirrors
     what the CLI passes in probe/run.py, so the two cannot drift.
+
+    Refuses to run without an accepted search profile. `from_dict({})` builds a
+    profile that states nothing, and nothing is not a filter: PreScreen keeps
+    every posting (its title check is skipped when `positive` is empty) and the
+    catalogue walk below would ask Habr for everything. The API refuses this
+    earlier; the guard is repeated here because the worker calls straight into
+    this function and an unfiltered scan is the one failure the free stage
+    exists to prevent.
     """
-    profile = SearchProfile.from_dict(search_profile or {})
+    if not search_profile:
+        raise ValueError(
+            "профиль поиска не принят — подбор без него собрал бы весь каталог"
+        )
+
+    profile = SearchProfile.from_dict(search_profile)
     # httpx.Client is synchronous, and a catalogue walk is seconds of network:
     # calling it directly would stall every other request on the event loop.
+    # No empty-query fallback: "" asks Habr for the whole catalogue, which is
+    # the same unfiltered flood by another route.
+    if not profile.queries:
+        raise ValueError("в профиле поиска нет ни одного запроса")
+
     postings = await run_in_threadpool(
         habr_api.search_many,
-        profile.queries or [""],
+        profile.queries,
         pages=pages,
         remote=profile.remote_only,
         qualifications=profile.qualifications,

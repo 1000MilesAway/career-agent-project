@@ -64,7 +64,21 @@ async def enqueue(
     `resume_id` is pinned at enqueue time rather than resolved by the worker:
     the user may upload a new CV while the job waits, and the report must say
     which resume it actually judged.
+
+    A scan without an accepted search profile is refused here rather than run
+    on an empty one. An empty SearchProfile states no stop-word and no keyword,
+    so PreScreen keeps everything and the catalogue walk asks for everything:
+    a real run produced 125 rows including SMM and legal vacancies, none of
+    them carrying a rejection reason. Uploading a CV does not accept a profile
+    — that is a separate confirmation — so the failure is easy to reach.
     """
+    if body.kind == "scan" and not resume.search_profile:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Профиль поиска не принят: подбор без него собрал бы весь каталог. "
+                   "Откройте резюме и подтвердите профиль поиска.",
+        )
+
     job = Job(
         user_id=user.id,
         kind=body.kind,
