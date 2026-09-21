@@ -2,19 +2,24 @@ name: CI
 
 # A bare `push:` plus `pull_request:` ran the whole suite twice for every
 # commit on every branch, and each failure mailed the author. Work branches
-# are checked through their pull request; a direct push is checked only on the
-# trunk, where nobody opens a PR against themselves.
+# are checked through their pull request.
+#
+# No `push: main` here: Deploy calls this workflow as its own first job, so a
+# push to main would otherwise run the suite twice over — once on its own and
+# once inside the deploy.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
   # A branch pushed three times in a minute needs one answer, not three.
   # Older runs for the same ref are cancelled instead of mailing about code
   # that has already been replaced.
-  group: ci-${{ github.ref }}
+  #
+  # Keyed by workflow too: called from Deploy this shares `github.ref` with
+  # the deploy run, and without the distinction one would cancel the other.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

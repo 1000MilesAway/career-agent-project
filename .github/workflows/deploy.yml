@@ -1,12 +1,16 @@
 name: Deploy
 
-# Only from main, and only after CI passed on that same commit. A deploy is
-# the one action here that reaches users, so it does not start on a red run
-# and does not start from a branch.
+# Only from main. A deploy is the one action here that reaches users, so it
+# never starts from a work branch.
+#
+# `push`, not `workflow_run`: that trigger reads its definition from the
+# repository's DEFAULT branch, which here is still chore/initial-import — a
+# branch with no deploy.yml in it. The first automatic deploy therefore never
+# fired, silently, because a trigger that is not registered reports nothing.
+# `push` reads the workflow from the pushed branch, so it cannot be disarmed
+# by a repository setting.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
   # For redeploying the current main without a new commit — a server rebuilt,
   # a container wiped. It still runs the steps below, nothing hand-typed.
@@ -20,13 +24,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The gate CI used to be. `workflow_run` deployed only after a green run;
+  # `push` has no such upstream, so the check is re-stated here as a job the
+  # deploy depends on. Without it a push to main would reach the server
+  # whatever the tests say.
+  check:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: check
     runs-on: ubuntu-latest
-    # workflow_dispatch has no upstream run to inspect, so the conclusion
-    # check applies only to the automatic path.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - uses: actions/checkout@v7
