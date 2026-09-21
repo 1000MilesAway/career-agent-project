@@ -40,6 +40,15 @@ class Settings(BaseSettings):
 
     debug: bool = False
 
+    # Which revision is actually running, reported by /api/health. Set by the
+    # deploy script from the checkout on the host; the image cannot work it out
+    # for itself, because `.git` is deliberately not copied into it.
+    #
+    # "unknown" is the honest answer for a run started by hand, and it must stay
+    # distinguishable from a stale sha: a deploy that silently kept serving the
+    # previous revision is exactly what this field exists to catch.
+    git_sha: str = "unknown"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -206,9 +206,15 @@ uv run python -m app.cli calibrate --source golden  # размеченный н�
 с пуша в `main`, см. раздел выше.
 
 ```bash
-curl http://82.25.161.103:8000/api/health       # жив ли сервис и база
+curl http://82.25.161.103:8000/api/health       # жив ли сервис, база и какая ревизия
 curl http://82.25.161.103:8000/openapi.json     # схема API
 ```
+
+`revision` в ответе — короткий sha развёрнутого коммита; так выкатка
+подтверждается снаружи, без ssh. `unknown` означает «стек подняли руками».
+**`GIT_SHA` не класть в `.env`**: `environment` в compose перебивает `env_file`
+только когда переменная задана в окружении, иначе подставится старое значение
+из файла и health будет вечно показывать чужую ревизию.
 
 Без авторизации открыты только `/api/health`, `/openapi.json`,
 `/api/artifacts/kinds`, `/api/vacancies/statuses`. Остальное — под JWT:

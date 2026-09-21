@@ -24,8 +24,13 @@ async def health(session: SessionDep) -> dict:
     except Exception:
         db_ok = False
 
+    settings = get_settings()
     return {
         "status": "ok" if db_ok else "degraded",
         "database": db_ok,
-        "model": get_settings().deepseek_model,
+        "model": settings.deepseek_model,
+        # So a deploy can be confirmed from outside. Without it the only proof
+        # that a push reached the server is that nothing broke — which is also
+        # what a deploy that never ran looks like.
+        "revision": settings.git_sha,
     }
