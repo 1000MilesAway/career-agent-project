@@ -5,8 +5,8 @@ No network, no LLM.
 
 import json
 
-from probe import proposals
-from probe.proposals import ACCEPTED, PENDING, REJECTED, Proposal
+from core import proposals
+from core.proposals import ACCEPTED, PENDING, REJECTED, Proposal
 
 
 def make(current=None, proposed=None, **kw) -> Proposal:

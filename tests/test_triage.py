@@ -5,7 +5,7 @@ what happens when that reply is imperfect, because a batch call routinely comes
 back short and the failure must never be silent.
 """
 
-from probe.triage import (
+from core.triage import (
     MAYBE,
     SKIP,
     WORTH,

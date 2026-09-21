@@ -5,9 +5,9 @@ template's guard lists keeps passing junk on every later scan, and the user only
 notices when they pay to evaluate it.
 """
 
-from probe.defaults import starter_profile
-from probe.filters import SearchProfile
-from probe.repair import clean_found, repair_profile, row_to_posting
+from core.defaults import starter_profile
+from core.filters import SearchProfile
+from core.repair import clean_found, repair_profile, row_to_posting
 
 
 def row(title: str, **kw) -> dict:
@@ -87,7 +87,7 @@ class TestHabrDivisionNames:
             "Тестирование, контроль качества",
         ]:
             p = row_to_posting(row("Разработчик", divisions=[name]))
-            from probe.filters import PreScreen
+            from core.filters import PreScreen
 
             assert not PreScreen(prof).check(p).keep, name
 
@@ -95,7 +95,7 @@ class TestHabrDivisionNames:
         """Habr files PHP, Scala, Oracle and Kotlin under "Бэкенд разработчик",
         so the specialization filter never sees them — the title list is the
         only thing standing there."""
-        from probe.filters import PreScreen
+        from core.filters import PreScreen
 
         prof = starter_profile()
         for title in [
@@ -118,7 +118,7 @@ class TestFalsePositivesFoundByHand:
     """
 
     def screen(self):
-        from probe.filters import PreScreen
+        from core.filters import PreScreen
 
         return PreScreen(starter_profile())
 
@@ -146,7 +146,7 @@ class TestFalsePositivesFoundByHand:
         p = row_to_posting(row("Инженер поддержки", divisions=["Техническая поддержка"]))
         prof = starter_profile()
         prof.divisions_negative.append("Техническая поддержка")
-        from probe.filters import PreScreen
+        from core.filters import PreScreen
 
         assert not PreScreen(prof).check(p).keep
 
@@ -154,7 +154,7 @@ class TestFalsePositivesFoundByHand:
         """QA is not a neighbouring stack, it is another job. A QA posting's
         title says "Python" legitimately, so the title cannot vouch for it —
         this is the case the specialization filter exists for."""
-        from probe.filters import PreScreen
+        from core.filters import PreScreen
 
         p = row_to_posting(row("Python разработчик", divisions=["Инженер по тестированию"]))
         assert not PreScreen(starter_profile()).check(p).keep

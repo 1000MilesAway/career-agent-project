@@ -1,7 +1,8 @@
 """Thin LLM wrapper with per-call usage and cost accounting.
 
-The probe exists to answer two questions: does the scoring feel honest, and what
-does one user actually cost. So every call records tokens and money.
+Two questions have to stay answerable at all times: does the scoring feel
+honest, and what does one user actually cost. So every call records tokens
+and money.
 """
 
 from __future__ import annotations

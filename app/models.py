@@ -1,7 +1,8 @@
 """The data model, following docs/03-architecture.md.
 
-Two things carried over from the demo's `probe/found.py`, because they were
-learned the expensive way and a fresh schema is exactly where they get lost:
+Two things carried over from the file-backed demo that preceded this schema,
+because they were learned the expensive way and a fresh schema is exactly
+where they get lost:
 
   - What the user paid for is never silently overwritten. In the demo a rescan
     refreshed listing fields but left score, report and artifacts alone. Here
@@ -73,7 +74,7 @@ class Resume(Base, TimestampMixin):
     """A CV and the structured profile parsed out of it.
 
     Parsing costs money, so the profile is stored rather than recomputed —
-    the same reason `probe/session.py` existed.
+    the same reason the demo kept a parsed session on disk.
     """
 
     __tablename__ = "resumes"

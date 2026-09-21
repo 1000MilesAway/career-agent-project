@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from probe import prompts
+from core import prompts
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

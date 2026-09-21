@@ -3,8 +3,8 @@
 No network, no LLM.
 """
 
-from probe import profiles
-from probe.pipeline import run_all
+from core import profiles
+from core.pipeline import run_all
 
 
 class TestLookup:
@@ -68,6 +68,6 @@ class TestPipelineContract:
 def inspect_source() -> str:
     import inspect
 
-    from probe import pipeline
+    from core import pipeline
 
     return inspect.getsource(pipeline.run_all)

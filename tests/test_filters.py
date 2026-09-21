@@ -3,9 +3,9 @@
 No network, no LLM — pure functions over made-up postings.
 """
 
-from probe.defaults import starter_profile
-from probe.filters import PreScreen, SearchProfile, _compile
-from probe.sources.habr_api import Posting
+from core.defaults import starter_profile
+from core.filters import PreScreen, SearchProfile, _compile
+from core.sources.habr_api import Posting
 
 
 def posting(title: str, **kw) -> Posting:

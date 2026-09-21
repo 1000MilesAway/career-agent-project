@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from probe import calibrate
+from core import calibrate
 
 
 def report(score=4.5, verdict=None, requirements=None, red_flags=None) -> dict:

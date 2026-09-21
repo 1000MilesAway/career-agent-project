@@ -1,6 +1,6 @@
 """Collect from Telegram channels and pre-screen — the free half of the pipeline.
 
-Shared by the CLI (`probe.run tg`) and the web screen. The logic lives here
+Collection and free filtering for Telegram. The logic lives here
 rather than in either caller because the two must not drift: a filter that
 runs in the CLI but not on screen would make the demo lie about what the
 product does.

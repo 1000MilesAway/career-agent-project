@@ -201,7 +201,7 @@ async def collect_habr(
 
     No model is called. What survives is stored as `shortlist` and waits for
     the user to ask for a triage or an evaluation. The argument list mirrors
-    what the CLI passes in probe/run.py, so the two cannot drift.
+    what the scan worker passes, so the two cannot drift.
 
     Refuses to run without an accepted search profile. `from_dict({})` builds a
     profile that states nothing, and nothing is not a filter: PreScreen keeps

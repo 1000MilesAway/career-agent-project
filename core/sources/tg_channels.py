@@ -1,7 +1,7 @@
 """The starter list of Telegram channels, read from data/sources/telegram-channels.json.
 
 We ship the list, the user edits it — the same deal as the keyword lists in
-probe/defaults.py. It is data, not code, because it goes stale on its own schedule:
+core/defaults.py. It is data, not code, because it goes stale on its own schedule:
 channels die quietly (`t.me/s/` keeps serving their last page years later) and new
 ones appear, and refreshing a JSON file should not mean touching a module.
 

@@ -54,7 +54,7 @@ async def upload(
     """Parse a CV and store the profile.
 
     Parsing costs money (~0.05 RUB), so the result is stored rather than
-    recomputed on every request — the reason probe/session.py existed.
+    recomputed on every request: parsing a CV costs money.
     """
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:

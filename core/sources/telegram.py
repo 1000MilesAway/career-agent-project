@@ -15,7 +15,7 @@ channel. Several of the liveliest job venues are chats and simply cannot be read
 this way; data/sources/telegram-channels.json lists them under chats_unreachable.
 
 The hard part is not fetching but STRUCTURE. A Habr posting arrives with title,
-divisions, qualification and salary as fields, and probe.filters works on those.
+divisions, qualification and salary as fields, and core.filters works on those.
 A Telegram post is flat text, so this module has to reconstruct what it can:
 `Post.title` is the first non-hashtag line, and `looks_like_vacancy()` throws out
 what is not an employer's job ad at all. Both are guesses, and both are cheap —
@@ -81,7 +81,7 @@ PROMO_RE = re.compile(
 )
 
 # Fields the runello_rus_* family states explicitly. Free structure, so it is worth
-# reading: these map onto what probe.filters wants and nothing else in Telegram does.
+# reading: these map onto what core.filters wants and nothing else in Telegram does.
 # A line that is only emoji and punctuation is decoration, not a title.
 _HAS_WORD_RE = re.compile(r"[^\W_]", re.UNICODE)
 

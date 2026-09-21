@@ -8,7 +8,7 @@ same breath.
 The shape is borrowed from DeepSeek Harness, where approval is its own plugin
 (`interaction/`) instead of being spread across the code that happens to need
 it: one place owns "this is pending", "this is what changes", "this was
-accepted". Here that is a small dataclass plus a file, because the probe has no
+accepted". Here that is a small dataclass plus a file, because there is no
 database — in the product it becomes a table with the same three states.
 
 A proposal is never applied by creating it. `accept()` returns the new value;

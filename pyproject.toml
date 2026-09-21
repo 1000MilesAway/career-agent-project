@@ -33,7 +33,7 @@ dev = [
     "ruff>=0.16.7",
 ]
 
-# probe/ импортируется как probe.* из корня репозитория и дистрибутивом не является:
+# app/ и core/ импортируются из корня репозитория и дистрибутивом не являются:
 # собирать нечего, поэтому build-system не нужен.
 [tool.uv]
 package = false
@@ -48,14 +48,14 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008", "E501"]
 
 [tool.ruff.lint.isort]
-# probe/sources — алиас на core.sources, и без этой подсказки isort считает
-# probe.sources.* сторонним пакетом, а probe.* своим: импорты из одного пакета
+# Пакеты не устанавливаются в окружение (package = false), поэтому isort не
+# определит их как свои сам — перечисляем явно, иначе импорты из одного пакета
 # разъезжаются по разным блокам при каждом --fix.
-known-first-party = ["app", "core", "probe", "tests"]
+known-first-party = ["app", "core", "tests"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-# probe/ не устанавливается в окружение (package = false), поэтому корень
-# репозитория добавляем в sys.path явно — иначе `import probe` не находится.
+# app/ и core/ не устанавливаются в окружение (package = false), поэтому корень
+# репозитория добавляем в sys.path явно — иначе импорты не находятся.
 pythonpath = ["."]

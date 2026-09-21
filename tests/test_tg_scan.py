@@ -9,8 +9,8 @@ No network, no LLM — search_many is stubbed.
 
 import pytest
 
-from probe import tg_scan
-from probe.sources import telegram
+from core import tg_scan
+from core.sources import telegram
 
 
 def post(pid: str, title: str = "Python разработчик", **kw) -> telegram.Post:

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from probe.sources import tg_channels
-from probe.sources.telegram import (
+from core.sources import tg_channels
+from core.sources.telegram import (
     HTMLParser,
     Post,
     _channel_is_silent,
@@ -239,7 +239,7 @@ class TestDedup:
     [("Грейд: Senior", "Senior"), ("грейд:  Middle+  ", "Middle+"), ("Уровень: Junior", "Junior")],
 )
 def test_grade_line_variants(name, expected):
-    from probe.sources.telegram import GRADE_RE
+    from core.sources.telegram import GRADE_RE
 
     m = GRADE_RE.search(name)
     assert m and m.group(1).strip() == expected

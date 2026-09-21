@@ -1,4 +1,4 @@
-"""Prompts for the probe. These are the actual thing under test."""
+"""Prompts for every model step. These are the actual thing under test."""
 
 # Put the stable part first so DeepSeek's prefix cache can hit on repeat calls.
 
