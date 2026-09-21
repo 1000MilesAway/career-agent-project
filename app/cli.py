@@ -10,6 +10,14 @@ the service:
 
 A password typed on the command line lands in shell history, so by default one
 is generated and printed once. `--password` stays available for scripted runs.
+
+Also here, because it has nowhere better to live:
+
+    uv run python -m app.cli calibrate                 # judge stored reports
+    uv run python -m app.cli calibrate --source golden # replay labeled cases
+
+Calibration answers "does the scoring still obey its own rules" without calling
+the model, so it costs nothing and needs no key.
 """
 
 from __future__ import annotations
@@ -22,9 +30,11 @@ import sys
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
 
+from core import calibrate
+
 from .core.db import SessionLocal
 from .core.security import hash_password
-from .models import User
+from .models import Evaluation, User, Vacancy
 
 
 def _generate_password() -> str:
@@ -132,6 +142,85 @@ async def _user_toggle(email: str, active: bool) -> int:
     return 0
 
 
+def _schema_of(report: dict) -> str:
+    """Which rubric produced this report, judged from the report itself.
+
+    The table has no `schema` column: everything in Postgres was written by the
+    current prompt, which grades requirements on five bands. A v1 report used a
+    binary must/nice, and judging one by the current bands reports the old
+    rubric as a defect on every row — 43 findings on six reports, when tried.
+    Nothing guarantees an old export never reaches this table, so the rubric is
+    detected rather than assumed.
+    """
+    weights = {r.get("weight") for r in report.get("requirements") or []}
+    return "v1-must-nice" if weights & {"must", "nice"} else ""
+
+
+async def _stored_rows(email: str | None) -> list[dict]:
+    """Paid reports out of the database, shaped the way calibrate expects."""
+    async with SessionLocal() as session:
+        # An evaluation carries no user of its own — it reaches one through the
+        # vacancy it judged, which is where ownership lives.
+        query = (
+            select(Evaluation.report, Vacancy.title, User.email)
+            .join(Vacancy, Evaluation.vacancy_id == Vacancy.id)
+            .join(User, Vacancy.user_id == User.id)
+            .order_by(Evaluation.created_at)
+        )
+        if email:
+            query = query.where(User.email == email.strip().lower())
+        result = await session.execute(query)
+        return [
+            {"title": f"{title} ({owner})", "report": report, "schema": _schema_of(report)}
+            for report, title, owner in result.all()
+        ]
+
+
+def _print_result(result: calibrate.Result) -> int:
+    print(f"Разброс баллов: {result.spread} (порог {calibrate.MIN_SPREAD})")
+    if result.labeled:
+        print(f"Совпадение с эталоном: {result.agreed}/{result.labeled}")
+
+    if result.ok:
+        print("\nПравила соблюдаются.")
+        return 0
+
+    print(f"\nНарушений: {len(result.findings)}")
+    for f in result.findings:
+        print(f"  [{f.kind}] {f.case}")
+        print(f"      {f.detail}")
+    # Non-zero on purpose: this is meant to be usable as a CI gate, the way
+    # career-ops gates on eval-golden.mjs.
+    return 1
+
+
+async def _calibrate(source: str, email: str | None) -> int:
+    if source == "golden":
+        try:
+            cases = calibrate.load_golden()
+        except ValueError as e:
+            print(f"Ошибка в золотом наборе: {e}", file=sys.stderr)
+            return 1
+        if not cases:
+            print(
+                f"Золотой набор пуст: положите размеченные случаи в {calibrate.GOLDEN_DIR}",
+                file=sys.stderr,
+            )
+            return 1
+        result = calibrate.from_golden(cases)
+        print(f"Золотой набор: {len(cases)} случаев")
+    else:
+        rows = await _stored_rows(email)
+        result = calibrate.from_stored(rows)
+        print(f"Сохранённые отчёты: {result.checked}")
+
+    if not result.checked:
+        print("Нечего проверять — сначала оцените хотя бы одну вакансию.", file=sys.stderr)
+        return 1
+
+    return _print_result(result)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Администрирование career-agent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -153,6 +242,13 @@ def main(argv: list[str] | None = None) -> int:
     on = sub.add_parser("user-on", help="включить доступ обратно")
     on.add_argument("email")
 
+    cal = sub.add_parser("calibrate", help="соблюдает ли скоринг свои правила (бесплатно)")
+    cal.add_argument(
+        "--source", choices=("stored", "golden"), default="stored",
+        help="stored — оценки из БД (по умолчанию), golden — размеченный набор из data/golden",
+    )
+    cal.add_argument("--email", help="только оценки этого пользователя (для --source stored)")
+
     args = parser.parse_args(argv)
 
     if args.command == "user-add":
@@ -165,6 +261,12 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_user_toggle(args.email, active=False))
     if args.command == "user-on":
         return asyncio.run(_user_toggle(args.email, active=True))
+    if args.command == "calibrate":
+        # The golden set is files only, so it must stay runnable with no
+        # database at all — that is what makes it usable in CI.
+        if args.source == "golden":
+            return asyncio.run(_calibrate("golden", None))
+        return asyncio.run(_calibrate("stored", args.email))
     return 1
 
 
