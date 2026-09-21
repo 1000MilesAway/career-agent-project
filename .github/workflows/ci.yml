@@ -46,13 +46,17 @@ jobs:
           --health-retries 10
 
     steps:
-      # v7/v10 run on node24. The v4/v5 pair targeted node20, which GitHub is
+      # Both run on node24. The v4/v5 pair targeted node20, which GitHub is
       # retiring: it already forces them onto node24 and warns, and the warning
       # is the notice that one day it stops forcing and starts failing.
+      #
+      # setup-uv is v7, not v10: its releases have reached 10.x, but the
+      # floating major tags stop at v7, and a workflow can only name a tag
+      # that exists. Read the tags, not the release list.
       - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           # Pinned, because `requires-python = ">=3.12"` lets uv pick the
