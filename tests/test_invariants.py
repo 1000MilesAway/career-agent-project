@@ -425,6 +425,18 @@ class TestPaidWorkIsNotRepeated:
 
         from app.api import vacancies as vacancies_api
 
+        class StubLLM:
+            """The endpoint builds a client before calling the stubbed step.
+
+            Stubbing run_triage alone still hit the real constructor, which
+            demands DEEPSEEK_API_KEY — so this passed only next to a .env and
+            errored in CI, where the key is deliberately absent.
+            """
+
+            def __init__(self, *a, **kw) -> None:
+                self.ledger = kw.get("ledger")
+
+        monkeypatch.setattr(vacancies_api, "LLM", StubLLM)
         monkeypatch.setattr(vacancies_api, "run_triage", fake_triage)
 
         r = await client.post("/api/vacancies/triage", headers=auth_headers)

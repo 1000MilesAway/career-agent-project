@@ -27,6 +27,26 @@ DERIVED = {
 }
 
 
+class _StubLLM:
+    """Stands in for the client, which is built before the stubbed step runs.
+
+    `ensure_search_profile` constructs LLM(ledger=...) and only then calls
+    `build_search_profile`, so stubbing the step alone still reached the real
+    constructor — and that constructor demands DEEPSEEK_API_KEY. These tests
+    therefore passed only where a .env happened to sit, and errored in CI,
+    which has no key on purpose. Nothing here can reach the network: the stub
+    has no client at all.
+    """
+
+    def __init__(self, *a, **kw) -> None:
+        self.ledger = kw.get("ledger")
+
+
+@pytest.fixture(autouse=True)
+def no_real_llm(monkeypatch):
+    monkeypatch.setattr(scan, "LLM", _StubLLM)
+
+
 @pytest.fixture
 async def resume_without_search_profile(session, user) -> Resume:
     """A CV parsed before the profile was derived on upload."""

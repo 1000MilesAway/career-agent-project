@@ -11,15 +11,37 @@ No test here calls the LLM. Where a pipeline step would, it is monkeypatched.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from collections.abc import AsyncIterator
 
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# Set before anything imports the app, because both values are read at import
+# time: app/main.py refuses to start on the default SECRET_KEY, and
+# core/llm.py raises in LLM.__init__ when DEEPSEEK_API_KEY is missing.
+#
+# Without these the suite passed only on a machine that happened to have a
+# .env next to it — which .gitignore keeps out of the repository, so CI ran
+# without one and 27 tests errored on a green local run. A test that needs a
+# developer's own secrets is a test that proves nothing about the code.
+#
+# `setdefault`, so a real environment still wins. Neither value reaches a
+# network: the key only has to exist for the constructor, and every call
+# through it is monkeypatched.
+# 32+ bytes: PyJWT warns below that for HMAC-SHA256, and a warning repeated
+# by every API test buries the ones worth reading.
+os.environ.setdefault("SECRET_KEY", "test-only-not-a-real-key-0123456789abcdef")
+os.environ.setdefault("DEEPSEEK_API_KEY", "test-only-no-calls-are-made")
 
-from tests.dbmark import DB_AVAILABLE, TEST_DATABASE_URL
+import pytest_asyncio  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from tests.dbmark import DB_AVAILABLE, TEST_DATABASE_URL  # noqa: E402
 
 ADMIN_URL = TEST_DATABASE_URL.rsplit("/", 1)[0] + "/postgres"
 DB_NAME = TEST_DATABASE_URL.rsplit("/", 1)[1]

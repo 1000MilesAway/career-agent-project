@@ -64,9 +64,16 @@ jobs:
 
       # No DEEPSEEK_API_KEY here on purpose: live LLM calls in tests are
       # forbidden by the project conventions. A test that needs the key is a bug.
+      #
+      # SECRET_KEY is set because app/main.py refuses to start without one, and
+      # that refusal errored 27 tests here while the suite stayed green on any
+      # machine with a .env — which .gitignore keeps out of the repository.
+      # tests/conftest.py now defaults both values too; this stays so the
+      # workflow does not depend on a fixture to be runnable.
       - name: Tests
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://career:career@localhost:5433/career_test
+          SECRET_KEY: ci-not-a-real-key-0123456789abcdef
         run: uv run pytest -q
 
       - name: Migrations apply to an empty database
