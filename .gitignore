@@ -19,3 +19,9 @@ out/
 
 # worktree-каталоги агента: в репозитории им не место
 .claude/worktrees/
+
+# Фронтенд: зависимости и сборка. Бандл собирается в образе (frontend/Dockerfile),
+# и коммит собранного dist означал бы диффы на тысячи строк при каждой правке CSS.
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo

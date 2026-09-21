@@ -1,0 +1,125 @@
+/* Design tokens, carried over from the single-page cabinet so the product does
+   not change its appearance in the same commit that changes its technology. */
+
+:root {
+  --bg: #f7f7f5;
+  --card: #fff;
+  --ink: #1a1a18;
+  --muted: #6b6b66;
+  --line: #e2e2dd;
+  --accent: #2b6cb0;
+  --ok: #2f855a;
+  --warn: #b7791f;
+  --bad: #c53030;
+  --link: #1f5c94;
+  --link-visited: #5b4a8a;
+
+  --radius: 10px;
+  --radius-sm: 8px;
+  --gap: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a18;
+    --card: #232320;
+    --ink: #ececea;
+    --muted: #9a9a94;
+    --line: #35352f;
+    --accent: #7aa7d9;
+    --ok: #68d391;
+    --warn: #f6ad55;
+    --bad: #fc8181;
+    /* The browser default (#0000EE, #551A8B visited) is unreadable on this
+       background. These stay in the accent family and keep a visited link
+       legible instead of dropping it into dark purple. */
+    --link: #8fc0f0;
+    --link-visited: #c3aee6;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    15px/1.55 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
+  text-underline-offset: 2px;
+}
+
+a:visited {
+  color: var(--link-visited);
+  text-decoration-color: color-mix(in srgb, var(--link-visited) 45%, transparent);
+}
+
+a:hover,
+a:focus-visible {
+  text-decoration-color: currentColor;
+}
+
+/* One visible focus ring for everything interactive. The old page only had
+   one on links, so keyboard users lost the caret on every button. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

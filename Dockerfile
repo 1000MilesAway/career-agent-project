@@ -22,8 +22,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY core/ ./core/
-# app/ carries app/static/index.html, the cabinet itself — there is no build
-# step and no second container to serve one file.
+# JSON only. The cabinet is a React build with its own image — see frontend/.
 COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./

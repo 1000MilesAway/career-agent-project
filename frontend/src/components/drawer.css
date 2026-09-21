@@ -1,0 +1,71 @@
+.drawer {
+  border: none;
+  padding: 0;
+  background: var(--card);
+  color: var(--ink);
+  margin: 0 0 0 auto;
+  height: 100dvh;
+  max-height: 100dvh;
+  width: min(720px, 100vw);
+  max-width: 100vw;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.drawer[open] {
+  animation: drawer-in 0.2s ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+.drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  /* Sticky, not fixed: a long report scrolls under a header that stays
+     reachable, so "Закрыть" is never a scroll away. */
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
+}
+
+.drawer__title {
+  font-size: 15px;
+  margin: 0;
+}
+
+.drawer__body {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Cards inside the panel are already inside a panel — a second border and a
+   second background just draw a box in a box. */
+.drawer__body .card {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 640px) {
+  .drawer {
+    width: 100vw;
+  }
+}

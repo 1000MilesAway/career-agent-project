@@ -5,16 +5,11 @@ JSON only — the SPA is a separate build, per docs/decisions.md 2026-09-12.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 from .api import artifacts, auth, evaluations, health, jobs, resumes, state, vacancies
 from .core.config import get_settings
-
-STATIC = Path(__file__).resolve().parent / "static"
 
 settings = get_settings()
 
@@ -57,15 +52,17 @@ for router in (
 
 
 @app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
-    """The cabinet itself.
+async def index() -> dict[str, str]:
+    """JSON only.
 
-    Served by the API rather than by a separate nginx: there is one page and
-    no build step, and a second container to hand over one file would be
-    infrastructure with nothing to do. When the React SPA replaces this, it
-    gets its own static serving.
-
-    Read from disk on each request, as the demo did — editing the page and
-    pressing F5 should be enough to see the change.
+    The cabinet is a React build served by nginx in its own container (see
+    `frontend/`), which also proxies /api here. This endpoint stays so that
+    hitting the API's port in a browser says where the cabinet is, rather
+    than returning a bare 404 that reads like a broken deploy.
     """
-    return FileResponse(STATIC / "index.html")
+    return {
+        "service": "career-agent API",
+        "docs": "/docs",
+        "health": "/api/health",
+        "cabinet": "порт 80 этого же хоста",
+    }

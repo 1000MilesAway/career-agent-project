@@ -56,6 +56,21 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  web:
+    # The cabinet: a React build served by nginx, which also proxies /api to
+    # the api container. Separate from the API image on purpose — the bundle
+    # needs Node to build and nothing to run, and rebuilding the Python image
+    # to change a stylesheet would be a Python rebuild for a CSS change.
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      # Port 80, so the cabinet is just the host's address. The API stays on
+      # 8000 as well: /api/health is checked from outside by deploy.sh, and
+      # taking that away would break the deploy's only proof it worked.
+      - "80:80"
+    depends_on:
+      - api
+
   worker:
     build: .
     restart: unless-stopped

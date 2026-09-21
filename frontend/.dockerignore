@@ -1,0 +1,13 @@
+# Installed inside the image from the lockfile — copying the host's tree in
+# would ship whatever architecture this machine happens to have.
+node_modules
+dist
+*.tsbuildinfo
+
+# Tests do not belong in a production image. They are also not referenced by
+# any entry point, so Rollup drops them anyway — but a file that is not
+# copied cannot be bundled by accident either.
+**/*.test.ts
+**/*.test.tsx
+src/test-setup.ts
+vitest.config.ts

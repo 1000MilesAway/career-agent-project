@@ -1,0 +1,81 @@
+/** Data access for the cabinet.
+ *
+ * /api/state answers "what should the screen show right now" in one payload,
+ * and the server was built that way deliberately (see app/api/state.py). SWR
+ * gives every page the same cached copy, so three pages mean one request
+ * rather than three, and any mutation revalidates it in one call.
+ */
+
+import useSWR from 'swr'
+import { api, fetcher } from './client'
+import type {
+  ApplyStepName,
+  AppState,
+  ArtifactResponse,
+  EvaluationResponse,
+  ResumeResponse,
+  ScanResult,
+  SearchProfile,
+  SearchProfileProposal,
+  TriageResult,
+} from './types'
+
+export const STATE_KEY = '/api/state'
+
+export function useAppState(enabled = true) {
+  return useSWR<AppState>(enabled ? STATE_KEY : null, fetcher, {
+    // A scan writes rows the user is watching for; a stale list here reads as
+    // "the scan found nothing".
+    revalidateOnFocus: true,
+    // Two pages mounting at once must not fire two identical requests.
+    dedupingInterval: 2000,
+  })
+}
+
+export interface ScanParams {
+  source: 'habr' | 'telegram'
+  pages: number
+  salary_min?: number | null
+  any_salary?: boolean
+  remote_only?: boolean
+  groups?: string[]
+}
+
+export const scanVacancies = (params: ScanParams) =>
+  api<ScanResult>('/api/vacancies/scan', { method: 'POST', json: params })
+
+export const runTriage = () =>
+  api<TriageResult>('/api/vacancies/triage', { method: 'POST' })
+
+export const clearFound = () =>
+  api<{ deleted: number }>('/api/vacancies/clear', { method: 'POST' })
+
+export const evaluateVacancy = (vacancyId: string) =>
+  api<EvaluationResponse>(`/api/evaluations/${vacancyId}`, { method: 'POST' })
+
+export const buyArtifact = (vacancyId: string, step: ApplyStepName) =>
+  api<ArtifactResponse>(`/api/artifacts/${vacancyId}/${step}`, { method: 'POST' })
+
+export const setSaved = (vacancyId: string, saved: boolean) =>
+  api<unknown>(`/api/vacancies/${vacancyId}/save`, {
+    method: saved ? 'POST' : 'DELETE',
+  })
+
+export const setStatus = (vacancyId: string, status: string) =>
+  api<unknown>(`/api/vacancies/${vacancyId}/status`, {
+    method: 'PUT',
+    json: { status },
+  })
+
+export function uploadResume(file: File): Promise<ResumeResponse> {
+  const form = new FormData()
+  form.append('file', file)
+  return api<ResumeResponse>('/api/resumes', { method: 'POST', form })
+}
+
+export const proposeSearchProfile = () =>
+  api<SearchProfileProposal>('/api/resumes/search-profile/propose', { method: 'POST' })
+
+/** A PUT of the whole object: what the user saw in the diff is what is saved. */
+export const acceptSearchProfile = (profile: SearchProfile) =>
+  api<ResumeResponse>('/api/resumes/search-profile', { method: 'PUT', json: profile })

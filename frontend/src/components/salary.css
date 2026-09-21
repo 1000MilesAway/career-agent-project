@@ -1,0 +1,53 @@
+.salary__label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.salary__field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 12px 0 0;
+  background: var(--bg);
+  transition: border-color 0.15s;
+}
+
+.salary__field:focus-within {
+  border-color: var(--accent);
+}
+
+.salary__field input {
+  border: none;
+  background: none;
+  padding: 10px 0 10px 12px;
+  font-size: 17px;
+  width: 150px;
+  letter-spacing: 0.3px;
+}
+
+.salary__field input:focus {
+  outline: none;
+}
+
+.salary__unit {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.salary__presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.salary__hint {
+  font-size: 12px;
+  margin: 7px 0 0;
+  min-height: 16px;
+}

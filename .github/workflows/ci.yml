@@ -95,3 +95,46 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://career:career@localhost:5433/career
           SECRET_KEY: ci-not-a-real-key
         run: uv run alembic upgrade head
+
+  # The cabinet, checked separately: it shares no runtime with the API and
+  # needs no database, so pinning it to the job above would only make both
+  # wait for each other. A broken build must fail here — the deploy builds
+  # the image itself, and a type error would otherwise surface as a failed
+  # `docker build` on the server with a rollback and no explanation.
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # v7, checked against the tag list rather than the release page — the
+      # same trap that once failed this workflow on a setup-uv v10 that has
+      # releases but no floating major tag.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci, not npm install: installs exactly package-lock.json and fails
+      # if it drifted from package.json, instead of quietly resolving
+      # something newer that was never tested.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # All three TS projects, tests included — `npm run build` checks only
+      # what ships, so a broken test file would otherwise pass unnoticed.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,43 @@
+.vrow {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* A screened-out row is dimmed, never hidden: the model screens on listing
+   data alone and has to stay auditable. */
+.vrow--dim {
+  opacity: 0.55;
+}
+
+.vrow__main {
+  flex: 1;
+  min-width: 220px;
+}
+
+.vrow__title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0;
+}
+
+.vrow__meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
+.vrow__score {
+  min-width: 44px;
+  text-align: right;
+}
+
+.vrow__acts {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
