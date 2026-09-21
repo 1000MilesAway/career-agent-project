@@ -1,0 +1,71 @@
+name: Deploy
+
+# Only from main, and only after CI passed on that same commit. A deploy is
+# the one action here that reaches users, so it does not start on a red run
+# and does not start from a branch.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # For redeploying the current main without a new commit — a server rebuilt,
+  # a container wiped. It still runs the steps below, nothing hand-typed.
+  workflow_dispatch:
+
+concurrency:
+  # Two deploys at once would race over the same checkout on the host. The
+  # later one waits rather than cancels: a half-applied deploy is worse than
+  # a slow one.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # workflow_dispatch has no upstream run to inspect, so the conclusion
+    # check applies only to the automatic path.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the host is sent a bundle, and a shallow clone
+          # cannot produce one it can graft onto what it already has.
+          fetch-depth: 0
+          ref: main
+
+      - name: Pack this revision
+        # A bundle rather than a pull on the host: the server has no key for
+        # this private repository, and issuing one would add a credential to
+        # rotate for a repository the runner can already read.
+        run: git bundle create deploy.bundle main
+
+      - name: Authorise
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host key, not StrictHostKeyChecking=no: without it the
+          # runner would hand the deploy to whoever answers on that address.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Ship it
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+        run: |
+          scp -i ~/.ssh/deploy_key deploy.bundle "$TARGET:~/deploy.bundle"
+          # The key is restricted to the deploy script on the host, so the
+          # command sent here is ignored — what runs is ~/deploy.sh, which
+          # rebuilds the stack, waits for /api/health and rolls back if it
+          # does not answer.
+          ssh -i ~/.ssh/deploy_key "$TARGET" deploy
+
+      - name: Forget the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
