@@ -1,8 +1,21 @@
 name: CI
 
+# A bare `push:` plus `pull_request:` ran the whole suite twice for every
+# commit on every branch, and each failure mailed the author. Work branches
+# are checked through their pull request; a direct push is checked only on the
+# trunk, where nobody opens a PR against themselves.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A branch pushed three times in a minute needs one answer, not three.
+  # Older runs for the same ref are cancelled instead of mailing about code
+  # that has already been replaced.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -34,9 +47,17 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          # Pinned, because `requires-python = ">=3.12"` lets uv pick the
+          # newest interpreter it can find. That version moves on its own
+          # schedule, so the suite could start failing here on a day nobody
+          # touched the code, and the failure would not reproduce locally.
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --group dev
+        # --frozen: install exactly uv.lock and fail if it drifted from
+        # pyproject.toml, rather than quietly resolving something newer that
+        # was never tested.
+        run: uv sync --group dev --frozen
 
       - name: Lint
         run: uv run ruff check .
