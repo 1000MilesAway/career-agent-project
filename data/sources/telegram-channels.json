@@ -1,0 +1,44 @@
+{
+  "_comment": "Checked 2026-09-17 against live t.me/s/ previews, ~20 posts each. See docs/decisions.md.",
+  "_metrics": "vac = postings out of unique posts; profile = matched the CV profile in out/resume-state.json",
+  "core": [
+    {"name": "runello_rus_goland", "note": "Go; strict template 'Грейд:/Стек:'", "vac": 6, "profile": 5, "ads": 1},
+    {"name": "runello_rus_backend", "note": "backend; same template", "vac": 6, "profile": 2, "ads": 0},
+    {"name": "runello_rus_python", "note": "python; same template", "vac": 2, "profile": 1, "ads": 0},
+    {"name": "runello_rus_datascience", "note": "20/20 postings, no ads", "vac": 20, "profile": 5, "ads": 0},
+    {"name": "runello_rus_webdevelopment", "note": "web; same template", "vac": 5, "profile": 2, "ads": 0},
+    {"name": "godevjob", "note": "Go; best content, salaries present", "vac": 11, "profile": 9, "ads": 6},
+    {"name": "pydevjob", "note": "Python; some meme polls", "vac": 8, "profile": 7, "ads": 4},
+    {"name": "pythonrabota", "note": "short 'Формат/Компания' posts", "vac": 7, "profile": 6, "ads": 2},
+    {"name": "opento_dev", "note": "#golang tags; many non-RF remote", "vac": 13, "profile": 5, "ads": 1},
+    {"name": "workayte", "note": "broad IT, mixed formats", "vac": 17, "profile": 4, "ads": 2},
+    {"name": "backend_job_geeklink", "note": "going stale, last post 2026-06-01", "vac": 9, "profile": 4, "ads": 0}
+  ],
+  "special": [
+    {"name": "ya_jobs", "note": "single employer (Yandex), long posts, no salaries", "vac": 18, "profile": 8},
+    {"name": "rust_jobs_feed", "note": "15/16 postings carry a salary - best format reference", "vac": 16, "profile": 0},
+    {"name": "django_jobs_board", "note": "half the channel is candidate CVs (#cv) - needs the seeker filter", "vac": 4, "profile": 3},
+    {"name": "teamlead_job_it", "note": "leads; also posts weekly stats that are not vacancies", "vac": 11, "profile": 1},
+    {"name": "evacuatejobs", "note": "links to remocate.co, no vacancy text in the post - nothing to parse", "vac": 13, "profile": 1}
+  ],
+  "adjacent": [
+    "mobiledevjob", "forallmobile", "csharpdevjob", "forcsharp", "alljvmjobs",
+    "job_javadevs", "kotlin_jobs", "scala_jobs_feed", "front_end_dev", "forgoandrust",
+    "analyst_job_aggregator", "opento_crypto", "opento_igaming", "zarubezhom_jobs",
+    "young_relocate", "choicy_work", "itjobs_nocode", "it_vac", "geeklink_ru",
+    "jobscode_infull", "theyseeku_it", "Solvery", "job_pythonz", "forpython"
+  ],
+  "rejected": {
+    "course_ads": ["job_python", "pythonpythonjobs", "backend_frontend_jobs", "it_vakansii_jobs", "datasciencejobs", "datascienceml_jobs"],
+    "wrong_market": ["devsjobs", "geekjobs", "rusukrjobs", "vacanciesbest", "yojob"],
+    "digest_format": ["habr_career", "geekjobs"],
+    "empty_for_profile": ["hiddengurus", "Remoteit", "jobs_in_it_remoute", "headzio", "jc_it", "devs_it", "IT_jobs_apply", "progjob"],
+    "dead": ["golangjob", "distantjob", "JobsforDevsandOps", "profunctor_jobs", "nomadjobs", "python_job_board", "java_c_net_golang_jobs", "zizu_IT_RU", "vezdeworker", "relocation_vacancies", "jobs_abroad", "Remote_Software_Developer_Jobs", "IT_REMOTE_PROJECTS", "forwebdev", "cchellowork"],
+    "nonexistent": ["it_rabota", "vacancy_it", "forkjob", "getmatch_jobs", "python_hh", "backendjobs", "vakansii_it_remote", "g_jobbot", "jobGeeks", "fordev", "logic", "hh_vacancy_development", "time2find"]
+  },
+  "chats_unreachable": {
+    "_why": "Groups have no t.me/s/ web preview at all (302). Reading them needs a userbot - a personal account at risk of a ban.",
+    "_detect": "On t.me/<name>: 'members' means no preview, 'subscribers' means preview works.",
+    "names": ["hr_breakfast_emergency", "myjobit", "devops_jobs", "ru_python", "tzprofi_job", "python_django_work", "golang_jobsgo", "python_jobs", "gogetajob", "django_jobs", "itlenta", "sysadmin_rabota", "golang_jobs"]
+  }
+}

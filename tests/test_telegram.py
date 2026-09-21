@@ -184,6 +184,23 @@ class TestSilence:
 
 
 class TestChannelList:
+    """These read the shipped list, so they fail loudly when it is missing.
+
+    `load()` returns {} for an absent file on purpose — a user who does not
+    want Telegram is not an error. That turned a lost shipping file into
+    `assert 'godevjob' in []` and a bare KeyError, which is what CI showed
+    when data/ was still ignored wholesale. The check below names the cause
+    instead.
+    """
+
+    @pytest.fixture(autouse=True)
+    def the_list_is_shipped(self):
+        if not tg_channels.DEFAULT_PATH.exists():
+            pytest.fail(
+                f"список каналов не найден: {tg_channels.DEFAULT_PATH}. "
+                "Он поставляется с репозиторием — проверьте .gitignore"
+            )
+
     def test_core_names_are_loaded(self):
         names = tg_channels.channel_names()
         assert "godevjob" in names
