@@ -34,6 +34,12 @@ def as_posting(post: telegram.Post) -> habr_api.Posting:
     )
 
 
+# How many linked descriptions one scan may fetch. Free in money — it is HTTP,
+# not the model — but each one is a request to someone else's host, so it is
+# capped rather than left to the size of the channel list.
+MAX_ENRICHED = 30
+
+
 def collect(
     channels: list[str] | None = None,
     groups: tuple[str, ...] = ("core",),
@@ -41,11 +47,17 @@ def collect(
     max_silence_days: int = telegram.MAX_SILENCE_DAYS,
     keep_all: bool = False,
     search_profile: dict | None = None,
+    enrich: bool = True,
 ) -> dict[str, Any]:
-    """Collect, then pre-screen when a search profile exists.
+    """Collect, pre-screen when a search profile exists, then read linked pages.
 
     Without a profile this is a collection run, which is still the useful half:
     nothing is dropped that the user never configured.
+
+    ORDER MATTERS. The linked descriptions are fetched LAST, over the survivors
+    only. It costs no model money, but it is one request per post to a stranger's
+    host, and the pipeline's rule — the expensive stage runs on the short list —
+    applies to other people's bandwidth as much as to ours.
     """
     names = channels or tg_channels.channel_names(groups=groups)
     if not names:
@@ -57,6 +69,7 @@ def collect(
     )
 
     if not search_profile:
+        enriched = telegram.fetch_externals(posts, limit=MAX_ENRICHED) if enrich else 0
         return {
             "channels": names,
             "collected": len(posts),
@@ -64,6 +77,7 @@ def collect(
             "kept": [(p, "") for p in posts],
             "dropped": [],
             "filtered": False,
+            "enriched": enriched,
         }
 
     screen = PreScreen(SearchProfile.from_dict(search_profile))
@@ -73,6 +87,12 @@ def collect(
         decision = screen.check(as_posting(p))
         (kept if decision.keep else dropped).append((p, decision.reason))
 
+    # Survivors only: the dropped ones are never evaluated, so their linked pages
+    # would be bandwidth spent on posts nobody will read.
+    enriched = (
+        telegram.fetch_externals([p for p, _ in kept], limit=MAX_ENRICHED) if enrich else 0
+    )
+
     return {
         "channels": names,
         "collected": len(posts),
@@ -80,6 +100,7 @@ def collect(
         "kept": kept,
         "dropped": dropped,
         "filtered": True,
+        "enriched": enriched,
     }
 
 
@@ -112,7 +133,12 @@ def as_rows(kept: list[tuple[telegram.Post, str]]) -> list[dict]:
             "published": post.published,
             "source": "telegram",
             # The post text is the vacancy: there is no page to fetch later, so
-            # an evaluation has to read what was collected here.
+            # an evaluation has to read what was collected here. When the post
+            # was only a teaser, as_text() already carries the linked description.
             "text": post.as_text(),
+            # Kept beside `url` rather than replacing it: the user is sent to the
+            # post, which is what they can act on, while the report needs to show
+            # where the requirements actually came from.
+            "description_url": post.external_url,
         })
     return rows

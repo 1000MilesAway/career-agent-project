@@ -261,6 +261,7 @@ function renderFound(rows) {
         <div class="hit__main">
           <div class="hit__title"><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title)}</a></div>
           <div class="hit__meta">${r.source === 'telegram' ? 'Telegram · ' : ''}${esc(r.company)} · ${esc(r.qualification || 'грейд не указан')}${r.remote ? ' · удалённо' : ''} · ${esc(r.salary_text || 'зарплата не указана')}</div>
+          ${r.description_url ? `<div class="hit__meta">описание: <a href="${r.description_url}" target="_blank" rel="noopener">${esc(r.description_url)}</a></div>` : ''}
           ${tag}
         </div>
         <div class="hit__score" id="ascore-${i}">${score}</div>
@@ -621,6 +622,9 @@ $('tg-btn').onclick = async () => {
       (d.filtered ? ` → отсеяно бесплатно ${d.dropped}` : ' (профиль поиска не принят — фильтры не применялись)') +
       ` → новых <b>${d.new_count}</b>` +
       (d.seen_before ? ` (${d.seen_before} уже показывали)` : '') +
+      // Many posts are only a teaser; say how many descriptions were read behind
+      // their links, or the user cannot tell a full vacancy from four lines.
+      (d.enriched ? `<div class="cost" style="margin-top:4px">Описаний прочитано по ссылкам: ${d.enriched}</div>` : '') +
       (reasons ? `<div class="cost" style="margin-top:4px">Причины отсева: ${esc(reasons)}</div>` : '') +
       // A silent or unreachable channel is said out loud: a dead channel still
       // answers 200 with last year's posts, so it must not pass for healthy.

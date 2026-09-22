@@ -20,6 +20,13 @@ A Telegram post is flat text, so this module has to reconstruct what it can:
 `Post.title` is the first non-hashtag line, and `looks_like_vacancy()` throws out
 what is not an employer's job ad at all. Both are guesses, and both are cheap —
 no model is called here.
+
+MANY POSTS ARE ONLY A TEASER. A growing share of channels post four lines —
+role, format, company, pay — and put the actual description behind a link
+("Смотреть вакансию" → telegra.ph). `body.text()` drops the href, so the
+vacancy reaching the model was a 250-character stub while the requirements sat
+one hop away. `fetch_externals()` follows that link; see DESCRIPTION_HOSTS for
+why it is a whitelist and not "follow whatever is in the post".
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from selectolax.parser import HTMLParser
@@ -50,6 +58,33 @@ MAX_SILENCE_DAYS = 30
 # Below this a post is an aside, a poll or a greeting, never a job ad. The
 # shortest real vacancy seen in the 2026-09-17 survey was ~250 characters.
 MIN_VACANCY_CHARS = 200
+
+# A teaser post carries almost no text of its own, so MIN_VACANCY_CHARS would
+# throw it away — the description it points at never gets a chance to be read.
+# A post this short still counts as a vacancy when it links to a description host.
+MIN_TEASER_CHARS = 60
+
+# Hosts that serve a job description as a plain public page. The list is a
+# WHITELIST, not a blocklist, for three reasons:
+#   - a job post links to many things (the HR's @handle, the company site, a
+#     course ad, a referral tracker), and following all of them turns one scan
+#     into dozens of requests to strangers' hosts;
+#   - an arbitrary href is attacker-controlled input — a channel can post a link
+#     to anything at all, and our fetcher must not be pointed at it;
+#   - only these hosts actually repay the request with a full description.
+# Widen it when a channel proves it uses something else; keep it data-shaped.
+DESCRIPTION_HOSTS = (
+    "telegra.ph",
+    "graph.org",
+    "teletype.in",
+    "notion.site",
+    "hh.ru",
+    "career.habr.com",
+)
+
+# The fetched page replaces nothing — it is appended to the post. Cap it so one
+# long article cannot blow up the triage batch that has to hold many vacancies.
+MAX_EXTERNAL_CHARS = 8000
 
 # The post is a candidate advertising themselves, not an employer hiring. Channels
 # like django_jobs_board are half these, and they must not reach the report.
@@ -115,6 +150,11 @@ class Post:
     tags: list[str] = field(default_factory=list)
     remote: bool = False
     has_salary: bool = False
+    # Links found in the post body, in order, already filtered to DESCRIPTION_HOSTS.
+    links: list[str] = field(default_factory=list)
+    # Filled by fetch_externals(); empty means "not fetched" or "fetch failed".
+    external_url: str = ""
+    external_text: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -128,6 +168,7 @@ class Post:
             "remote": self.remote,
             "has_salary": self.has_salary,
             "published": self.published,
+            "external_url": self.external_url,
         }
 
     def as_text(self) -> str:
@@ -140,6 +181,13 @@ class Post:
             parts.append("Стек: " + ", ".join(self.stack))
         parts.append("")
         parts.append(self.text)
+        if self.external_text:
+            # Labelled, not merged: the model must be able to tell the channel's
+            # own four lines from the employer's description, and a later reader
+            # needs to know where the bulk of this text came from.
+            parts.append("")
+            parts.append(f"--- Полное описание со страницы {self.external_url} ---")
+            parts.append(self.external_text)
         return "\n".join(parts)
 
 
@@ -171,6 +219,38 @@ def _first_title_line(text: str) -> str:
         if _HAS_WORD_RE.search(line):
             return line
     return ""
+
+
+def is_description_link(url: str) -> bool:
+    """Does this href point at a host that serves a job description?
+
+    Matches the host exactly or as a subdomain, never as a substring:
+    "telegra.ph.evil.com" must not pass for containing "telegra.ph".
+    """
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    host = host.removeprefix("www.")
+    return any(host == h or host.endswith("." + h) for h in DESCRIPTION_HOSTS)
+
+
+def _description_links(body) -> list[str]:
+    """Hrefs in the post body that point at a description host, deduped, in order.
+
+    t.me links are skipped even though a post's own channel is on no whitelist:
+    they are the HR's handle or a cross-post, never the description.
+    """
+    out: list[str] = []
+    for a in body.css("a[href]"):
+        href = (a.attributes.get("href") or "").strip()
+        if not href.lower().startswith(("http://", "https://")):
+            continue
+        if is_description_link(href) and href not in out:
+            out.append(href)
+    return out
 
 
 def _parse_post(node, channel: str) -> Post | None:
@@ -207,6 +287,7 @@ def _parse_post(node, channel: str) -> Post | None:
         tags=re.findall(r"#([\wЀ-ӿ]+)", text),
         remote=bool(REMOTE_RE.search(text)),
         has_salary=bool(SALARY_RE.search(text)),
+        links=_description_links(body),
     )
 
 
@@ -220,7 +301,11 @@ def looks_like_vacancy(post: Post) -> tuple[bool, str]:
     Salary is deliberately NOT required. Telegram states pay far less often than
     Habr, and making it mandatory dropped 6 of 9 genuine vacancies in the survey.
     """
-    if len(post.text) < MIN_VACANCY_CHARS:
+    # A teaser is short BECAUSE the description lives behind its link, so judging
+    # it by length would drop exactly the posts this module now knows how to read.
+    # It still has to clear every other check below.
+    floor = MIN_TEASER_CHARS if post.links else MIN_VACANCY_CHARS
+    if len(post.text) < floor:
         return False, "слишком короткий пост"
     # Checked before hiring words: "#резюме ... ищу работу" contains both, and the
     # seeker's own wording must win.
@@ -237,6 +322,104 @@ def looks_like_vacancy(post: Post) -> tuple[bool, str]:
     if not CONTACT_RE.search(post.text):
         return False, "нет контакта для отклика"
     return True, ""
+
+
+def _readable_text(html: str) -> str:
+    """The body text of a description page, scripts and chrome stripped.
+
+    Deliberately generic: the whitelist spans telegra.ph, Teletype, Notion and
+    hh.ru, and writing a per-host extractor for each would rot the moment any of
+    them redesigns. Taking <article> when it exists and <body> otherwise gets the
+    description everywhere, at the cost of some navigation text we can live with.
+    """
+    tree = HTMLParser(html)
+    for bad in tree.css("script, style, nav, header, footer, noscript"):
+        bad.decompose()
+    node = tree.css_first("article") or tree.css_first("main") or tree.css_first("body")
+    if node is None:
+        return ""
+    text = node.text(separator="\n", strip=True)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def fetch_external(url: str, client: httpx.Client | None = None) -> str:
+    """Read one linked description page. Free in money, ~1 s in time.
+
+    Raises nothing: a description we could not read must not sink the scan, so
+    every failure comes back as "" and the post keeps its own text.
+    """
+    if not is_description_link(url):
+        return ""
+
+    own = client is None
+    client = client or httpx.Client(
+        headers={"User-Agent": UA, "Accept-Language": "ru,en;q=0.9"},
+        timeout=20.0,
+        follow_redirects=True,
+    )
+    try:
+        r = client.get(url)
+        if r.status_code != 200:
+            return ""
+        # A PDF or an image would come back as mojibake and be scored as text.
+        if "html" not in r.headers.get("content-type", "").lower():
+            return ""
+        text = _readable_text(r.text)
+    except httpx.HTTPError:
+        return ""
+    except Exception:
+        # selectolax on a malformed page; one bad page is not a failed scan.
+        return ""
+    finally:
+        if own:
+            client.close()
+
+    return text[:MAX_EXTERNAL_CHARS]
+
+
+def fetch_externals(
+    posts: list[Post],
+    limit: int | None = None,
+    client: httpx.Client | None = None,
+) -> int:
+    """Fill in `external_text` for posts that link to a description host.
+
+    Costs no model money, but it is one HTTP request per post to someone else's
+    host, so it runs AFTER the free filters have cut the list down — never over
+    everything collected. Returns how many posts gained a description.
+
+    `limit` caps the requests per scan. Without it a wide channel list could fire
+    a hundred requests at telegra.ph in a row and deserve the block it would get.
+    """
+    targets = [p for p in posts if p.links and not p.external_text]
+    if limit is not None:
+        targets = targets[:limit]
+    if not targets:
+        return 0
+
+    own = client is None
+    client = client or httpx.Client(
+        headers={"User-Agent": UA, "Accept-Language": "ru,en;q=0.9"},
+        timeout=20.0,
+        follow_redirects=True,
+    )
+    filled = 0
+    try:
+        for i, post in enumerate(targets):
+            # Only the first whitelisted link: it is the "смотреть вакансию" one.
+            # Later links are the company blog or the HR's other channel.
+            url = post.links[0]
+            text = fetch_external(url, client=client)
+            if text:
+                post.external_url = url
+                post.external_text = text
+                filled += 1
+            if i < len(targets) - 1:
+                time.sleep(DELAY_SECONDS)
+    finally:
+        if own:
+            client.close()
+    return filled
 
 
 def _channel_is_silent(posts: list[Post], max_days: int) -> bool:

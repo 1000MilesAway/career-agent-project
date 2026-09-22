@@ -114,3 +114,59 @@ class TestRows:
         ])
         assert counted["стоп-слово в заголовке"] == 2
         assert counted["грейд ниже минимального"] == 1
+
+
+class TestEnrichment:
+    """Linked descriptions are free in money but not in someone else's bandwidth."""
+
+    @pytest.fixture
+    def spy(self, monkeypatch):
+        seen: list[list[str]] = []
+
+        def fake(posts, limit=None, client=None):
+            targets = [p for p in posts if p.links]
+            seen.append([p.id for p in targets])
+            for p in targets:
+                p.external_url, p.external_text = p.links[0], "полное описание"
+            return len(targets)
+
+        monkeypatch.setattr(telegram, "fetch_externals", fake)
+        return seen
+
+    def test_only_survivors_are_fetched(self, no_network, spy):
+        """The dropped ones are never evaluated: fetching their pages is pure waste."""
+        no_network([
+            post("1", links=["https://telegra.ph/a"]),
+            post("2", title="Бариста в кофейню", links=["https://telegra.ph/b"]),
+        ])
+        r = tg_scan.collect(
+            channels=["chan"],
+            search_profile={"queries": ["python"], "positive": ["разработчик"]},
+        )
+        assert [p.id for p, _ in r["kept"]] == ["1"]
+        assert spy == [["1"]]
+
+    def test_enrich_can_be_turned_off(self, no_network, spy):
+        no_network([post("1", links=["https://telegra.ph/a"])])
+        r = tg_scan.collect(channels=["chan"], enrich=False)
+        assert spy == []
+        assert r["enriched"] == 0
+
+    def test_the_description_reaches_the_row_text(self, no_network, spy):
+        """The evaluation reads `text`: a description that stops here bought nothing."""
+        no_network([post("1", links=["https://telegra.ph/a"])])
+        r = tg_scan.collect(channels=["chan"])
+        rows = tg_scan.as_rows(r["kept"])
+        assert "полное описание" in rows[0]["text"]
+        assert rows[0]["description_url"] == "https://telegra.ph/a"
+
+    def test_the_row_url_still_points_at_the_post(self, no_network, spy):
+        """The user acts on the post; the description link is extra, not a swap."""
+        no_network([post("1", links=["https://telegra.ph/a"])])
+        rows = tg_scan.as_rows(tg_scan.collect(channels=["chan"])["kept"])
+        assert rows[0]["url"] == "https://t.me/chan/1"
+
+    def test_a_post_with_no_description_says_so_plainly(self, no_network, spy):
+        no_network([post("1")])
+        rows = tg_scan.as_rows(tg_scan.collect(channels=["chan"])["kept"])
+        assert rows[0]["description_url"] == ""

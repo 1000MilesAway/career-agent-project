@@ -11,6 +11,7 @@ the user to pay for the same parsing and scoring twice.
 from __future__ import annotations
 
 import os
+from functools import partial
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
@@ -232,9 +233,16 @@ async def scan_telegram(pages: str = Form("1"), groups: str = Form("core")) -> J
         return JSONResponse({"error": "Сначала загрузите резюме"}, status_code=400)
 
     result = await run_in_threadpool(
-        tg_scan.collect,
-        None, tuple(g.strip() for g in groups.split(",") if g.strip()),
-        int(pages or 1), telegram.MAX_SILENCE_DAYS, False, STATE.get("search_profile"),
+        partial(
+            tg_scan.collect,
+            channels=None,
+            groups=tuple(g.strip() for g in groups.split(",") if g.strip()),
+            pages=int(pages or 1),
+            max_silence_days=telegram.MAX_SILENCE_DAYS,
+            keep_all=False,
+            search_profile=STATE.get("search_profile"),
+            enrich=True,
+        )
     )
 
     rows_new = tg_scan.as_rows(result["kept"])
@@ -253,6 +261,7 @@ async def scan_telegram(pages: str = Form("1"), groups: str = Form("core")) -> J
         "filtered": result.get("filtered", False),
         "dropped": len(result["dropped"]),
         "drop_reasons": tg_scan.drop_reasons(result["dropped"]),
+        "enriched": result.get("enriched", 0),
         "seen_before": len(seen),
         "new_count": len(fresh),
         "rows": rows,

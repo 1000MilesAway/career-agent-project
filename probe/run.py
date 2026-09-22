@@ -550,7 +550,7 @@ def cmd_tg(args: argparse.Namespace) -> int:
     result = tg_scan.collect(
         channels=channels, groups=groups, pages=args.pages,
         max_silence_days=args.max_silence, keep_all=args.keep_all,
-        search_profile=profile,
+        search_profile=profile, enrich=not args.no_enrich,
     )
 
     for problem in result["problems"]:
@@ -578,6 +578,9 @@ def cmd_tg(args: argparse.Namespace) -> int:
                                  key=lambda x: -x[1]):
                 print(f"    {n:>3}  {why}")
 
+    if result.get("enriched"):
+        print(f"\nОписаний прочитано по ссылкам из постов: {result['enriched']}")
+
     shown = [post for post, _why in result["kept"]]
 
     print()
@@ -586,6 +589,8 @@ def cmd_tg(args: argparse.Namespace) -> int:
         grade = f" [{p.grade}]" if p.grade else ""
         print(f"  {p.title[:64]}{grade}{salary}")
         print(f"      @{p.channel}  {p.published[:10]}  {p.url}")
+        if p.external_url:
+            print(f"      описание: {p.external_url}")
 
     payload = {
         "channels": result["channels"], "collected": result["collected"],
@@ -777,6 +782,8 @@ def main() -> int:
     tg.add_argument("--no-filter", action="store_true",
                     help="не применять профиль поиска, только собрать")
     tg.add_argument("--show-dropped", action="store_true", help="показать причины отсева")
+    tg.add_argument("--no-enrich", action="store_true",
+                    help="не читать описания по ссылкам из постов (только текст поста)")
     tg.set_defaults(func=cmd_tg)
 
     rep = sub.add_parser("repair", help="вернуть потерянные стоп-списки и перефильтровать найденное")
