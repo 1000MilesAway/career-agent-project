@@ -329,6 +329,65 @@ class TestOneActiveResume:
         with pytest.raises(IntegrityError):
             await session.commit()
 
+    async def test_uploading_a_new_cv_keeps_the_reports_bought_against_the_old_one(
+        self, session
+    ):
+        """Replacing a CV must not take paid-for evaluations with it.
+
+        `POST /api/resumes` deactivates the previous CV instead of deleting it,
+        and the reason is a foreign key: `evaluations.resume_id` is declared
+        ON DELETE CASCADE, so a DELETE would silently take every report and
+        artifact bought against that CV. Uploading a newer CV is the ordinary
+        way a user replaces one, and it must stay free of that cost.
+        """
+        from sqlalchemy import select, update
+
+        user, old_resume = await _user_with_resume(session)
+
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await session.commit()
+
+        vacancy = (await session.execute(select(Vacancy))).scalar_one()
+        session.add(
+            Evaluation(
+                vacancy_id=vacancy.id,
+                resume_id=old_resume.id,
+                score=4.0,
+                verdict="apply",
+                report={"score": 4.0},
+                model="deepseek-flash",
+                cost_rub=0.17,
+            )
+        )
+        await session.commit()
+
+        # What the upload endpoint does: deactivate, then add. Never delete.
+        await session.execute(
+            update(Resume)
+            .where(Resume.user_id == user.id, Resume.is_active.is_(True))
+            .values(is_active=False)
+        )
+        session.add(
+            Resume(
+                user_id=user.id,
+                filename="newer.pdf",
+                raw_text="более свежее резюме",
+                profile={"target_role": "Backend"},
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+        evaluations = list((await session.execute(select(Evaluation))).scalars())
+        assert len(evaluations) == 1
+        assert evaluations[0].score == 4.0
+        assert evaluations[0].resume_id == old_resume.id
+
+        # The old CV is still there to say what that report was judged against.
+        stored = list((await session.execute(select(Resume))).scalars())
+        assert len(stored) == 2
+        assert sum(1 for r in stored if r.is_active) == 1
+
 
 @requires_db
 class TestPaidVerdictsSurviveAFreeRescan:
