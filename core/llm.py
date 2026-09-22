@@ -13,6 +13,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -184,3 +185,70 @@ class LLM:
                 raise RuntimeError(f"модель не вернула валидный JSON на шаге {step}") from e
 
         raise RuntimeError(f"шаг {step} не удался") from last_err
+
+    def _record(self, u: Usage, response: Any) -> None:
+        """Cost one reply. Same accounting as complete_json, one copy."""
+        usage = response.usage
+        u.cache_hit = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
+        u.cache_miss = getattr(usage, "prompt_cache_miss_tokens", 0) or usage.prompt_tokens
+        u.output = usage.completion_tokens or 0
+        details = getattr(usage, "completion_tokens_details", None)
+        u.reasoning = (getattr(details, "reasoning_tokens", 0) or 0) if details else 0
+        u.usd = _price(self.model, u)
+        self.ledger.add(u)
+
+    def complete_with_tools(
+        self,
+        step: str,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.3,
+        max_tokens: int = 4000,
+    ) -> dict:
+        """One round of a tool-using conversation.
+
+        Unlike `complete_json` there is no retry and no JSON mode: the model is
+        free to answer in words, and the caller (`core/chat.py`) owns the loop.
+        Retrying here would re-run tool calls the caller has already executed.
+
+        The reply is returned as a plain dict so it can be stored and replayed:
+        the API requires a tool result to follow the assistant message that
+        asked for it, so that message has to survive verbatim.
+        """
+        u = Usage(step=step, model=self.model, peak=_peak_multiplier())
+        started = time.monotonic()
+        try:
+            r = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except Exception as e:
+            u.seconds = time.monotonic() - started
+            u.error = f"{type(e).__name__}: {e}"[:300]
+            self.ledger.add(u)
+            raise
+
+        u.seconds = time.monotonic() - started
+        self._record(u, r)
+
+        message = r.choices[0].message
+        calls = []
+        for call in message.tool_calls or []:
+            calls.append(
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    },
+                }
+            )
+
+        out: dict[str, Any] = {"role": "assistant", "content": message.content or ""}
+        if calls:
+            out["tool_calls"] = calls
+        return {"message": out}
