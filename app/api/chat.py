@@ -95,18 +95,48 @@ def _visible(message: ChatMessage) -> MessageResponse | None:
         return None
 
     text = (payload.get("content") or "").strip()
-    tools_used = [
-        c.get("function", {}).get("name", "")
-        for c in payload.get("tool_calls") or []
-    ]
-    if not text and not tools_used:
+    if not text:
         return None
     return MessageResponse(
         role=message.role,
         text=text,
         created_at=message.created_at,
-        tools=[t for t in tools_used if t],
+        tools=_tool_names(message),
     )
+
+
+def _tool_names(message: ChatMessage) -> list[str]:
+    names = [
+        c.get("function", {}).get("name", "")
+        for c in (message.payload or {}).get("tool_calls") or []
+    ]
+    return [n for n in names if n]
+
+
+def _as_conversation(stored: list[ChatMessage]) -> list[MessageResponse]:
+    """The turns worth showing, with the tool names folded into them.
+
+    A round where the model only asked for tools carries no text — showing it
+    would be an empty bubble on screen. Its tool names are carried forward and
+    attached to the reply that followed, so the user still sees what was
+    consulted: a chat that silently did four things cannot be audited.
+    """
+    out: list[MessageResponse] = []
+    carried: list[str] = []
+    for row in stored:
+        carried.extend(_tool_names(row))
+        visible = _visible(row)
+        if visible is None:
+            continue
+        # De-duplicated, order kept: two get_profile calls in one exchange are
+        # one thing the user needs told about, not two.
+        seen: dict[str, None] = {}
+        for name in [*carried, *visible.tools]:
+            seen.setdefault(name, None)
+        visible.tools = list(seen)
+        carried = []
+        out.append(visible)
+    return out
 
 
 async def _history(session: SessionDep, user_id: uuid.UUID) -> list[ChatMessage]:
@@ -137,8 +167,7 @@ async def _next_seq(session: SessionDep, user_id: uuid.UUID) -> int:
 @router.get("", response_model=list[MessageResponse])
 async def history(session: SessionDep, user: UserDep) -> list[MessageResponse]:
     """The conversation so far. Free."""
-    stored = await _history(session, user.id)
-    return [m for m in (_visible(row) for row in stored) if m is not None]
+    return _as_conversation(await _history(session, user.id))
 
 
 @router.get("/proposals", response_model=list[ProposalResponse])
@@ -236,10 +265,9 @@ async def send(
 
     await session.commit()
 
-    visible = [m for m in (_visible(row) for row in rows) if m is not None]
     return ChatResponse(
         reply=reply,
-        messages=visible,
+        messages=_as_conversation(rows),
         proposals=[ProposalResponse.of(p) for p in runner.proposals],
         cost_rub=round(ledger.rub, 4),
     )

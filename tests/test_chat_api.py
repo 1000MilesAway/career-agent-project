@@ -145,10 +145,31 @@ class TestSend:
         response = await client.post(
             "/api/chat", json={"text": "что в профиле?"}, headers=auth_headers
         )
-        roles = [m["role"] for m in response.json()["messages"]]
-        assert "tool" not in roles
-        # But the fact that a tool ran is visible.
-        assert any(m["tools"] == ["get_profile"] for m in response.json()["messages"])
+        messages = response.json()["messages"]
+        assert "tool" not in [m["role"] for m in messages]
+        # A round that only asked for tools carries no text and would show as
+        # an empty bubble, so its names are folded into the reply that followed.
+        assert [m["text"] for m in messages] == ["В профиле только Python."]
+        assert messages[0]["tools"] == ["get_profile"]
+
+    async def test_a_turn_without_text_is_not_an_empty_bubble(
+        self, client, auth_headers, session, user, reply
+    ):
+        """Found on a live run: the assistant message that asks for a tool has
+        no content, and the conversation showed two blank turns before the
+        answer."""
+        await _resume(session, user)
+        reply(
+            calls("get_profile", {}, call_id="a"),
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}, "b"),
+            says("Готово, подтвердите."),
+        )
+        await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert all(m["text"].strip() for m in shown)
+        assert [m["text"] for m in shown] == ["знаю go", "Готово, подтвердите."]
+        assert shown[1]["tools"] == ["get_profile", "propose_profile_patch"]
 
     async def test_without_a_cv_the_profile_tools_are_not_offered(
         self, client, auth_headers, session, user, reply
