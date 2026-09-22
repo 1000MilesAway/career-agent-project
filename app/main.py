@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import (
     artifacts,
     auth,
+    chat,
     evaluations,
     export,
     health,
@@ -58,6 +59,7 @@ for router in (
     artifacts.router,
     export.router,
     jobs.router,
+    chat.router,
 ):
     app.include_router(router)
 

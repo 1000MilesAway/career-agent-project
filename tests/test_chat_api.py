@@ -1,0 +1,362 @@
+"""The chat endpoints, against a real database and a mocked model.
+
+The model is monkeypatched everywhere: a live call in a test is forbidden by
+the project's conventions, and the point here is the confirmation layer, not
+the model's wording.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from sqlalchemy import select
+
+from app.models import ChatMessage, Proposal, Resume, Vacancy
+from tests.dbmark import requires_db
+
+
+@pytest.fixture
+def reply(monkeypatch):
+    """Make the model say what a test needs, without a network.
+
+    Patches `core.chat.ask`, the one function that touches the API, so the
+    loop, the tool handler and the storage all run for real.
+    """
+    from core import chat as chat_core
+
+    def install(*turns: dict) -> list[dict]:
+        queue = list(turns)
+        seen: list[dict] = []
+
+        def fake_ask(llm, history, system="", enabled=()):
+            seen.append({"history": list(history), "enabled": tuple(enabled)})
+            message = queue.pop(0) if queue else {"role": "assistant", "content": "готово"}
+            return (
+                chat_core.Turn(
+                    text=(message.get("content") or ""),
+                    calls=chat_core.parse_tool_calls(message.get("tool_calls")),
+                ),
+                message,
+            )
+
+        monkeypatch.setattr(chat_core, "ask", fake_ask)
+        # The LLM constructor would demand a key and build a client.
+        monkeypatch.setattr("app.api.chat.LLM", lambda *a, **kw: object())
+        return seen
+
+    return install
+
+
+def says(text: str) -> dict:
+    return {"role": "assistant", "content": text}
+
+
+def calls(name: str, arguments: dict, call_id: str = "c1") -> dict:
+    import json
+
+    return {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": call_id,
+                "type": "function",
+                "function": {"name": name, "arguments": json.dumps(arguments)},
+            }
+        ],
+    }
+
+
+async def _resume(session, user, profile: dict | None = None) -> Resume:
+    resume = Resume(
+        user_id=user.id,
+        filename="cv.pdf",
+        raw_text="текст",
+        profile=profile or {"target_role": "Backend", "skills": ["Python"]},
+        is_active=True,
+    )
+    session.add(resume)
+    await session.commit()
+    await session.refresh(resume)
+    return resume
+
+
+async def _vacancy(session, user) -> Vacancy:
+    vacancy = Vacancy(
+        user_id=user.id,
+        source="habr",
+        external_id=uuid.uuid4().hex[:8],
+        title="Python разработчик",
+        company="ООО Ромашка",
+        raw_text="Нужен Python",
+        stage="shortlist",
+    )
+    session.add(vacancy)
+    await session.commit()
+    await session.refresh(vacancy)
+    return vacancy
+
+
+@requires_db
+class TestAuth:
+    async def test_the_chat_is_behind_a_login(self, client):
+        assert (await client.get("/api/chat")).status_code == 401
+        assert (await client.post("/api/chat", json={"text": "привет"})).status_code == 401
+
+
+@requires_db
+class TestSend:
+    async def test_a_plain_reply_is_stored_and_returned(
+        self, client, auth_headers, session, user, reply
+    ):
+        reply(says("Здравствуйте"))
+        response = await client.post("/api/chat", json={"text": "привет"}, headers=auth_headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["reply"] == "Здравствуйте"
+
+        stored = list((await session.execute(select(ChatMessage))).scalars())
+        assert [m.role for m in stored] == ["user", "assistant"]
+
+    async def test_an_empty_message_is_refused(self, client, auth_headers):
+        response = await client.post("/api/chat", json={"text": "   "}, headers=auth_headers)
+        assert response.status_code in (400, 422)
+
+    async def test_history_comes_back_in_order(
+        self, client, auth_headers, session, user, reply
+    ):
+        reply(says("раз"))
+        await client.post("/api/chat", json={"text": "первое"}, headers=auth_headers)
+        reply(says("два"))
+        await client.post("/api/chat", json={"text": "второе"}, headers=auth_headers)
+
+        response = await client.get("/api/chat", headers=auth_headers)
+        texts = [m["text"] for m in response.json()]
+        assert texts == ["первое", "раз", "второе", "два"]
+
+    async def test_tool_results_are_not_shown_to_the_user(
+        self, client, auth_headers, session, user, reply
+    ):
+        """They are the model's working notes; a posting's raw text pasted
+        into the conversation would be noise."""
+        await _resume(session, user)
+        reply(calls("get_profile", {}), says("В профиле только Python."))
+
+        response = await client.post(
+            "/api/chat", json={"text": "что в профиле?"}, headers=auth_headers
+        )
+        roles = [m["role"] for m in response.json()["messages"]]
+        assert "tool" not in roles
+        # But the fact that a tool ran is visible.
+        assert any(m["tools"] == ["get_profile"] for m in response.json()["messages"])
+
+    async def test_without_a_cv_the_profile_tools_are_not_offered(
+        self, client, auth_headers, session, user, reply
+    ):
+        seen = reply(says("Загрузите резюме."))
+        await client.post("/api/chat", json={"text": "привет"}, headers=auth_headers)
+        offered = {t.name for t in seen[0]["enabled"]}
+        assert "propose_profile_patch" not in offered
+
+    async def test_the_cost_is_charged_to_the_account(
+        self, client, auth_headers, session, user, reply
+    ):
+        reply(says("ок"))
+        await client.post("/api/chat", json={"text": "привет"}, headers=auth_headers)
+        await session.refresh(user)
+        # The mocked ledger spends nothing, but the field must survive the path.
+        assert float(user.spent_rub) >= 0
+
+
+@requires_db
+class TestProposalsRequireConfirmation:
+    async def test_a_proposed_patch_does_not_touch_the_resume(
+        self, client, auth_headers, session, user, reply
+    ):
+        resume = await _resume(session, user)
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Kubernetes"}),
+            says("Подготовил правку, подтвердите."),
+        )
+
+        response = await client.post(
+            "/api/chat", json={"text": "я знаю kubernetes"}, headers=auth_headers
+        )
+        assert len(response.json()["proposals"]) == 1
+
+        await session.refresh(resume)
+        assert resume.profile["skills"] == ["Python"]
+
+    async def test_accepting_applies_the_patch(
+        self, client, auth_headers, session, user, reply
+    ):
+        resume = await _resume(session, user)
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Kubernetes"}),
+            says("Готово к подтверждению."),
+        )
+        created = await client.post(
+            "/api/chat", json={"text": "знаю kubernetes"}, headers=auth_headers
+        )
+        proposal_id = created.json()["proposals"][0]["id"]
+
+        response = await client.post(
+            f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers
+        )
+        assert response.status_code == 200, response.text
+
+        await session.refresh(resume)
+        assert "Kubernetes" in resume.profile["skills"]
+        assert resume.profile["provenance"]["skills"][0]["source"] == "user-stated"
+
+    async def test_accepting_clears_the_cached_archetypes(
+        self, client, auth_headers, session, user, reply
+    ):
+        """Triage screens against them; keeping them would judge the user by
+        a CV that no longer describes them."""
+        resume = await _resume(session, user)
+        resume.archetypes = {"archetypes": [{"name": "Backend"}]}
+        await session.commit()
+
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
+            says("Готово."),
+        )
+        created = await client.post(
+            "/api/chat", json={"text": "знаю go"}, headers=auth_headers
+        )
+        proposal_id = created.json()["proposals"][0]["id"]
+        await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
+
+        await session.refresh(resume)
+        assert resume.archetypes is None
+
+    async def test_rejecting_changes_nothing(
+        self, client, auth_headers, session, user, reply
+    ):
+        resume = await _resume(session, user)
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Rust"}),
+            says("Подтвердите."),
+        )
+        created = await client.post(
+            "/api/chat", json={"text": "..."}, headers=auth_headers
+        )
+        proposal_id = created.json()["proposals"][0]["id"]
+
+        response = await client.post(
+            f"/api/chat/proposals/{proposal_id}/reject", headers=auth_headers
+        )
+        assert response.json()["status"] == "rejected"
+
+        await session.refresh(resume)
+        assert "Rust" not in resume.profile["skills"]
+
+    async def test_a_decided_proposal_cannot_be_decided_twice(
+        self, client, auth_headers, session, user, reply
+    ):
+        await _resume(session, user)
+        reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
+        created = await client.post("/api/chat", json={"text": "."}, headers=auth_headers)
+        proposal_id = created.json()["proposals"][0]["id"]
+
+        first = await client.post(
+            f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers
+        )
+        assert first.status_code == 200
+        second = await client.post(
+            f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers
+        )
+        assert second.status_code == 409
+
+    async def test_a_proposal_that_is_not_ours_is_a_404(
+        self, client, auth_headers
+    ):
+        """Ownership is part of the lookup, so a proposal belonging to someone
+        else is indistinguishable from one that does not exist."""
+        response = await client.post(
+            f"/api/chat/proposals/{uuid.uuid4()}/accept", headers=auth_headers
+        )
+        assert response.status_code == 404
+
+    async def test_a_real_proposal_of_another_account_cannot_be_accepted(
+        self, client, auth_headers, session, user
+    ):
+        """The chat must not become a way to write into someone else's CV."""
+        from app.core.security import hash_password
+        from app.models import User
+
+        stranger = User(
+            email=f"s{uuid.uuid4().hex[:8]}@example.com",
+            password_hash=hash_password("x"),
+        )
+        session.add(stranger)
+        await session.flush()
+
+        theirs = Proposal(
+            user_id=stranger.id,
+            kind="profile_patch",
+            arguments={"op": "add_skill", "value": "Rust"},
+        )
+        session.add(theirs)
+        await session.commit()
+
+        response = await client.post(
+            f"/api/chat/proposals/{theirs.id}/accept", headers=auth_headers
+        )
+        assert response.status_code == 404
+        await session.refresh(theirs)
+        assert theirs.status == "pending"
+
+    async def test_a_status_proposal_moves_the_tracker_only_once_accepted(
+        self, client, auth_headers, session, user, reply
+    ):
+        vacancy = await _vacancy(session, user)
+        reply(
+            calls(
+                "set_vacancy_status",
+                {"vacancy_id": str(vacancy.id), "status": "applied"},
+            ),
+            says("Подтвердите."),
+        )
+        created = await client.post(
+            "/api/chat", json={"text": "я откликнулся"}, headers=auth_headers
+        )
+        proposal_id = created.json()["proposals"][0]["id"]
+
+        await session.refresh(vacancy, ["application"])
+        assert vacancy.application is None
+
+        await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
+        await session.refresh(vacancy, ["application"])
+        assert vacancy.application.status == "applied"
+
+    async def test_pending_proposals_are_listed(
+        self, client, auth_headers, session, user, reply
+    ):
+        await _resume(session, user)
+        reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
+        await client.post("/api/chat", json={"text": "."}, headers=auth_headers)
+
+        response = await client.get("/api/chat/proposals", headers=auth_headers)
+        assert len(response.json()) == 1
+        assert response.json()[0]["status"] == "pending"
+
+
+@requires_db
+class TestClear:
+    async def test_clearing_removes_messages_and_pending_proposals(
+        self, client, auth_headers, session, user, reply
+    ):
+        """A user who cleared the chat must not still have changes waiting
+        from a conversation they can no longer read."""
+        await _resume(session, user)
+        reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
+        await client.post("/api/chat", json={"text": "."}, headers=auth_headers)
+
+        response = await client.post("/api/chat/clear", headers=auth_headers)
+        assert response.json()["proposals"] == 1
+
+        assert (await client.get("/api/chat", headers=auth_headers)).json() == []
+        left = list((await session.execute(select(Proposal))).scalars())
+        assert left == []

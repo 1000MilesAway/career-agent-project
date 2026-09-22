@@ -239,9 +239,76 @@ def converse(
     # Out of rounds with tools still pending. Saying so is better than a silent
     # stop: the user asked for something and deserves to know it was not
     # finished, rather than reading an empty reply as a refusal.
-    return (
-        "Не удалось закончить за отведённое число шагов. "
-        "Попробуйте переформулировать или разбить задачу на части.",
-        appended,
-        made,
-    )
+    return OUT_OF_ROUNDS, appended, made
+
+
+OUT_OF_ROUNDS = (
+    "Не удалось закончить за отведённое число шагов. "
+    "Попробуйте переформулировать или разбить задачу на части."
+)
+
+
+async def run_tools_async(calls: list[ToolCall], handler: Any) -> list[dict]:
+    """`run_tools` for a handler that has to be awaited.
+
+    The API layer's handler reads the database, and its session belongs to the
+    running event loop — so it cannot be called from a worker thread the way
+    `evaluate` is.
+    """
+    results: list[dict] = []
+    for call in calls:
+        if not call.ok:
+            results.append({"tool_call_id": call.id, "content": f"Ошибка: {call.error}"})
+            continue
+        try:
+            payload = await handler(call.name, call.arguments)
+        except Exception as e:
+            payload = {"error": f"{type(e).__name__}: {e}"[:300]}
+        results.append(
+            {
+                "tool_call_id": call.id,
+                "content": envelope(f"{call.name}_result", payload),
+            }
+        )
+    return results
+
+
+async def converse_async(
+    llm: LLM,
+    history: list[dict],
+    handler: Any,
+    system: str = "",
+    enabled: tuple[tools.Tool, ...] = tools.TOOLS,
+    max_rounds: int = MAX_ROUNDS,
+    threaded: Any = None,
+) -> tuple[str, list[dict], list[ToolCall]]:
+    """The same loop, for an async handler.
+
+    `threaded` is how the blocking model call leaves the event loop —
+    `fastapi.concurrency.run_in_threadpool` in the API. Without it the call
+    runs inline, which is what the tests want.
+    """
+    appended: list[dict] = []
+    made: list[ToolCall] = []
+    working = list(history)
+
+    for _ in range(max(1, max_rounds)):
+        if threaded is None:
+            turn, message = ask(llm, working, system=system, enabled=enabled)
+        else:
+            turn, message = await threaded(
+                ask, llm, working, system=system, enabled=enabled
+            )
+        working.append(message)
+        appended.append(message)
+        made.extend(turn.calls)
+
+        if not turn.calls:
+            return turn.text, appended, made
+
+        for result in await run_tools_async(turn.calls, handler):
+            entry = {"role": TOOL, **result}
+            working.append(entry)
+            appended.append(entry)
+
+    return OUT_OF_ROUNDS, appended, made

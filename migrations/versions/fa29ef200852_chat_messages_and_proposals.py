@@ -1,8 +1,8 @@
 """chat messages and proposals
 
-Revision ID: eb904bb2d638
+Revision ID: fa29ef200852
 Revises: fe71a20b5adc
-Create Date: 2026-09-22 17:20:48.731111
+Create Date: 2026-09-22 17:31:57.996129
 
 """
 from collections.abc import Sequence
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'eb904bb2d638'
+revision: str = 'fa29ef200852'
 down_revision: str | Sequence[str] | None = 'fe71a20b5adc'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -26,14 +26,15 @@ def upgrade() -> None:
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('role', sa.String(length=16), nullable=False),
     sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('seq', sa.Integer(), nullable=False),
     sa.Column('cost_rub', sa.Numeric(precision=10, scale=4), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=op.f('fk_chat_messages_user_id_users'), ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_chat_messages'))
     )
-    op.create_index('ix_chat_messages_user_created', 'chat_messages', ['user_id', 'created_at'], unique=False)
     op.create_index(op.f('ix_chat_messages_user_id'), 'chat_messages', ['user_id'], unique=False)
+    op.create_index('ix_chat_messages_user_seq', 'chat_messages', ['user_id', 'seq'], unique=False)
     op.create_table('proposals',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
@@ -64,7 +65,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_proposals_user_id'), table_name='proposals')
     op.drop_index(op.f('ix_proposals_message_id'), table_name='proposals')
     op.drop_table('proposals')
+    op.drop_index('ix_chat_messages_user_seq', table_name='chat_messages')
     op.drop_index(op.f('ix_chat_messages_user_id'), table_name='chat_messages')
-    op.drop_index('ix_chat_messages_user_created', table_name='chat_messages')
     op.drop_table('chat_messages')
     # ### end Alembic commands ###

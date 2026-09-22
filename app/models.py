@@ -310,14 +310,21 @@ class ChatMessage(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
+    # Position in the conversation. `created_at` cannot order these: every
+    # message of one exchange is written in the same transaction and shares a
+    # timestamp to the microsecond, so sorting by it returned the answer before
+    # the question. The API requires a tool result to follow the message that
+    # asked for it, so a scrambled history is not cosmetic — it is unreplayable.
+    seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     # What this turn cost. Zero for a user message and for a tool result;
     # only the assistant's own replies are billed. Kept per message so
     # "why did this conversation cost that much" stays answerable.
     cost_rub: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
 
     __table_args__ = (
-        # The only query: this user's conversation, oldest first.
-        Index("ix_chat_messages_user_created", "user_id", "created_at"),
+        # The only query: this user's conversation, in order.
+        Index("ix_chat_messages_user_seq", "user_id", "seq"),
     )
 
 
