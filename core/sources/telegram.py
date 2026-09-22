@@ -33,6 +33,8 @@ from typing import Any
 import httpx
 from selectolax.parser import HTMLParser
 
+from . import apply_link, salary_text
+
 BASE = "https://t.me"
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -109,17 +111,30 @@ class Post:
     channel: str
     text: str
     published: str = ""
+    # Where the user actually applies, when the post names it. `url` stays the
+    # permalink and remains the dedup key: an apply link is shared by every
+    # repost of one vacancy AND, for a digest, by several vacancies, so keying
+    # on it would merge rows that are not the same posting.
+    apply_url: str = ""
+    apply_kind: str = ""
     title: str = ""
     grade: str = ""
     stack: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     remote: bool = False
     has_salary: bool = False
+    # The band as parsed out of the prose, monthly, or None when the text states
+    # none this parser is sure of. `has_salary` stays a broader signal: it fires
+    # on "зп обсуждается" too, where there is a mention but no figure.
+    salary_from: int | None = None
+    salary_to: int | None = None
+    salary_currency: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "url": self.url,
+            "apply_url": self.apply_url,
             "channel": self.channel,
             "title": self.title,
             "grade": self.grade,
@@ -127,6 +142,9 @@ class Post:
             "tags": self.tags,
             "remote": self.remote,
             "has_salary": self.has_salary,
+            "salary_from": self.salary_from,
+            "salary_to": self.salary_to,
+            "salary_currency": self.salary_currency,
             "published": self.published,
         }
 
@@ -138,6 +156,8 @@ class Post:
             parts.append(f"Грейд: {self.grade}")
         if self.stack:
             parts.append("Стек: " + ", ".join(self.stack))
+        if self.apply_url:
+            parts.append(f"Отклик: {self.apply_url}")
         parts.append("")
         parts.append(self.text)
         return "\n".join(parts)
@@ -153,6 +173,15 @@ def _client() -> httpx.Client:
 
 class NoPreview(Exception):
     """The name is a group, or does not exist: `t.me/s/` serves no HTML for it."""
+
+
+class MarkupChanged(Exception):
+    """The page carries posts we failed to read — t.me changed its markup.
+
+    Separate from NoPreview because the fix is ours, not the user's: it means
+    this module needs updating, and saying "канал пуст" instead would hide a
+    broken collector behind a plausible-looking empty result.
+    """
 
 
 def _first_title_line(text: str) -> str:
@@ -193,16 +222,33 @@ def _parse_post(node, channel: str) -> Post | None:
     # the second one's title and link, so an evaluation judged the wrong ad.
     post_id = post_path
 
+    # The preview embeds forwarded posts and pinned neighbours from OTHER
+    # channels. They are someone else's publication: counting them makes a
+    # channel look productive when it only reposts, and the same vacancy then
+    # arrives once per channel that forwarded it.
+    if post_path and post_path.split("/")[0] != channel:
+        return None
+
     when = ""
     stamp = node.css_first("time[datetime]")
     if stamp is not None:
         when = stamp.attributes.get("datetime") or ""
 
+    # Read the links from the MARKUP, before `.text()` flattens it: the anchors
+    # are gone by then, and the apply path with them.
+    hrefs = [
+        a.attributes.get("href") or "" for a in body.css("a[href]")
+    ]
+    link = apply_link.pick([h for h in hrefs if h])
+
     grade = GRADE_RE.search(text)
     stack = STACK_RE.search(text)
+    band = salary_text.parse_salary(text)
     return Post(
         id=post_id,
         url=f"{BASE}/{post_path}" if post_path else f"{BASE}/{channel}",
+        apply_url=link.url if link else "",
+        apply_kind=link.kind if link else "",
         channel=channel,
         text=text,
         published=when,
@@ -212,6 +258,9 @@ def _parse_post(node, channel: str) -> Post | None:
         tags=re.findall(r"#([\wЀ-ӿ]+)", text),
         remote=bool(REMOTE_RE.search(text)),
         has_salary=bool(SALARY_RE.search(text)),
+        salary_from=band.min if band else None,
+        salary_to=band.max if band else None,
+        salary_currency=band.currency if band else "",
     )
 
 
@@ -282,12 +331,53 @@ def fetch_channel(
             client.close()
 
     tree = HTMLParser(html)
+    wraps = tree.css(".tgme_widget_message_wrap")
     posts = []
-    for node in tree.css(".tgme_widget_message_wrap"):
+    for node in wraps:
         post = _parse_post(node, channel)
         if post is not None:
             posts.append(post)
+
+    # A page that clearly HAS posts but yielded none means our selectors stopped
+    # matching, not that the channel is quiet. Those two are indistinguishable
+    # downstream — both look like an empty channel — so a markup change would
+    # silently zero out every Telegram channel at once and the scan would report
+    # "ничего не найдено" as if that were the truth. Media-only and forwarded
+    # posts are legitimately dropped, so only an ALL-or-nothing miss counts.
+    if wraps and not posts and not _all_dropped_legitimately(wraps, channel):
+        raise MarkupChanged(
+            f"@{channel}: на странице {len(wraps)} постов, но ни один не разобран — "
+            "изменилась вёрстка t.me"
+        )
     return posts
+
+
+def _all_dropped_legitimately(wraps, channel: str) -> bool:
+    """Were the skipped posts skipped for reasons we understand?
+
+    Media-only posts and forwards from other channels are expected drops. A page
+    made entirely of those is not a parser failure.
+
+    A missing `.tgme_widget_message_text` is NOT enough to call a post
+    media-only: that is exactly what a renamed class looks like. The tell is the
+    block's own text — a photo post carries none, a post whose text node we
+    stopped recognizing is full of words.
+    """
+    for node in wraps:
+        holder = node.css_first(".tgme_widget_message")
+        path = (holder.attributes.get("data-post") if holder else "") or ""
+        if path and path.split("/")[0] != channel:
+            continue  # someone else's post, correctly skipped
+        if node.css_first(".tgme_widget_message_text") is not None:
+            return False  # we could see the text node and still produced nothing
+        # No text node. Genuine media post, or a renamed class? A photo post's
+        # block holds only the view count and the timestamp; prose in it means
+        # there was a post here we failed to read. Two words of three-plus
+        # letters is the line — "1.2K 16 Sep" does not reach it.
+        body = node.text(separator=" ", strip=True) or ""
+        if len(re.findall(r"[^\W\d_]{3,}", body)) >= 2:
+            return False
+    return True
 
 
 def search_many(
@@ -327,6 +417,12 @@ def search_many(
                     if page < pages - 1:
                         time.sleep(DELAY_SECONDS)
             except NoPreview as e:
+                problems.append((channel, str(e)))
+                continue
+            except MarkupChanged as e:
+                # Reported, not raised: one channel serving unexpected markup
+                # must not abort the other channels' collection. It lands in
+                # `problems`, where the user sees it, same as a dead channel.
                 problems.append((channel, str(e)))
                 continue
             except httpx.HTTPError as e:

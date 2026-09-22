@@ -120,3 +120,53 @@ class TestRows:
         ])
         assert counted["стоп-слово в заголовке"] == 2
         assert counted["грейд ниже минимального"] == 1
+
+
+class TestSalaryReachesTheFilter:
+    """The point of parsing a band out of prose: before this, salary_min was
+    inert on Telegram — no post carried salary_from, so every one passed."""
+
+    def test_a_rouble_band_is_handed_to_prescreen(self):
+        p = tg_scan.as_posting(
+            post("1", salary_from=180000, salary_to=250000, salary_currency="RUB")
+        )
+        assert (p.salary_from, p.salary_to) == (180000, 250000)
+
+    def test_a_low_band_is_now_actually_dropped(self):
+        from core.filters import PreScreen, SearchProfile
+
+        screen = PreScreen(SearchProfile.from_dict({"salary_min": 200000}))
+        low = tg_scan.as_posting(
+            post("1", salary_from=120000, salary_to=120000, salary_currency="RUB")
+        )
+        decision = screen.check(low)
+        assert not decision.keep
+        # The invariant: a rejection always says why, in a form the user reads.
+        assert "120 000 ₽" in decision.reason
+
+    def test_a_foreign_band_does_not_reach_a_rouble_threshold(self):
+        """salary_min is a bare number with no currency, so handing it 4500 for
+        a "$4500/мес" posting would read as 4500 ₽ and drop a well-paid job."""
+        from core.filters import PreScreen, SearchProfile
+
+        screen = PreScreen(SearchProfile.from_dict({"salary_min": 200000}))
+        usd = tg_scan.as_posting(
+            post("1", salary_from=4500, salary_to=4500, salary_currency="USD")
+        )
+        assert usd.salary_from is None
+        assert screen.check(usd).keep
+
+    def test_the_row_shows_the_band_not_just_that_one_exists(self):
+        rows = tg_scan.as_rows(
+            [(post("1", salary_from=180000, salary_to=250000, salary_currency="RUB"), "")]
+        )
+        assert rows[0]["salary_text"] == "180 000 — 250 000 ₽"
+
+    def test_a_mention_without_a_figure_still_says_so(self):
+        """"зп обсуждается" has no band but is not silence either."""
+        rows = tg_scan.as_rows([(post("1", has_salary=True), "")])
+        assert rows[0]["salary_text"] == "зарплата указана"
+
+    def test_the_apply_link_travels_to_the_row(self):
+        rows = tg_scan.as_rows([(post("1", apply_url="https://acme.ru/jobs/dev-42"), "")])
+        assert rows[0]["apply_url"] == "https://acme.ru/jobs/dev-42"

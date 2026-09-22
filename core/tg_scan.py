@@ -23,7 +23,15 @@ def as_posting(post: telegram.Post) -> habr_api.Posting:
 
     Divisions stay empty — Telegram states no specialization — so the
     specialization checks simply do not fire rather than guessing.
+
+    The salary band is carried over ONLY when it was parsed in the currency the
+    profile's threshold is written in. `salary_min` is a bare number with no
+    currency (core/filters.py), so handing it 4500 for a "$4500/мес" posting
+    would read as 4500 ₽ and drop a well-paid job. A foreign-currency band
+    therefore travels as text and the check does not fire — the same "don't
+    penalize missing data" default the rest of PreScreen uses.
     """
+    rub = post.salary_currency == "RUB"
     return habr_api.Posting(
         id=post.id,
         url=post.url,
@@ -32,7 +40,27 @@ def as_posting(post: telegram.Post) -> habr_api.Posting:
         qualification=post.grade,
         remote=post.remote,
         skills=post.stack,
+        salary_from=post.salary_from if rub else None,
+        salary_to=post.salary_to if rub else None,
+        salary_text=salary_label(post),
+        currency=post.salary_currency,
     )
+
+
+def salary_label(post: telegram.Post) -> str:
+    """What the post says about pay, for the row and for the rejection reason.
+
+    A drop reason reading "зарплата ниже порога: " with nothing after it tells
+    the user nothing, and the invariant is that every rejection explains itself.
+    """
+    if post.salary_from is None and post.salary_to is None:
+        return "зарплата указана" if post.has_salary else ""
+    sign = {"RUB": "₽", "USD": "$", "EUR": "€"}.get(post.salary_currency, post.salary_currency)
+    if post.salary_from and post.salary_to and post.salary_from != post.salary_to:
+        return f"{post.salary_from:,} — {post.salary_to:,} {sign}".replace(",", " ")
+    if not post.salary_from and post.salary_to:
+        return f"до {post.salary_to:,} {sign}".replace(",", " ")
+    return f"от {post.salary_from:,} {sign}".replace(",", " ")
 
 
 def collect(
@@ -102,11 +130,18 @@ def as_rows(kept: list[tuple[telegram.Post, str]]) -> list[dict]:
         rows.append({
             "id": post.id,
             "url": post.url,
+            # The post is where the vacancy was read; apply_url is where the
+            # user acts. Both travel: the product never applies for them, so
+            # losing the apply path would leave them to re-find it by hand.
+            "apply_url": post.apply_url,
             "title": post.title,
             "company": f"@{post.channel}",
             "qualification": post.grade,
             "remote": post.remote,
-            "salary_text": "зарплата указана" if post.has_salary else "",
+            "salary_text": salary_label(post),
+            "salary_from": post.salary_from,
+            "salary_to": post.salary_to,
+            "salary_currency": post.salary_currency,
             "skills": post.stack,
             "published": post.published,
             "source": "telegram",
