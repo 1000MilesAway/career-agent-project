@@ -9,8 +9,13 @@
 export type Verdict = 'apply' | 'apply_with_caveats' | 'skip'
 export type TriageBucket = 'worth' | 'maybe' | 'skip'
 export type ApplyStepName = 'letter' | 'tailor' | 'interview'
-/** The keys artifacts are stored under in /api/state. */
-export type ArtifactKind = 'cover_letter' | 'tailored_resume' | 'interview_prep'
+/** The keys artifacts are stored under in /api/state.
+ *
+ * The SAME strings as the step names: the server keys the map by
+ * `artifacts.kind`, which is what `/api/artifacts/{id}/{kind}` was called
+ * with. They were once spelled out longhand here, and every lookup silently
+ * returned undefined — a bought document never showed as bought. */
+export type ArtifactKind = ApplyStepName
 
 /** How a requirement weighs in the evaluation — the five bands from CO. */
 export type Importance = 'critical' | 'high' | 'meaningful' | 'preferred' | 'low_signal'

@@ -12,7 +12,6 @@ import { STATE_KEY, buyArtifact, evaluateVacancy } from '../api/hooks'
 import type {
   ApplyStepName,
   ArtifactContent,
-  ArtifactKind,
   CoverLetter,
   FoundVacancy,
   InterviewPrep,
@@ -28,13 +27,6 @@ import {
 } from './report'
 import { useToast } from './toast'
 import { Skeleton, rub } from './ui'
-
-/** Step name → the key the artifact is stored under in /api/state. */
-export const STEP_KEY: Record<ApplyStepName, ArtifactKind> = {
-  tailor: 'tailored_resume',
-  letter: 'cover_letter',
-  interview: 'interview_prep',
-}
 
 const STEP_TITLES: Record<ApplyStepName, string> = {
   tailor: 'Резюме под вакансию',
@@ -108,7 +100,7 @@ export function useDocumentPanel() {
 
   const openArtifact = useCallback(
     async (vacancy: FoundVacancy, step: ApplyStepName) => {
-      const stored = vacancy.artifacts?.[STEP_KEY[step]]
+      const stored = vacancy.artifacts?.[step]
       if (stored) {
         setPanel({
           title: `${STEP_TITLES[step]} — ${vacancy.title}`,

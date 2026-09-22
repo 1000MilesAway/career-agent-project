@@ -9,6 +9,19 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /srv
 
+# WeasyPrint renders the resume downloads and loads Pango/Cairo through cffi at
+# call time, not at install time: without these the image builds cleanly and
+# only the download fails, in production, with an OSError about a missing .so.
+# fonts-dejavu-core is not optional either — the default slim image ships no
+# font with Cyrillic, and the PDF would come out as a page of empty boxes.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz-subset0 \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \

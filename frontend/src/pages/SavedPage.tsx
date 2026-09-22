@@ -8,12 +8,19 @@
 
 import { useMemo } from 'react'
 import { useSWRConfig } from 'swr'
-import { STATE_KEY, setSaved, setStatus, useAppState } from '../api/hooks'
+import {
+  STATE_KEY,
+  downloadTailored,
+  setSaved,
+  setStatus,
+  useAppState,
+} from '../api/hooks'
 import type { ApplyStep, FoundVacancy } from '../api/types'
+import { DownloadButtons } from '../components/DownloadButtons'
 import { VacancyRow } from '../components/VacancyRow'
 import { useToast } from '../components/toast'
 import { Card, ErrorNote, Skeleton, rub } from '../components/ui'
-import { STEP_KEY, useDocumentPanel } from '../components/useDocumentPanel'
+import { useDocumentPanel } from '../components/useDocumentPanel'
 
 export function SavedPage() {
   const { data, isLoading, error } = useAppState()
@@ -96,6 +103,18 @@ export function SavedPage() {
                     ))
                   : null}
 
+                {/* The tailored CV is the one document that leaves the
+                    cabinet — it is what gets attached to an application. It
+                    appears only once bought: a download button over nothing
+                    would hand back an empty file. */}
+                {vacancy.artifacts?.tailor ? (
+                  <DownloadButtons
+                    small
+                    label={`Скачать резюме под «${vacancy.title}»`}
+                    onDownload={(fmt) => downloadTailored(vacancy.id, fmt)}
+                  />
+                ) : null}
+
                 {vacancy.score != null ? (
                   <>
                     <label className="sr-only" htmlFor={`status-${vacancy.id}`}>
@@ -146,7 +165,7 @@ function ArtifactButton({
   busy: boolean
   onClick: () => void
 }) {
-  const done = Boolean(vacancy.artifacts?.[STEP_KEY[step.step]])
+  const done = Boolean(vacancy.artifacts?.[step.step])
   return (
     <button
       className={done ? 'btn btn--ghost btn--small btn--done' : 'btn btn--ghost btn--small'}

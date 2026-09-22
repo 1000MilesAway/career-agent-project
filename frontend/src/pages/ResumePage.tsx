@@ -10,6 +10,7 @@ import { useSWRConfig } from 'swr'
 import {
   STATE_KEY,
   acceptSearchProfile,
+  downloadProfile,
   proposeSearchProfile,
   uploadResume,
   useAppState,
@@ -17,6 +18,7 @@ import {
 import type { ResumeProfile, SearchProfile } from '../api/types'
 import { useToast } from '../components/toast'
 import { Card, Chips, ErrorNote, Skeleton } from '../components/ui'
+import { DownloadButtons } from '../components/DownloadButtons'
 import { SearchProfileDiff } from '../components/SearchProfileDiff'
 
 export function ResumePage() {
@@ -132,7 +134,10 @@ export function ResumePage() {
 
 function ProfileCard({ profile }: { profile: ResumeProfile }) {
   return (
-    <Card title="Профиль">
+    <Card
+      title="Профиль"
+      actions={<DownloadButtons onDownload={downloadProfile} small label="Скачать резюме" />}
+    >
       <dl className="kv">
         <dt>Имя</dt>
         <dd>{profile.name || '—'}</dd>

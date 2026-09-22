@@ -8,7 +8,17 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import artifacts, auth, evaluations, health, jobs, resumes, state, vacancies
+from .api import (
+    artifacts,
+    auth,
+    evaluations,
+    export,
+    health,
+    jobs,
+    resumes,
+    state,
+    vacancies,
+)
 from .core.config import get_settings
 
 settings = get_settings()
@@ -46,6 +56,7 @@ for router in (
     vacancies.router,
     evaluations.router,
     artifacts.router,
+    export.router,
     jobs.router,
 ):
     app.include_router(router)

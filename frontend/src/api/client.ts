@@ -97,6 +97,71 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return data as T
 }
 
+/** Download a file from the API and hand it to the browser's save dialog.
+ *
+ * A plain <a href> cannot be used: the token travels in the Authorization
+ * header, and a bare link arrives unauthenticated — the user would get a 401
+ * page instead of a file. So the bytes are fetched like any other call and
+ * handed over as a blob.
+ *
+ * The name comes from Content-Disposition when the server sent one, because
+ * only the server knows whose CV this is and which vacancy it was tailored
+ * for. `fallbackName` covers a proxy that strips the header.
+ */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const response = await fetch(path, { headers })
+
+  if (response.status === 401) {
+    setToken(null)
+    throw new ApiError('Нужно войти заново', 401)
+  }
+  if (!response.ok) {
+    // An error body is JSON even on a route that normally returns bytes.
+    let data: unknown = null
+    try {
+      data = await response.json()
+    } catch {
+      data = null
+    }
+    throw new ApiError(errorMessage(data, response.status), response.status)
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  try {
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filenameFrom(response.headers.get('Content-Disposition')) || fallbackName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  } finally {
+    // Revoking immediately can cancel the download in some browsers; a tick
+    // later the navigation has already been handed off.
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+}
+
+/** The name out of Content-Disposition, preferring RFC 5987 `filename*`. */
+function filenameFrom(header: string | null): string | null {
+  if (!header) return null
+
+  const starred = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (starred) {
+    try {
+      return decodeURIComponent(starred[1])
+    } catch {
+      // Malformed percent-encoding: fall through to the plain form.
+    }
+  }
+
+  const plain = /filename="?([^";]+)"?/i.exec(header)
+  return plain ? plain[1] : null
+}
+
 /** FastAPI puts the message in `detail` — a string, or a list for a 422. */
 function errorMessage(data: unknown, status: number): string {
   const detail = (data as { detail?: unknown } | null)?.detail

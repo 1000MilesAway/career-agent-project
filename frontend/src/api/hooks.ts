@@ -7,7 +7,7 @@
  */
 
 import useSWR from 'swr'
-import { api, fetcher } from './client'
+import { api, download, fetcher } from './client'
 import type {
   ApplyStepName,
   AppState,
@@ -79,3 +79,13 @@ export const proposeSearchProfile = () =>
 /** A PUT of the whole object: what the user saw in the diff is what is saved. */
 export const acceptSearchProfile = (profile: SearchProfile) =>
   api<ResumeResponse>('/api/resumes/search-profile', { method: 'PUT', json: profile })
+
+/** Downloads. Free — they render JSON that was already paid for. */
+
+export type ExportFormat = 'pdf' | 'docx'
+
+export const downloadProfile = (fmt: ExportFormat) =>
+  download(`/api/export/resume.${fmt}`, `resume.${fmt}`)
+
+export const downloadTailored = (vacancyId: string, fmt: ExportFormat) =>
+  download(`/api/export/vacancy/${vacancyId}/tailor.${fmt}`, `resume.${fmt}`)
