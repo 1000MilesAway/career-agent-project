@@ -1,6 +1,7 @@
 {
   "_comment": "Checked 2026-09-17 against live t.me/s/ previews, ~20 posts each. See docs/decisions.md.",
   "_metrics": "vac = postings out of unique posts; profile = matched the CV profile in out/resume-state.json",
+  "_adjacent_why": "Opt-in, not part of a default run. sysadmin_jobs (added 2026-09-22) is here on two counts: it is admin/DevOps/Help Desk rather than the Python/Go profile core targets, and its newest post is 2026-07-22, so MAX_SILENCE_DAYS would report it silent anyway. Kept rather than rejected — 13 of its 20 posts are real vacancies, so it is worth re-checking.",
   "core": [
     {"name": "runello_rus_goland", "note": "Go; strict template 'Грейд:/Стек:'", "vac": 6, "profile": 5, "ads": 1},
     {"name": "runello_rus_backend", "note": "backend; same template", "vac": 6, "profile": 2, "ads": 0},
@@ -12,7 +13,8 @@
     {"name": "pythonrabota", "note": "short 'Формат/Компания' posts", "vac": 7, "profile": 6, "ads": 2},
     {"name": "opento_dev", "note": "#golang tags; many non-RF remote", "vac": 13, "profile": 5, "ads": 1},
     {"name": "workayte", "note": "broad IT, mixed formats", "vac": 17, "profile": 4, "ads": 2},
-    {"name": "backend_job_geeklink", "note": "going stale, last post 2026-06-01", "vac": 9, "profile": 4, "ads": 0}
+    {"name": "backend_job_geeklink", "note": "going stale, last post 2026-06-01", "vac": 9, "profile": 4, "ads": 0},
+    {"name": "datasciencejobs", "note": "DS/ML/AI; re-checked 2026-09-22 — 12/20 postings, the 7 course ads are caught by the promo filter. Was in rejected.course_ads on the 2026-09-17 survey; the channel changed.", "vac": 12, "profile": 0, "ads": 7}
   ],
   "special": [
     {"name": "ya_jobs", "note": "single employer (Yandex), long posts, no salaries", "vac": 18, "profile": 8},
@@ -22,6 +24,7 @@
     {"name": "evacuatejobs", "note": "links to remocate.co, no vacancy text in the post - nothing to parse", "vac": 13, "profile": 1}
   ],
   "adjacent": [
+    "sysadmin_jobs",
     "mobiledevjob", "forallmobile", "csharpdevjob", "forcsharp", "alljvmjobs",
     "job_javadevs", "kotlin_jobs", "scala_jobs_feed", "front_end_dev", "forgoandrust",
     "analyst_job_aggregator", "opento_crypto", "opento_igaming", "zarubezhom_jobs",
@@ -29,7 +32,8 @@
     "jobscode_infull", "theyseeku_it", "Solvery", "job_pythonz", "forpython"
   ],
   "rejected": {
-    "course_ads": ["job_python", "pythonpythonjobs", "backend_frontend_jobs", "it_vakansii_jobs", "datasciencejobs", "datascienceml_jobs"],
+    "_note": "datasciencejobs was here after the 2026-09-17 survey; re-checked 2026-09-22 it posts real vacancies and moved to core. A rejection is a snapshot, not a verdict.",
+    "course_ads": ["job_python", "pythonpythonjobs", "backend_frontend_jobs", "it_vakansii_jobs", "datascienceml_jobs"],
     "wrong_market": ["devsjobs", "geekjobs", "rusukrjobs", "vacanciesbest", "yojob"],
     "digest_format": ["habr_career", "geekjobs"],
     "empty_for_profile": ["hiddengurus", "Remoteit", "jobs_in_it_remoute", "headzio", "jc_it", "devs_it", "IT_jobs_apply", "progjob"],
