@@ -215,3 +215,46 @@ export interface SearchProfileProposal {
   current: SearchProfile
   proposed: SearchProfile
 }
+
+/** The chat. Mirrors app/api/chat.py.
+ *
+ * A turn where the model only asked for tools carries no text and is folded
+ * into the reply that followed, so every message here has something to show;
+ * `tools` says what was consulted on the way. */
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  text: string
+  created_at: string
+  tools: string[]
+}
+
+/** What the chat prepared and the user has to confirm.
+ *
+ * Nothing is written until it is accepted, and silence is refusal: a proposal
+ * nobody touches changes nothing. */
+export interface ChatProposal {
+  id: string
+  kind: 'profile_patch' | 'vacancy_status' | 'vacancy_saved'
+  status: 'pending' | 'accepted' | 'rejected'
+  arguments: {
+    op?: 'add_skill' | 'add_achievement' | 'set_field'
+    value?: string
+    company?: string
+    field?: string
+    rationale?: string
+    vacancy_id?: string
+    status?: string
+    saved?: boolean
+  }
+  current: Record<string, unknown> | null
+  proposed: Record<string, unknown> | null
+  rationale: string | null
+  created_at: string
+}
+
+export interface ChatResponse {
+  reply: string
+  messages: ChatMessage[]
+  proposals: ChatProposal[]
+  cost_rub: number
+}

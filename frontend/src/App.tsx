@@ -7,7 +7,7 @@
 
 import { lazy, Suspense } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { useAppState } from './api/hooks'
+import { useAppState, useProposals } from './api/hooks'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { Skeleton } from './components/ui'
@@ -24,6 +24,9 @@ const ResumePage = lazy(() =>
 const SearchPage = lazy(() =>
   import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })),
 )
+const ChatPage = lazy(() =>
+  import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })),
+)
 
 export function App() {
   const { token } = useAuth()
@@ -34,7 +37,9 @@ export function App() {
 function Cabinet() {
   const { logout } = useAuth()
   const { data } = useAppState()
+  const { data: proposals } = useProposals()
   const savedCount = data?.found.filter((row) => row.saved).length ?? 0
+  const pendingCount = proposals?.length ?? 0
 
   // Without a CV the scan refuses to work, so that is where a new account
   // starts. Once one is loaded, search is the page people come back to.
@@ -67,6 +72,12 @@ function Cabinet() {
         <NavLink className={navClass} to="/saved">
           Избранное{savedCount ? ` ${savedCount}` : ''}
         </NavLink>
+        {/* The count is what keeps a prepared change from being lost: the
+            user may leave the chat before deciding, and nothing is written
+            until they do. */}
+        <NavLink className={navClass} to="/chat">
+          Помощник{pendingCount ? ` ${pendingCount}` : ''}
+        </NavLink>
       </nav>
 
       <main>
@@ -75,6 +86,7 @@ function Cabinet() {
             <Route path="/resume" element={<ResumePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/saved" element={<SavedPage />} />
+            <Route path="/chat" element={<ChatPage />} />
             <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>
         </Suspense>

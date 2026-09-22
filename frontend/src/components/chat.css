@@ -1,0 +1,139 @@
+/* The chat screen. Plain CSS on the cabinet's own variables, so dark mode
+   comes for free — every colour below is a token defined in styles/index.css
+   for both themes. */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Tall enough to read a conversation, bounded so the composer stays on
+     screen without the page scrolling under it. */
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.chat__empty {
+  padding: 8px 0 4px;
+}
+
+.chat__example {
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat__example:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.chat__thinking {
+  margin: 0;
+  font-style: italic;
+}
+
+.bubble {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  max-width: 85%;
+  align-self: flex-start;
+}
+
+.bubble--me {
+  align-self: flex-end;
+  background: var(--card);
+  border-color: var(--accent);
+}
+
+.bubble__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  /* The model answers in plain text with its own line breaks; collapsing
+     them would run a numbered list into one paragraph. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* What the assistant consulted before answering. A chat that silently did
+   four things cannot be checked, so the steps stay visible — quietly. */
+.bubble__tools {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── A change waiting for a decision ──────────────────────────────────── */
+
+.proposal {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--card);
+}
+
+.proposal__head {
+  margin-bottom: 6px;
+}
+
+.proposal__kind {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.proposal__value {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.proposal__why {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* ── Composer ─────────────────────────────────────────────────────────── */
+
+.chat__compose {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+.chat__input {
+  flex: 1;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 42px;
+}
+
+.chat__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+@media (max-width: 560px) {
+  .bubble {
+    max-width: 100%;
+  }
+}

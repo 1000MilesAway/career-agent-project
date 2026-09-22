@@ -12,6 +12,9 @@ import type {
   ApplyStepName,
   AppState,
   ArtifactResponse,
+  ChatMessage,
+  ChatProposal,
+  ChatResponse,
   EvaluationResponse,
   ResumeResponse,
   ScanResult,
@@ -21,6 +24,8 @@ import type {
 } from './types'
 
 export const STATE_KEY = '/api/state'
+export const CHAT_KEY = '/api/chat'
+export const PROPOSALS_KEY = '/api/chat/proposals'
 
 export function useAppState(enabled = true) {
   return useSWR<AppState>(enabled ? STATE_KEY : null, fetcher, {
@@ -89,3 +94,35 @@ export const downloadProfile = (fmt: ExportFormat) =>
 
 export const downloadTailored = (vacancyId: string, fmt: ExportFormat) =>
   download(`/api/export/vacancy/${vacancyId}/tailor.${fmt}`, `resume.${fmt}`)
+
+/** The chat.
+ *
+ * Its own SWR keys rather than a slice of /api/state: the conversation grows
+ * on its own schedule and a scan revalidating the whole screen must not drag
+ * the message list with it.
+ */
+
+export function useChat(enabled = true) {
+  return useSWR<ChatMessage[]>(enabled ? CHAT_KEY : null, fetcher, {
+    // Nothing writes to the conversation except this tab.
+    revalidateOnFocus: false,
+  })
+}
+
+export function useProposals(enabled = true) {
+  return useSWR<ChatProposal[]>(enabled ? PROPOSALS_KEY : null, fetcher, {
+    revalidateOnFocus: false,
+  })
+}
+
+export const sendMessage = (text: string) =>
+  api<ChatResponse>('/api/chat', { method: 'POST', json: { text } })
+
+export const acceptProposal = (id: string) =>
+  api<ChatProposal>(`/api/chat/proposals/${id}/accept`, { method: 'POST' })
+
+export const rejectProposal = (id: string) =>
+  api<ChatProposal>(`/api/chat/proposals/${id}/reject`, { method: 'POST' })
+
+export const clearChat = () =>
+  api<{ messages: number; proposals: number }>('/api/chat/clear', { method: 'POST' })
