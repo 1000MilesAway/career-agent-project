@@ -97,6 +97,33 @@
     </div>
   </div>
 
+  <!-- 8. Вакансия со ссылками: первой идёт баннер компании (его брать нельзя,
+       иначе все посты канала схлопнутся в один url), затем реальная вакансия,
+       затем промо-блок канала. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/108">
+      <div class="tgme_widget_message_text js-message_text">
+        <a href="https://vymyshlennaya.ru/jobs/pages/benefits">Наши льготы</a><br/>Data-инженер<br/>Вилка: 220 000 - 280 000 руб<br/><br/>Выдуманная компания ищет инженера данных в команду витрин. Стек: Python, Airflow, ClickHouse, dbt.<br/><br/>Задачи: развивать пайплайны загрузки, следить за качеством данных, помогать аналитикам.<br/><br/>Откликнуться: <a href="https://vymyshlennaya.ru/jobs/vacancies/884412">на сайте</a><br/>Наш канал: <a href="https://t.me/jobchannel">подписаться</a>
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T16:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. Форвард из ЧУЖОГО канала: data-post называет другого владельца.
+       Это чужая публикация, читать её как пост этого канала нельзя. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="otherchannel/555">
+      <div class="tgme_widget_message_text js-message_text">
+        #вакансия Системный аналитик<br/><br/>Выдуманный интегратор ищет аналитика на проект миграции. Требования: BPMN, SQL, опыт сбора требований от двух лет. Формат гибридный, офис в Москве.<br/><br/>Писать: @chuzhoj_recruiter
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T17:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
 </section>
 </main>
 </body></html>

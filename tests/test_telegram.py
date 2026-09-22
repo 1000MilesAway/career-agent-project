@@ -41,7 +41,18 @@ def post(text: str, **kw) -> Post:
 
 class TestParsing:
     def test_reads_every_post_on_the_page(self):
-        assert len(parse_fixture()) == 7
+        # 9 blocks in the fixture, one of which is a forward from another
+        # channel and is not this channel's publication to read.
+        assert len(parse_fixture()) == 8
+
+    def test_a_forward_from_another_channel_is_not_ours(self):
+        """Its data-post names otherchannel — someone else published it.
+
+        Counting it makes a channel look productive when it only reposts, and
+        the same vacancy then arrives once per channel that forwarded it.
+        """
+        assert all(p.id.startswith("jobchannel/") for p in parse_fixture())
+        assert not any("Системный аналитик" in p.text for p in parse_fixture())
 
     def test_keeps_line_breaks(self):
         """<br> carries the layout: without it "Грейд: Middle+" merges into the next field."""
@@ -243,3 +254,116 @@ def test_grade_line_variants(name, expected):
 
     m = GRADE_RE.search(name)
     assert m and m.group(1).strip() == expected
+
+
+class TestApplyLink:
+    """Where the user actually applies. The product never applies for them, so
+    losing this link leaves them to re-find the apply path by hand."""
+
+    def test_takes_the_posting_link_not_the_banner(self):
+        """The banner comes FIRST in the post and would win a take-the-first rule.
+
+        ya_jobs prefixes every post with /jobs/pages/benefits — and since a url
+        is a dedup key, taking it would collapse a whole channel to one vacancy.
+        """
+        with_links = next(p for p in parse_fixture() if p.id == "jobchannel/108")
+        assert with_links.apply_url == "https://vymyshlennaya.ru/jobs/vacancies/884412"
+
+    def test_the_channel_promo_is_never_an_apply_link(self):
+        with_links = next(p for p in parse_fixture() if p.id == "jobchannel/108")
+        assert "t.me" not in with_links.apply_url
+
+    def test_the_permalink_stays_the_dedup_key(self):
+        """A repost of one vacancy shares the apply link; a digest shares it too."""
+        with_links = next(p for p in parse_fixture() if p.id == "jobchannel/108")
+        assert with_links.url == "https://t.me/jobchannel/108"
+
+    def test_a_post_without_links_has_no_apply_url(self):
+        plain = next(p for p in parse_fixture() if p.id == "jobchannel/101")
+        assert plain.apply_url == ""
+
+    def test_the_apply_link_reaches_the_model(self):
+        with_links = next(p for p in parse_fixture() if p.id == "jobchannel/108")
+        assert "Отклик: https://vymyshlennaya.ru/jobs/vacancies/884412" in with_links.as_text()
+
+
+class TestSalaryBand:
+    """Without a parsed band PreScreen.salary_min was inert on Telegram: every
+    post passed as "no salary data" whatever it paid."""
+
+    def test_reads_a_floor_from_the_prose(self):
+        tagged = next(p for p in parse_fixture() if p.id == "jobchannel/102")
+        assert (tagged.salary_from, tagged.salary_currency) == (250000, "RUB")
+
+    def test_reads_a_range(self):
+        with_links = next(p for p in parse_fixture() if p.id == "jobchannel/108")
+        assert (with_links.salary_from, with_links.salary_to) == (220000, 280000)
+
+    def test_a_post_stating_no_pay_gets_no_band(self):
+        plain = next(p for p in parse_fixture() if p.id == "jobchannel/101")
+        assert plain.salary_from is None and plain.salary_to is None
+
+
+class TestMarkupChanged:
+    """A markup change must not look like a quiet channel.
+
+    Both arrive downstream as "no posts", so without this a t.me redesign would
+    zero out every channel at once and the scan would report "ничего не найдено"
+    as if that were the truth.
+    """
+
+    def _fetch(self, html: str, monkeypatch):
+        import httpx
+
+        from core.sources import telegram as tg
+
+        class FakeResponse:
+            status_code = 200
+            text = html
+
+            def raise_for_status(self):
+                pass
+
+        class FakeClient:
+            def get(self, url):
+                return FakeResponse()
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(tg, "_client", lambda: FakeClient())
+        monkeypatch.setattr(httpx, "Client", lambda **kw: FakeClient())
+        return tg.fetch_channel("jobchannel")
+
+    def test_posts_present_but_none_parsed_raises(self, monkeypatch):
+        from core.sources.telegram import MarkupChanged
+
+        # The wrapper is there, the inner nodes we read are not.
+        html = """<div class="tgme_widget_message_wrap">
+            <div class="tgme_widget_message" data-post="jobchannel/1">
+              <div class="brand_new_text_class">Ищем Go-разработчика</div>
+            </div></div>"""
+        with pytest.raises(MarkupChanged):
+            self._fetch(html, monkeypatch)
+
+    def test_a_genuinely_empty_page_is_not_an_error(self, monkeypatch):
+        assert self._fetch("<html><body>nothing here</body></html>", monkeypatch) == []
+
+    def test_a_media_only_post_is_a_legitimate_drop(self, monkeypatch):
+        """A photo post: no text node, and nothing in the block but the counters."""
+        html = """<div class="tgme_widget_message_wrap">
+            <div class="tgme_widget_message" data-post="jobchannel/1">
+              <div class="tgme_widget_message_photo"></div>
+              <div class="tgme_widget_message_footer">
+                <span class="tgme_widget_message_views">1.2K</span>
+                <time datetime="2099-09-16T09:00:00+00:00">16 Sep</time>
+              </div>
+            </div></div>"""
+        assert self._fetch(html, monkeypatch) == []
+
+    def test_a_page_of_only_forwards_is_a_legitimate_drop(self, monkeypatch):
+        html = """<div class="tgme_widget_message_wrap">
+            <div class="tgme_widget_message" data-post="otherchannel/9">
+              <div class="tgme_widget_message_text">Ищем аналитика, писать @hr</div>
+            </div></div>"""
+        assert self._fetch(html, monkeypatch) == []
