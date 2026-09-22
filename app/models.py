@@ -284,3 +284,83 @@ class Job(Base, TimestampMixin):
         # The worker's only query: oldest queued job first.
         Index("ix_jobs_status_created", "status", "created_at"),
     )
+
+
+class ChatMessage(Base, TimestampMixin):
+    """One turn of a conversation, stored verbatim.
+
+    Verbatim matters: the API requires a tool result to follow the assistant
+    message that asked for it, so an assistant message carrying `tool_calls`
+    cannot be summarised or rewritten on the way in. `payload` therefore holds
+    the message as the model returned it, and `core.chat` reads it back
+    unchanged — that is why `parse_tool_calls` has to accept a plain dict as
+    well as the SDK's object.
+
+    History is per user, not per resume: the conversation survives a new CV.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # user | assistant | tool — the roles core.chat works with.
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    # What this turn cost. Zero for a user message and for a tool result;
+    # only the assistant's own replies are billed. Kept per message so
+    # "why did this conversation cost that much" stays answerable.
+    cost_rub: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
+
+    __table_args__ = (
+        # The only query: this user's conversation, oldest first.
+        Index("ix_chat_messages_user_created", "user_id", "created_at"),
+    )
+
+
+class Proposal(Base, TimestampMixin):
+    """A change the chat prepared, waiting for the user to accept it.
+
+    The product rule — the agent proposes, the user accepts — already exists as
+    `core/proposals.py`, which deliberately separates "generate" from "write":
+    `accept()` returns the new value and the caller writes it. This table is
+    that rule given a place to live, because a chat produces proposals in
+    batches and the user does not decide immediately.
+
+    `current` and `proposed` are stored side by side so the diff shown on
+    screen is built from what was true when the proposal was made. Silence is
+    refusal: a proposal nobody accepts changes nothing, ever.
+    """
+
+    __tablename__ = "proposals"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Which message proposed it, so the chat can show the decision in place.
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chat_messages.id", ondelete="SET NULL"), index=True
+    )
+
+    # Which tool asked for it: propose_profile_patch, set_vacancy_status, ...
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    # pending | accepted | rejected — the three states from core/proposals.py.
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+
+    # The arguments the model supplied, kept as given. A proposal that is
+    # rewritten before storage cannot be audited against what was shown.
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    current: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    proposed: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    rationale: Mapped[str | None] = mapped_column(Text)
+
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        # What the screen asks for: this user's undecided proposals.
+        Index("ix_proposals_user_status", "user_id", "status"),
+    )
