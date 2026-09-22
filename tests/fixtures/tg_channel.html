@@ -124,6 +124,32 @@
     </div>
   </div>
 
+  <!-- 10. Тизер: сам пост короче MIN_VACANCY_CHARS, описание за telegra.ph.
+       Проверяет и сбор ссылки, и сниженный порог длины. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/110">
+      <div class="tgme_widget_message_text js-message_text">
+        Python Backend AI-агенты<br/><a href="https://telegra.ph/Vydumannaya-vakansiya-09-17">Смотреть вакансию</a><br/>Формат: удалённо (РФ)<br/>Компания: Выдуманная-ИТ<br/>Вакансия открыта<br/>Связаться с HR — @vydumannyj_hr
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T18:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11. Тот же тизер, но ссылка на хост вне белого списка: фетчер туда не идёт,
+       и порог длины остаётся прежним, так что пост отсеивается как короткий. -->
+  <div class="tgme_widget_message_wrap">
+    <div class="tgme_widget_message" data-post="jobchannel/111">
+      <div class="tgme_widget_message_text js-message_text">
+        Data Engineer в выдуманный банк<br/><a href="https://example-tracker.invalid/job/42">Подробности</a><br/>Формат: гибрид<br/>Вакансия открыта, писать @vydumannyj_hr
+      </div>
+      <div class="tgme_widget_message_footer">
+        <time datetime="2099-09-16T19:00:00+00:00">16 Sep</time>
+      </div>
+    </div>
+  </div>
+
 </section>
 </main>
 </body></html>

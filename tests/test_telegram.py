@@ -8,9 +8,10 @@ would be just as flaky — the channel would answer differently tomorrow.
 
 from pathlib import Path
 
+import httpx
 import pytest
 
-from core.sources import tg_channels
+from core.sources import telegram, tg_channels
 from core.sources.telegram import (
     HTMLParser,
     Post,
@@ -41,9 +42,9 @@ def post(text: str, **kw) -> Post:
 
 class TestParsing:
     def test_reads_every_post_on_the_page(self):
-        # 9 blocks in the fixture, one of which is a forward from another
+        # 11 blocks in the fixture, one of which is a forward from another
         # channel and is not this channel's publication to read.
-        assert len(parse_fixture()) == 8
+        assert len(parse_fixture()) == 10
 
     def test_a_forward_from_another_channel_is_not_ours(self):
         """Its data-post names otherchannel — someone else published it.
@@ -367,3 +368,196 @@ class TestMarkupChanged:
               <div class="tgme_widget_message_text">Ищем аналитика, писать @hr</div>
             </div></div>"""
         assert self._fetch(html, monkeypatch) == []
+
+
+def _mock_client(handler) -> httpx.Client:
+    """An httpx client answered by `handler` instead of the network.
+
+    MockTransport ships with httpx, so pinning the fetching down costs no new
+    dependency — and CLAUDE.md forbids adding one.
+    """
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+
+
+def _html(body: str):
+    return lambda _r: httpx.Response(
+        200, headers={"content-type": "text/html"}, text=body
+    )
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    """Drop the politeness delay: these tests talk to MockTransport, not a host."""
+    monkeypatch.setattr(telegram.time, "sleep", lambda _s: None)
+
+
+class TestTeaserLinks:
+    """A teaser keeps the vacancy behind a link; the href must survive parsing."""
+
+    def test_the_description_link_is_collected(self):
+        teaser = parse_fixture()[8]
+        assert teaser.description_url == "https://telegra.ph/Vydumannaya-vakansiya-09-17"
+
+    def test_a_link_outside_the_whitelist_is_ignored(self):
+        assert parse_fixture()[9].description_url == ""
+
+    def test_a_plain_post_has_no_description_link(self):
+        assert parse_fixture()[0].description_url == ""
+
+    def test_the_apply_link_is_picked_independently(self):
+        """apply_link refuses telegra.ph, so a teaser has a description but no apply url."""
+        teaser = parse_fixture()[8]
+        assert teaser.description_url
+        assert teaser.apply_url == ""
+
+
+class TestTeaserLength:
+    """MIN_VACANCY_CHARS exists to kill asides — it must not kill teasers."""
+
+    def test_a_short_teaser_with_a_link_survives(self):
+        teaser = parse_fixture()[8]
+        assert len(teaser.text) < telegram.MIN_VACANCY_CHARS
+        ok, why = looks_like_vacancy(teaser)
+        assert ok, why
+
+    def test_a_short_teaser_without_a_listed_link_is_still_dropped(self):
+        ok, why = looks_like_vacancy(parse_fixture()[9])
+        assert not ok
+        assert "короткий" in why
+
+    def test_a_short_aside_is_still_dropped(self):
+        """"День программиста" has no link and must stay out."""
+        ok, why = looks_like_vacancy(parse_fixture()[4])
+        assert not ok
+        assert "короткий" in why
+
+    def test_the_teaser_floor_skips_only_the_length_check(self):
+        """Everything else in looks_like_vacancy still has to pass."""
+        p = post("Смотреть", description_url="https://telegra.ph/x")
+        ok, why = looks_like_vacancy(p)
+        assert not ok
+        assert "короткий" in why
+
+
+class TestReadableText:
+    def test_chrome_is_stripped(self):
+        text = telegram._readable_text(
+            "<html><body><nav>меню</nav><script>x=1</script>"
+            "<article><p>Требования: Python от трёх лет</p></article>"
+            "<footer>подвал</footer></body></html>"
+        )
+        assert "Требования: Python от трёх лет" in text
+        assert "меню" not in text
+        assert "подвал" not in text
+        assert "x=1" not in text
+
+    def test_body_is_used_when_there_is_no_article(self):
+        assert "Описание" in telegram._readable_text("<html><body><div>Описание</div></body></html>")
+
+    def test_an_empty_page_gives_empty_text(self):
+        assert telegram._readable_text("") == ""
+
+
+class TestFetchDescription:
+    def test_an_unlisted_host_is_refused_before_any_request(self):
+        """No transport is touched: the whitelist check comes first."""
+        assert telegram.fetch_description("https://example-tracker.invalid/x") == ""
+
+    def test_a_listed_host_is_read(self):
+        got = telegram.fetch_description(
+            "https://telegra.ph/x",
+            client=_mock_client(_html("<article>Требования: Python</article>")),
+        )
+        assert "Требования: Python" in got
+
+    def test_a_404_gives_empty_not_an_exception(self):
+        got = telegram.fetch_description(
+            "https://telegra.ph/x", client=_mock_client(lambda _r: httpx.Response(404))
+        )
+        assert got == ""
+
+    def test_a_timeout_gives_empty(self):
+        """telegra.ph being slow must not sink the scan."""
+        def handler(_r):
+            raise httpx.ConnectTimeout("too slow")
+
+        assert telegram.fetch_description("https://telegra.ph/x", client=_mock_client(handler)) == ""
+
+    def test_a_non_html_response_is_refused(self):
+        """A PDF would arrive as mojibake and be scored as if it were text."""
+        handler = lambda _r: httpx.Response(  # noqa: E731
+            200, headers={"content-type": "application/pdf"}, content=b"%PDF-1.4"
+        )
+        assert telegram.fetch_description("https://telegra.ph/x", client=_mock_client(handler)) == ""
+
+    def test_a_long_page_is_capped(self):
+        got = telegram.fetch_description(
+            "https://telegra.ph/x",
+            client=_mock_client(_html("<article>" + ("текст " * 20000) + "</article>")),
+        )
+        assert len(got) == telegram.MAX_EXTERNAL_CHARS
+
+
+class TestFetchExternals:
+    def test_posts_without_a_link_are_not_requested(self):
+        """The handler would raise if it were called at all."""
+        plain = post("Обычный пост")
+        assert telegram.fetch_externals([plain], client=_mock_client(lambda _r: 1 / 0)) == 0
+
+    def test_the_description_is_filled_in(self, no_sleep):
+        p = post("Тизер", description_url="https://telegra.ph/a")
+        assert telegram.fetch_externals(
+            [p], client=_mock_client(_html("<article>Требования: Python</article>"))
+        ) == 1
+        assert "Требования: Python" in p.description_text
+
+    def test_a_failed_fetch_leaves_the_post_alone(self, no_sleep):
+        """One unreadable page must not fake a description or sink the scan."""
+        p = post("Тизер", description_url="https://telegra.ph/a")
+        assert telegram.fetch_externals(
+            [p], client=_mock_client(lambda _r: httpx.Response(500))
+        ) == 0
+        assert p.description_text == ""
+
+    def test_an_already_filled_post_is_not_refetched(self):
+        p = post("Тизер", description_url="https://telegra.ph/a", description_text="уже есть")
+        assert telegram.fetch_externals([p], client=_mock_client(lambda _r: 1 / 0)) == 0
+
+    def test_limit_caps_the_requests(self, no_sleep):
+        calls = []
+
+        def handler(request):
+            calls.append(str(request.url))
+            return httpx.Response(200, headers={"content-type": "text/html"},
+                                  text="<article>описание</article>")
+
+        posts = [post("Тизер", description_url="https://telegra.ph/a") for _ in range(5)]
+        assert telegram.fetch_externals(posts, limit=2, client=_mock_client(handler)) == 2
+        assert len(calls) == 2
+
+
+class TestFullText:
+    def test_the_description_is_appended_and_labelled(self):
+        """The model must be able to tell the channel's lines from the employer's page."""
+        p = post("Python Backend",
+                 description_url="https://telegra.ph/x",
+                 description_text="Требования: Python, PostgreSQL")
+        text = p.full_text()
+        assert text.startswith("Python Backend")
+        assert "Требования: Python, PostgreSQL" in text
+        assert "https://telegra.ph/x" in text
+
+    def test_without_a_description_the_text_is_unchanged(self):
+        p = post("Обычный пост")
+        assert p.full_text() == "Обычный пост"
+
+    def test_a_link_with_no_text_read_changes_nothing(self):
+        """The link alone is not a description: the fetch may well have failed."""
+        p = post("Тизер", description_url="https://telegra.ph/x")
+        assert p.full_text() == "Тизер"
+
+    def test_as_text_carries_the_description_through(self):
+        p = post("Тизер",
+                 description_url="https://telegra.ph/x",
+                 description_text="Требования: Python")
+        assert "Требования: Python" in p.as_text()

@@ -170,3 +170,63 @@ class TestSalaryReachesTheFilter:
     def test_the_apply_link_travels_to_the_row(self):
         rows = tg_scan.as_rows([(post("1", apply_url="https://acme.ru/jobs/dev-42"), "")])
         assert rows[0]["apply_url"] == "https://acme.ru/jobs/dev-42"
+
+
+class TestEnrichment:
+    """Linked descriptions cost no money, but they do cost someone else's bandwidth."""
+
+    @pytest.fixture
+    def spy(self, monkeypatch):
+        """Record which posts were handed to the fetcher, and fill them in."""
+        seen: list[list[str]] = []
+
+        def fake(posts, limit=None, client=None):
+            targets = [p for p in posts if p.description_url and not p.description_text]
+            seen.append([p.id for p in targets])
+            for p in targets:
+                p.description_text = "полное описание вакансии"
+            return len(targets)
+
+        monkeypatch.setattr(telegram, "fetch_externals", fake)
+        return seen
+
+    def test_only_survivors_are_fetched(self, no_network, spy):
+        """A dropped post is never evaluated: fetching its page is pure waste."""
+        no_network([
+            post("1", description_url="https://telegra.ph/a"),
+            post("2", title="Бариста в кофейню", description_url="https://telegra.ph/b"),
+        ])
+        r = tg_scan.collect(
+            channels=["chan"],
+            search_profile={"queries": ["python"], "positive": ["разработчик"]},
+        )
+        assert [p.id for p, _ in r["kept"]] == ["1"]
+        assert spy == [["1"]]
+
+    def test_enrich_can_be_turned_off(self, no_network, spy):
+        no_network([post("1", description_url="https://telegra.ph/a")])
+        r = tg_scan.collect(channels=["chan"], enrich=False)
+        assert spy == []
+        assert r["enriched"] == 0
+
+    def test_the_count_is_reported(self, no_network, spy):
+        no_network([post("1", description_url="https://telegra.ph/a")])
+        assert tg_scan.collect(channels=["chan"])["enriched"] == 1
+
+    def test_the_description_reaches_the_row_text(self, no_network, spy):
+        """The evaluation reads the row text: a description stopping here bought nothing."""
+        no_network([post("1", description_url="https://telegra.ph/a")])
+        rows = tg_scan.as_rows(tg_scan.collect(channels=["chan"])["kept"])
+        assert "полное описание вакансии" in rows[0]["text"]
+        assert rows[0]["description_url"] == "https://telegra.ph/a"
+
+    def test_the_row_url_still_points_at_the_post(self, no_network, spy):
+        """The permalink is the dedup key and what the user opens — not a swap."""
+        no_network([post("1", description_url="https://telegra.ph/a")])
+        rows = tg_scan.as_rows(tg_scan.collect(channels=["chan"])["kept"])
+        assert rows[0]["url"] == "https://t.me/chan/1"
+
+    def test_a_post_with_no_description_says_so_plainly(self, no_network, spy):
+        no_network([post("1")])
+        rows = tg_scan.as_rows(tg_scan.collect(channels=["chan"])["kept"])
+        assert rows[0]["description_url"] == ""

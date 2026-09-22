@@ -257,6 +257,10 @@ async def collect_telegram(
     The posting body is captured here and stored: t.me has no page to fetch a
     vacancy from later, so a Telegram row without its text can never be
     evaluated. This is the one source where losing raw_text loses the vacancy.
+
+    `full_text()` rather than `.text`, so a teaser stores the description that
+    was read from its link. Storing the bare post would throw the fetched page
+    away at the last step and leave the evaluation judging four lines again.
     """
     result = await run_in_threadpool(
         tg_scan.collect,
@@ -268,12 +272,20 @@ async def collect_telegram(
 
     kept = [(tg_scan.as_posting(post), "") for post, _ in result["kept"]]
     dropped = [(tg_scan.as_posting(post), why) for post, why in result["dropped"]]
-    texts = {post.id: post.text for post, _ in result["kept"] + result["dropped"] if post.text}
+    texts = {
+        post.id: post.full_text()
+        for post, _ in result["kept"] + result["dropped"]
+        if post.text
+    }
 
     counts = await persist(session, user_id, "telegram", kept, dropped, texts=texts)
     return {
         "collected": result["collected"],
         "channels": result["channels"],
+        # How many teasers gave up their description. Worth reporting: a scan
+        # that read none of them is judging headlines, and the user should be
+        # able to see that happen rather than wonder at weak scores.
+        "enriched": result.get("enriched", 0),
         # Channels that answered but are unusable — silent, or gone. Reported
         # rather than swallowed: a scan that quietly returns less is a scan
         # nobody can debug.

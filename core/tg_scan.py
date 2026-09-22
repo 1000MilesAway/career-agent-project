@@ -63,6 +63,12 @@ def salary_label(post: telegram.Post) -> str:
     return f"от {post.salary_from:,} {sign}".replace(",", " ")
 
 
+# How many linked descriptions one scan may read. Free in money — this is HTTP,
+# not the model — but each is a request to someone else's host, so it is capped
+# rather than left to grow with the channel list.
+MAX_ENRICHED = 30
+
+
 def collect(
     channels: list[str] | None = None,
     groups: tuple[str, ...] = ("core",),
@@ -70,11 +76,17 @@ def collect(
     max_silence_days: int = telegram.MAX_SILENCE_DAYS,
     keep_all: bool = False,
     search_profile: dict | None = None,
+    enrich: bool = True,
 ) -> dict[str, Any]:
-    """Collect, then pre-screen when a search profile exists.
+    """Collect, pre-screen, then read the descriptions the survivors link to.
 
     Without a profile this is a collection run, which is still the useful half:
     nothing is dropped that the user never configured.
+
+    ORDER MATTERS. The descriptions are fetched LAST, over the survivors only.
+    Money is not the constraint here, someone else's bandwidth is — and the
+    pipeline's rule that the costly stage runs on the short list covers that
+    just as much as it covers paid calls.
     """
     names = channels or tg_channels.channel_names(groups=groups)
     if not names:
@@ -99,6 +111,12 @@ def collect(
         decision = screen.check(as_posting(p))
         (kept if decision.keep else dropped).append((p, decision.reason))
 
+    # Survivors only: a dropped post is never evaluated, so fetching its page
+    # would spend a stranger's bandwidth on something nobody will read.
+    enriched = (
+        telegram.fetch_externals([p for p, _ in kept], limit=MAX_ENRICHED) if enrich else 0
+    )
+
     return {
         "channels": names,
         "collected": len(posts),
@@ -107,6 +125,7 @@ def collect(
         "dropped": dropped,
         "filtered": True,
         "filtered_by": "profile" if search_profile else "starter",
+        "enriched": enriched,
     }
 
 
@@ -145,8 +164,13 @@ def as_rows(kept: list[tuple[telegram.Post, str]]) -> list[dict]:
             "skills": post.stack,
             "published": post.published,
             "source": "telegram",
+            # Where the description was read, when the post only teased it. The
+            # row's `url` stays the permalink — that is what the user opens —
+            # and this says where the requirements actually came from.
+            "description_url": post.description_url,
             # The post text is the vacancy: there is no page to fetch later, so
-            # an evaluation has to read what was collected here.
+            # an evaluation has to read what was collected here. as_text() folds
+            # in the linked description when one was read.
             "text": post.as_text(),
         })
     return rows

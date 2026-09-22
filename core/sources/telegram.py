@@ -20,6 +20,17 @@ A Telegram post is flat text, so this module has to reconstruct what it can:
 `Post.title` is the first non-hashtag line, and `looks_like_vacancy()` throws out
 what is not an employer's job ad at all. Both are guesses, and both are cheap —
 no model is called here.
+
+MANY POSTS ARE ONLY A TEASER. A growing share of channels post four lines —
+role, format, company, pay — and leave the description behind a link
+("Смотреть вакансию" → telegra.ph). The evaluation then judged 250 characters
+of headline while the requirements sat one hop away. `fetch_externals()`
+follows that link; DESCRIPTION_HOSTS says which ones and why it is a whitelist.
+
+Note the division of labour with `apply_link`: that module picks where the user
+APPLIES, and deliberately refuses telegra.ph — nobody applies through an
+article. This one picks where the vacancy is DESCRIBED, which is frequently
+exactly telegra.ph. Same hrefs, two different questions.
 """
 
 from __future__ import annotations
@@ -33,7 +44,7 @@ from typing import Any
 import httpx
 from selectolax.parser import HTMLParser
 
-from . import apply_link, salary_text
+from . import apply_link, description_link, salary_text
 
 BASE = "https://t.me"
 UA = (
@@ -52,6 +63,15 @@ MAX_SILENCE_DAYS = 30
 # Below this a post is an aside, a poll or a greeting, never a job ad. The
 # shortest real vacancy seen in the 2026-09-17 survey was ~250 characters.
 MIN_VACANCY_CHARS = 200
+
+# A teaser is short BECAUSE its description lives behind a link, so the length
+# check would throw away exactly the posts we now know how to read. It still has
+# to pass every other check in looks_like_vacancy().
+MIN_TEASER_CHARS = 60
+
+# The fetched page is appended to the post, never substituted for it. Capped so
+# one long article cannot crowd the other vacancies out of a triage batch.
+MAX_EXTERNAL_CHARS = 8000
 
 # The post is a candidate advertising themselves, not an employer hiring. Channels
 # like django_jobs_board are half these, and they must not reach the report.
@@ -129,6 +149,12 @@ class Post:
     salary_from: int | None = None
     salary_to: int | None = None
     salary_currency: str = ""
+    # Where the vacancy is DESCRIBED, when the post only teases it. Distinct
+    # from apply_url: nobody applies through a telegra.ph article, and the two
+    # are frequently different links in the same post.
+    description_url: str = ""
+    # Filled by fetch_externals(); empty means "not fetched" or "fetch failed".
+    description_text: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -146,7 +172,27 @@ class Post:
             "salary_to": self.salary_to,
             "salary_currency": self.salary_currency,
             "published": self.published,
+            "description_url": self.description_url,
         }
+
+    def full_text(self) -> str:
+        """The post, plus the linked description when one was read.
+
+        Labelled rather than merged: the model has to be able to tell the
+        channel's own four lines from the employer's page, and whoever reads the
+        stored text later needs to know where the bulk of it came from.
+
+        Separate from as_text() because this is the RAW vacancy body — what the
+        product stores and evaluates — while as_text() also prepends the fields
+        the pipeline reconstructed.
+        """
+        if not self.description_text:
+            return self.text
+        return (
+            f"{self.text}\n\n"
+            f"--- Полное описание со страницы {self.description_url} ---\n"
+            f"{self.description_text}"
+        )
 
     def as_text(self) -> str:
         """The plain text the LLM pipeline expects, mirroring habr.Vacancy.as_text."""
@@ -159,7 +205,7 @@ class Post:
         if self.apply_url:
             parts.append(f"Отклик: {self.apply_url}")
         parts.append("")
-        parts.append(self.text)
+        parts.append(self.full_text())
         return "\n".join(parts)
 
 
@@ -239,7 +285,12 @@ def _parse_post(node, channel: str) -> Post | None:
     hrefs = [
         a.attributes.get("href") or "" for a in body.css("a[href]")
     ]
-    link = apply_link.pick([h for h in hrefs if h])
+    hrefs = [h for h in hrefs if h]
+    link = apply_link.pick(hrefs)
+    # The same anchors answer a second question: where the vacancy is described.
+    # A teaser's "Смотреть вакансию" is usually NOT the apply link — apply_link
+    # refuses telegra.ph on purpose — so the two are picked independently.
+    described_at = description_link.pick(hrefs)
 
     grade = GRADE_RE.search(text)
     stack = STACK_RE.search(text)
@@ -261,6 +312,7 @@ def _parse_post(node, channel: str) -> Post | None:
         salary_from=band.min if band else None,
         salary_to=band.max if band else None,
         salary_currency=band.currency if band else "",
+        description_url=described_at,
     )
 
 
@@ -274,7 +326,10 @@ def looks_like_vacancy(post: Post) -> tuple[bool, str]:
     Salary is deliberately NOT required. Telegram states pay far less often than
     Habr, and making it mandatory dropped 6 of 9 genuine vacancies in the survey.
     """
-    if len(post.text) < MIN_VACANCY_CHARS:
+    # A teaser is short because its description is one link away, so the length
+    # floor drops for it. Every other check below still applies unchanged.
+    floor = MIN_TEASER_CHARS if post.description_url else MIN_VACANCY_CHARS
+    if len(post.text) < floor:
         return False, "слишком короткий пост"
     # Checked before hiring words: "#резюме ... ищу работу" contains both, and the
     # seeker's own wording must win.
@@ -291,6 +346,104 @@ def looks_like_vacancy(post: Post) -> tuple[bool, str]:
     if not CONTACT_RE.search(post.text):
         return False, "нет контакта для отклика"
     return True, ""
+
+
+def _readable_text(html: str) -> str:
+    """The body text of a description page, chrome stripped.
+
+    Deliberately generic. The whitelist spans telegra.ph, Teletype, Notion and
+    two job boards, and a per-host extractor for each would rot the moment any
+    of them redesigns. <article> when it exists, <main> next, <body> otherwise:
+    that finds the description everywhere, at the cost of some navigation text.
+    """
+    tree = HTMLParser(html)
+    for bad in tree.css("script, style, nav, header, footer, noscript, aside"):
+        bad.decompose()
+    node = tree.css_first("article") or tree.css_first("main") or tree.css_first("body")
+    if node is None:
+        return ""
+    return re.sub(r"\n{3,}", "\n\n", node.text(separator="\n", strip=True)).strip()
+
+
+def _description_client() -> httpx.Client:
+    # Redirects followed, unlike _client(): telegra.ph and the boards redirect
+    # legitimately, and here a 302 carries none of the "this is a chat" meaning
+    # it has on t.me.
+    return httpx.Client(
+        headers={"User-Agent": UA, "Accept-Language": "ru,en;q=0.9"},
+        timeout=20.0,
+        follow_redirects=True,
+    )
+
+
+def fetch_description(url: str, client: httpx.Client | None = None) -> str:
+    """Read one linked description page. Free in money, ~1 s in time.
+
+    Raises nothing. A page we could not read must not sink a scan, so every
+    failure comes back as "" and the post keeps its own text — which is exactly
+    the behaviour before this stage existed.
+    """
+    if not description_link.is_description_link(url):
+        return ""
+
+    own = client is None
+    client = client or _description_client()
+    try:
+        r = client.get(url)
+        if r.status_code != 200:
+            return ""
+        # A PDF would arrive as mojibake and be scored as though it were text.
+        if "html" not in r.headers.get("content-type", "").lower():
+            return ""
+        text = _readable_text(r.text)
+    except httpx.HTTPError:
+        return ""
+    except Exception:
+        # A malformed page tripping the parser is one lost description, not a
+        # lost scan.
+        return ""
+    finally:
+        if own:
+            client.close()
+
+    return text[:MAX_EXTERNAL_CHARS]
+
+
+def fetch_externals(
+    posts: list[Post],
+    limit: int | None = None,
+    client: httpx.Client | None = None,
+) -> int:
+    """Fill in `description_text` for posts that link to a description host.
+
+    Costs no model money, but it is one HTTP request per post to someone else's
+    host — so callers run it AFTER the free filters, over the survivors, never
+    over everything collected. Returns how many posts gained a description.
+
+    `limit` caps the requests per scan: without it a wide channel list would
+    fire a hundred requests at telegra.ph in a row and earn the block it got.
+    """
+    targets = [p for p in posts if p.description_url and not p.description_text]
+    if limit is not None:
+        targets = targets[:limit]
+    if not targets:
+        return 0
+
+    own = client is None
+    client = client or _description_client()
+    filled = 0
+    try:
+        for i, post in enumerate(targets):
+            text = fetch_description(post.description_url, client=client)
+            if text:
+                post.description_text = text
+                filled += 1
+            if i < len(targets) - 1:
+                time.sleep(DELAY_SECONDS)
+    finally:
+        if own:
+            client.close()
+    return filled
 
 
 def _channel_is_silent(posts: list[Post], max_days: int) -> bool:
