@@ -24,7 +24,7 @@ from ..services.spend import charge, ensure_can_spend
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
 # What read_document can actually turn into text.
-ALLOWED_SUFFIXES = {".pdf", ".doc", ".docx", ".txt", ".md"}
+ALLOWED_SUFFIXES = {".pdf", ".doc", ".docx", ".rtf", ".txt", ".md"}
 MAX_BYTES = 10 * 1024 * 1024
 
 
@@ -81,8 +81,8 @@ async def upload(
         try:
             text = await run_in_threadpool(read_document, Path(tmp.name))
         except DocError as exc:
-            # Word 95, password-protected, RTF under a .doc name: the user can
-            # fix each by resaving, so they get the reason instead of a 500.
+            # Word 95 or password-protected: the user can fix either by
+            # resaving, so they get the reason instead of a 500.
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Не удалось прочитать .doc: {exc}",

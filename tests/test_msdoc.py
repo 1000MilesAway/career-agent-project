@@ -55,12 +55,6 @@ class TestRefusesWithAReason:
         with pytest.raises(DocError, match="Word 95"):
             read_doc(FIXTURES / "Word6.doc")
 
-    def test_rtf_under_a_doc_name(self, tmp_path):
-        path = tmp_path / "cv.doc"
-        path.write_bytes(b"{\\rtf1\\ansi\\ansicpg1251 \\'c8\\'e2\\'e0\\'ed}")
-        with pytest.raises(DocError, match="RTF"):
-            read_doc(path)
-
     def test_not_a_word_file(self):
         with pytest.raises(DocError):
             extract_text(b"plain text, not a compound file" * 40)

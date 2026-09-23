@@ -17,6 +17,8 @@ import re
 import struct
 from pathlib import Path
 
+from .rtf import rtf_to_text
+
 CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 ZIP_MAGIC = b"PK\x03\x04"
 RTF_MAGIC = b"{\\rtf"
@@ -253,9 +255,10 @@ def extract_text(data: bytes) -> str:
 def read_doc(path: Path) -> str:
     """Read a .doc upload, including the two common impostors.
 
-    Files named .doc are often something else: a .docx renamed by the user, or
-    RTF that job sites and 1C export under a .doc name. The DOCX case is read
-    as DOCX; RTF gets a clear message instead of a claim the file is broken.
+    Files named .doc are often something else: RTF, which 1C, HR systems and
+    job sites export under a .doc name, or a .docx the user renamed. Both are
+    read as what they are, since Word opens them without a word of warning
+    and the user has no reason to think the file is not a .doc.
     """
     data = path.read_bytes()
     if data.startswith(ZIP_MAGIC):
@@ -263,5 +266,5 @@ def read_doc(path: Path) -> str:
 
         return "\n".join(p.text for p in docx.Document(str(path)).paragraphs).strip()
     if data.lstrip().startswith(RTF_MAGIC):
-        raise DocError("это RTF с расширением .doc — сохраните резюме как DOCX или PDF")
+        return rtf_to_text(data)
     return extract_text(data)

@@ -9,7 +9,7 @@
 | Аутентификация | email + пароль (bcrypt), сессия JWT; пользователей заводит админ CLI | в MVP нет регистрации и почты |
 | Очередь LLM-задач | таблица `jobs` в Postgres + воркер-процесс (polling) | оценка 20–60 с, страница показывает прогресс; Redis на MVP не нужен |
 | LLM | DeepSeek V4.1 Flash, библиотека `openai` с `base_url=https://api.deepseek.com` | цена, vision, JSON-режим, доступен из РФ |
-| Парсинг файлов | pymupdf (PDF), python-docx (DOCX), `core/msdoc.py` на stdlib (DOC); структуру извлекает модель | не писать свой парсер; `.doc` — исключение, см. decisions.md 2026-09-23 |
+| Парсинг файлов | pymupdf (PDF), python-docx (DOCX), `core/msdoc.py` и `core/rtf.py` на stdlib (DOC, RTF); структуру извлекает модель | не писать свой парсер; `.doc`/`.rtf` — исключение, см. decisions.md 2026-09-23 |
 | PDF резюме | HTML-шаблон → WeasyPrint (или Typst) | ATS-читаемый одноколоночный шаблон |
 | Оплата | ЮKassa, вместе с публичной регистрацией | не в MVP |
 | Хостинг | docker compose на VPS; DeepSeek доступен из РФ → сервер может быть в РФ | упрощает 152-ФЗ |
@@ -33,7 +33,7 @@ Browser (React SPA) ──JSON/HTTPS──▶ FastAPI (REST) ──▶ Postgres
 - `app/cli` — административные команды, в MVP главная — создание пользователя.
 - `app/services/llm` — тонкая обёртка: `complete(prompt, schema) -> pydantic`, провайдер конфигом.
 - `app/services/pipeline` — evaluate, tailor_resume, cover_letter, interview_prep, parse_resume.
-- `app/services/files` — PDF/DOC/DOCX → text, HTML → PDF.
+- `app/services/files` — PDF/DOC/DOCX/RTF → text, HTML → PDF.
 - `app/worker` — цикл выборки `jobs` со статусом `queued`, выполнение, запись результата.
 - `frontend/` — отдельное React-приложение (Vite), собирается в статику, раздаётся nginx.
 
