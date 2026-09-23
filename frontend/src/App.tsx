@@ -5,28 +5,21 @@
  * minute, and a refresh should not dump the user back on the resume page.
  */
 
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { useAppState, useProposals } from './api/hooks'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { Skeleton } from './components/ui'
+import { lazyPage } from './lazyPage'
 import './App.css'
 
 // The shortlist is the least-visited page and pulls in the artifact views, so
 // it loads when it is opened rather than on first paint.
-const SavedPage = lazy(() =>
-  import('./pages/SavedPage').then((m) => ({ default: m.SavedPage })),
-)
-const ResumePage = lazy(() =>
-  import('./pages/ResumePage').then((m) => ({ default: m.ResumePage })),
-)
-const SearchPage = lazy(() =>
-  import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })),
-)
-const ChatPage = lazy(() =>
-  import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })),
-)
+const SavedPage = lazyPage(() => import('./pages/SavedPage').then((m) => m.SavedPage))
+const ResumePage = lazyPage(() => import('./pages/ResumePage').then((m) => m.ResumePage))
+const SearchPage = lazyPage(() => import('./pages/SearchPage').then((m) => m.SearchPage))
+const ChatPage = lazyPage(() => import('./pages/ChatPage').then((m) => m.ChatPage))
 
 export function App() {
   const { token } = useAuth()
