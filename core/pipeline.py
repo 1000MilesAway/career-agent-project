@@ -13,7 +13,7 @@ from .sources.habr import fetch_vacancy, is_habr_url
 
 
 def read_document(path: Path) -> str:
-    """PDF/DOCX/TXT -> plain text."""
+    """PDF/DOCX/DOC/TXT -> plain text."""
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         import pymupdf
@@ -24,6 +24,10 @@ def read_document(path: Path) -> str:
         import docx
 
         return "\n".join(p.text for p in docx.Document(str(path)).paragraphs).strip()
+    if suffix == ".doc":
+        from .msdoc import read_doc
+
+        return read_doc(path)
     if suffix in {".txt", ".md"}:
         return path.read_text(encoding="utf-8").strip()
     raise ValueError(f"неподдерживаемый формат: {path.suffix}")

@@ -14,6 +14,7 @@ from sqlalchemy import select, update
 
 from core.defaults import starter_profile
 from core.llm import LLM, Ledger
+from core.msdoc import DocError
 from core.pipeline import build_search_profile, parse_resume, read_document
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
@@ -23,7 +24,7 @@ from ..services.spend import charge, ensure_can_spend
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
 # What read_document can actually turn into text.
-ALLOWED_SUFFIXES = {".pdf", ".docx", ".txt", ".md"}
+ALLOWED_SUFFIXES = {".pdf", ".doc", ".docx", ".txt", ".md"}
 MAX_BYTES = 10 * 1024 * 1024
 
 
@@ -77,7 +78,15 @@ async def upload(
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
         tmp.write(payload)
         tmp.flush()
-        text = await run_in_threadpool(read_document, Path(tmp.name))
+        try:
+            text = await run_in_threadpool(read_document, Path(tmp.name))
+        except DocError as exc:
+            # Word 95, password-protected, RTF under a .doc name: the user can
+            # fix each by resaving, so they get the reason instead of a 500.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Не удалось прочитать .doc: {exc}",
+            ) from None
 
     if not text.strip():
         raise HTTPException(

@@ -74,6 +74,7 @@
 | `core/sources/` | `habr_api.py` (каталог), `habr.py` (одна вакансия), `telegram.py` (`t.me/s/`) |
 | `core/sources/apply_link.py` | где пользователь **откликается**: выбор ссылки из поста |
 | `core/sources/description_link.py` | где вакансия **описана**: белый список хостов для тизеров |
+| `core/msdoc.py` | резюме в `.doc` (Word 97–2003) → текст, на stdlib |
 | `core/tg_scan.py` | сбор + бесплатный отсев Telegram |
 | `core/sources/geekjob.py` | geekjob.ru: лента без поиска, отбор делает `PreScreen` |
 | `core/sources/employers.py` | сайты работодателей и ATS (Сбер, Яндекс, VK, Huntflow, Greenhouse…); список — `data/sources/employers.json` |

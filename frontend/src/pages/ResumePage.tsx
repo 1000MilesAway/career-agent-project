@@ -83,7 +83,7 @@ export function ResumePage() {
         <div className="row">
           <input
             type="file"
-            accept=".pdf,.docx,.txt,.md"
+            accept=".pdf,.doc,.docx,.txt,.md"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <button className="btn" onClick={upload} disabled={!file || isUploading}>
@@ -91,7 +91,7 @@ export function ResumePage() {
           </button>
         </div>
         <p className="muted" style={{ marginBottom: 0 }}>
-          PDF, DOCX, TXT или MD до 10 МБ. Разбор стоит около 0.05 ₽ и делается один раз.
+          PDF, DOC, DOCX, TXT или MD до 10 МБ. Разбор стоит около 0.05 ₽ и делается один раз.
         </p>
       </Card>
 
