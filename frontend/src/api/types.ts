@@ -178,9 +178,20 @@ export interface ScanResult {
   /** New postings already found elsewhere — stored screened out, with the
    * original named in the reason. */
   duplicates?: number
+  kept?: number
   channels?: string[]
   /** Telegram names the channel, employer boards the board. */
   problems?: { channel?: string; board?: string; why: string }[]
+  /** A scan of everything: one entry per source, in the order written. */
+  sources?: Record<string, SourceScan>
+}
+
+/** One source inside a scan of everything. `error` instead of counts when the
+ *  source failed — the others still ran. */
+export type SourceScan = Partial<ScanResult> & {
+  collected?: number
+  new?: number
+  error?: string
 }
 
 export interface RecheckResult {

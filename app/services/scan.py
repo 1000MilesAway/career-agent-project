@@ -19,7 +19,10 @@ Two demo rules that are easy to lose in a rewrite and are kept here:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -297,35 +300,56 @@ def screen_postings(
     return kept, dropped
 
 
-async def collect_habr(
-    session: AsyncSession,
-    user_id: uuid.UUID,
-    search_profile: dict[str, Any] | None,
-    pages: int = 1,
-    ask_habr_for_salary: bool = True,
-) -> dict[str, Any]:
-    """Stage 1-2 for Habr: fetch the catalogue, screen it for free.
+@dataclass
+class Batch:
+    """One source's collect-and-screen result, before anything is written.
 
-    No model is called. What survives is stored as `shortlist` and waits for
-    the user to ask for a triage or an evaluation. The argument list mirrors
-    what the scan worker passes, so the two cannot drift.
+    Split from the write so every source's network can run at once while the
+    writes stay one after another on one session (see `collect_all`).
+    """
+
+    source: str
+    collected: int
+    kept: list[tuple[Posting, str]]
+    dropped: list[tuple[Posting, str]]
+    texts: dict[str, str] = dc_field(default_factory=dict)
+    # Source-specific facts worth showing: channels read, teasers enriched,
+    # boards that failed.
+    extra: dict[str, Any] = dc_field(default_factory=dict)
+
+
+# How deep each source looks back. Not a user setting: the number meant
+# something different per source (a Habr page is 25 postings per query, a
+# Telegram page ~20 posts per channel, a geekjob page ~2 days of the feed)
+# and nobody could tell what "5" bought. Depth costs time, never money, and
+# history dedup means a regular scan only needs what appeared since the last.
+HABR_PAGES = 3
+TELEGRAM_PAGES = 1
+GEEKJOB_PAGES = 5
+
+
+def _profile(search_profile: dict[str, Any] | None, what: str) -> SearchProfile:
+    if not search_profile:
+        raise ValueError(f"профиль поиска не принят — подбор без него собрал бы {what}")
+    return SearchProfile.from_dict(search_profile)
+
+
+def fetch_habr(
+    search_profile: dict[str, Any] | None,
+    pages: int = HABR_PAGES,
+    ask_habr_for_salary: bool = True,
+) -> Batch:
+    """Habr: fetch the catalogue, screen it for free. Network only, no DB.
 
     Refuses to run without an accepted search profile. `from_dict({})` builds a
     profile that states nothing, and nothing is not a filter: PreScreen keeps
     every posting (its title check is skipped when `positive` is empty) and the
     catalogue walk below would ask Habr for everything. The API refuses this
     earlier; the guard is repeated here because the worker calls straight into
-    this function and an unfiltered scan is the one failure the free stage
-    exists to prevent.
+    this path and an unfiltered scan is the one failure the free stage exists
+    to prevent.
     """
-    if not search_profile:
-        raise ValueError(
-            "профиль поиска не принят — подбор без него собрал бы весь каталог"
-        )
-
-    profile = SearchProfile.from_dict(search_profile)
-    # httpx.Client is synchronous, and a catalogue walk is seconds of network:
-    # calling it directly would stall every other request on the event loop.
+    profile = _profile(search_profile, "весь каталог")
     # No empty-query fallback: "" asks Habr for the whole catalogue, which is
     # the same unfiltered flood by another route.
     if not profile.queries:
@@ -337,29 +361,24 @@ async def collect_habr(
     # and lets the silent ones through. Clearing it for both — the old
     # behaviour of the "искать без зарплаты" tick — meant a typed threshold
     # filtered nothing, while the hint promised it would.
-    postings = await run_in_threadpool(
-        habr_api.search_many,
+    postings = habr_api.search_many(
         profile.queries,
         pages=pages,
         remote=profile.remote_only,
         qualifications=profile.qualifications,
         salary_from=profile.salary_min if ask_habr_for_salary else None,
     )
-
     kept, dropped = screen_postings(postings, profile)
-    counts = await persist(session, user_id, "habr", kept, dropped)
-    return {"collected": len(postings), **counts}
+    return Batch("habr", len(postings), kept, dropped)
 
 
-async def collect_telegram(
-    session: AsyncSession,
-    user_id: uuid.UUID,
+def fetch_telegram(
     search_profile: dict[str, Any] | None,
     channels: list[str] | None = None,
-    pages: int = 1,
+    pages: int = TELEGRAM_PAGES,
     groups: tuple[str, ...] = ("core",),
-) -> dict[str, Any]:
-    """Stage 1-2 for Telegram, reusing the collector the CLI and demo use.
+) -> Batch:
+    """Telegram, reusing the shared collector.
 
     The posting body is captured here and stored: t.me has no page to fetch a
     vacancy from later, so a Telegram row without its text can never be
@@ -369,14 +388,9 @@ async def collect_telegram(
     was read from its link. Storing the bare post would throw the fetched page
     away at the last step and leave the evaluation judging four lines again.
     """
-    result = await run_in_threadpool(
-        tg_scan.collect,
-        channels=channels,
-        groups=groups,
-        pages=pages,
-        search_profile=search_profile,
+    result = tg_scan.collect(
+        channels=channels, groups=groups, pages=pages, search_profile=search_profile
     )
-
     kept = [(tg_scan.as_posting(post), "") for post, _ in result["kept"]]
     dropped = [(tg_scan.as_posting(post), why) for post, why in result["dropped"]]
     texts = {
@@ -384,30 +398,30 @@ async def collect_telegram(
         for post, _ in result["kept"] + result["dropped"]
         if post.text
     }
+    return Batch(
+        "telegram",
+        result["collected"],
+        kept,
+        dropped,
+        texts,
+        extra={
+            "channels": result["channels"],
+            # How many teasers gave up their description. Worth reporting: a
+            # scan that read none of them is judging headlines.
+            "enriched": result.get("enriched", 0),
+            # Channels that answered but are unusable — silent, or gone.
+            # Reported rather than swallowed: a scan that quietly returns
+            # less is a scan nobody can debug.
+            "problems": result["problems"],
+        },
+    )
 
-    counts = await persist(session, user_id, "telegram", kept, dropped, texts=texts)
-    return {
-        "collected": result["collected"],
-        "channels": result["channels"],
-        # How many teasers gave up their description. Worth reporting: a scan
-        # that read none of them is judging headlines, and the user should be
-        # able to see that happen rather than wonder at weak scores.
-        "enriched": result.get("enriched", 0),
-        # Channels that answered but are unusable — silent, or gone. Reported
-        # rather than swallowed: a scan that quietly returns less is a scan
-        # nobody can debug.
-        "problems": result["problems"],
-        **counts,
-    }
 
-
-async def collect_employers(
-    session: AsyncSession,
-    user_id: uuid.UUID,
+def fetch_employers(
     search_profile: dict[str, Any] | None,
     groups: tuple[str, ...] = ("ru",),
-) -> dict[str, Any]:
-    """Stage 1-2 for employers' own career sites (core/sources/employers.py).
+) -> Batch:
+    """Employers' own career sites (core/sources/employers.py).
 
     Searchable boards are asked the profile's queries; small ATS feeds are
     read whole and screened by the profile's keywords — so both guards below
@@ -417,41 +431,142 @@ async def collect_employers(
     for the survivors only, and stored: the row's text is what the evaluation
     reads, and a board page is not guaranteed to be there tomorrow.
     """
-    if not search_profile:
-        raise ValueError("профиль поиска не принят — подбор без него собрал бы все вакансии")
-    profile = SearchProfile.from_dict(search_profile)
+    profile = _profile(search_profile, "все вакансии")
     if not profile.queries or not profile.positive:
         raise ValueError("в профиле поиска нет запросов или ключевых слов")
 
-    result = await run_in_threadpool(employers.collect, profile.queries, groups)
+    result = employers.collect(profile.queries, groups)
     kept, dropped = screen_postings(result.postings, profile)
     texts = dict(result.texts)
-    texts.update(await run_in_threadpool(employers.describe, [p for p, _ in kept]))
+    texts.update(employers.describe([p for p, _ in kept]))
+    return Batch(
+        "company", len(result.postings), kept, dropped, texts,
+        extra={"problems": result.problems},
+    )
 
-    counts = await persist(session, user_id, "company", kept, dropped, texts=texts)
-    return {"collected": len(result.postings), "problems": result.problems, **counts}
 
-
-async def collect_geekjob(
-    session: AsyncSession,
-    user_id: uuid.UUID,
-    search_profile: dict[str, Any] | None,
-    pages: int = 5,
-) -> dict[str, Any]:
-    """Stage 1-2 for geekjob.ru: the newest listing pages, screened for free.
+def fetch_geekjob(search_profile: dict[str, Any] | None, pages: int = GEEKJOB_PAGES) -> Batch:
+    """geekjob.ru: the newest listing pages, screened for free.
 
     geekjob has no search we may use (robots.txt closes `/json/`, where its
     search box posts), so the newest pages are read whole and PreScreen does
     the filtering. That makes the keyword guard below matter more than for
     Habr: with no positive keywords every card on the board would pass.
     """
-    if not search_profile:
-        raise ValueError("профиль поиска не принят — подбор без него собрал бы всю ленту")
-    profile = SearchProfile.from_dict(search_profile)
+    profile = _profile(search_profile, "всю ленту")
     if not profile.positive:
         raise ValueError("в профиле поиска нет ключевых слов — geekjob сам не фильтрует")
-
-    postings = await run_in_threadpool(geekjob.collect, pages)
+    postings = geekjob.collect(pages)
     kept, dropped = screen_postings(postings, profile)
-    counts = await persist(session, user_id, "geekjob", kept, dropped)
-    return {"collected": len(postings), **counts}
+    return Batch("geekjob", len(postings), kept, dropped)
+
+
+async def store(session: AsyncSession, user_id: uuid.UUID, batch: Batch) -> dict[str, Any]:
+    counts = await persist(
+        session, user_id, batch.source, batch.kept, batch.dropped, texts=batch.texts
+    )
+    return {"collected": batch.collected, **batch.extra, **counts}
+
+
+# httpx.Client is synchronous, and a catalogue walk is seconds of network:
+# calling it directly would stall every other request on the event loop.
+# Hence every fetch goes through a thread.
+
+
+async def collect_habr(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    pages: int = HABR_PAGES,
+    ask_habr_for_salary: bool = True,
+) -> dict[str, Any]:
+    """Stage 1-2 for Habr. No model is called; survivors wait as `shortlist`."""
+    batch = await run_in_threadpool(fetch_habr, search_profile, pages, ask_habr_for_salary)
+    return await store(session, user_id, batch)
+
+
+async def collect_telegram(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    channels: list[str] | None = None,
+    pages: int = TELEGRAM_PAGES,
+    groups: tuple[str, ...] = ("core",),
+) -> dict[str, Any]:
+    batch = await run_in_threadpool(fetch_telegram, search_profile, channels, pages, groups)
+    return await store(session, user_id, batch)
+
+
+async def collect_employers(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    groups: tuple[str, ...] = ("ru",),
+) -> dict[str, Any]:
+    batch = await run_in_threadpool(fetch_employers, search_profile, groups)
+    return await store(session, user_id, batch)
+
+
+async def collect_geekjob(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    pages: int = GEEKJOB_PAGES,
+) -> dict[str, Any]:
+    batch = await run_in_threadpool(fetch_geekjob, search_profile, pages)
+    return await store(session, user_id, batch)
+
+
+# Write order for a scan of everything. It decides which copy of a vacancy
+# becomes the original and which the duplicate: sources with real fields
+# (Habr's grade and division, an employer's own text) go first, so the row the
+# user keeps is the richest one, and a Telegram retelling points at it.
+ALL_SOURCES = ("habr", "company", "geekjob", "telegram")
+
+
+async def collect_all(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    ask_habr_for_salary: bool = True,
+    company_groups: tuple[str, ...] = ("ru",),
+) -> dict[str, Any]:
+    """Every source in one go: the network in parallel, the writes in order.
+
+    A source that fails does not sink the others: its error is reported by
+    name next to the counts of the ones that worked. The only error raised is
+    the missing profile, which would fail every source identically.
+    """
+    _profile(search_profile, "все вакансии")
+    fetches = {
+        "habr": lambda: fetch_habr(search_profile, ask_habr_for_salary=ask_habr_for_salary),
+        "company": lambda: fetch_employers(search_profile, company_groups),
+        "geekjob": lambda: fetch_geekjob(search_profile),
+        "telegram": lambda: fetch_telegram(search_profile),
+    }
+    results = await asyncio.gather(
+        *(run_in_threadpool(fetches[name]) for name in ALL_SOURCES), return_exceptions=True
+    )
+
+    sources: dict[str, dict[str, Any]] = {}
+    for name, result in zip(ALL_SOURCES, results, strict=True):
+        if isinstance(result, BaseException):
+            sources[name] = {"error": _error_text(result)}
+            continue
+        sources[name] = await store(session, user_id, result)
+
+    ok = [s for s in sources.values() if "error" not in s]
+    return {
+        "sources": sources,
+        "collected": sum(s["collected"] for s in ok),
+        "kept": sum(s["kept"] for s in ok),
+        "dropped": sum(s["dropped"] for s in ok),
+        "duplicates": sum(s["duplicates"] for s in ok),
+        "new": sum(s["new"] for s in ok),
+    }
+
+
+def _error_text(error: BaseException) -> str:
+    if isinstance(error, ValueError):
+        return str(error)
+    return f"{type(error).__name__}: {error}"[:300]

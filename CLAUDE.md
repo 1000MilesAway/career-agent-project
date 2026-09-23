@@ -204,7 +204,7 @@ git-статуса в начале сессии этого не показыва
 
 ```bash
 uv sync --group dev                  # зависимости из uv.lock
-uv run pytest                        # тесты (596 шт., ключ API не нужен)
+uv run pytest                        # тесты (601 шт., ключ API не нужен)
 uv run ruff check .                  # линтер
 uv run ruff check --fix .            # линтер с автоправкой
 ```
@@ -241,7 +241,7 @@ uv run python -m app.cli calibrate --source golden  # размеченный н�
 cd frontend
 npm ci                  # зависимости из package-lock.json
 npm run dev             # http://127.0.0.1:5173, /api проксируется на 8000
-npm test                # 13 тестов интерфейса, сети не требуют
+npm test                # 30 тестов интерфейса, сети не требуют
 npm run typecheck       # все три проекта TS, включая тесты
 npm run lint            # oxlint
 npm run build           # сборка в dist/ (в git не кладётся)

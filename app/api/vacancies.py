@@ -76,8 +76,16 @@ class VacancyResponse(BaseModel):
 
 
 class ScanRequest(BaseModel):
-    source: Literal["habr", "telegram", "geekjob", "company"] = "habr"
-    pages: int = 1
+    # "all" is what the cabinet sends: one button, every source. The single
+    # sources stay for the API and for debugging one board.
+    source: Literal["all", "habr", "telegram", "geekjob", "company"] = "habr"
+    # Depth override for a single source. None = the source's own default
+    # (services/scan.py). Not shown in the cabinet: a "page" meant something
+    # different per source and told the user nothing.
+    pages: int | None = Field(default=None, ge=1, le=20)
+    # Employers abroad hiring Russian speakers (the "global" boards) — English
+    # postings, off by default.
+    include_global: bool = False
     channels: list[str] | None = None
     # "и смежные каналы" on the scan form. The checkbox existed but was read
     # by nobody, so adjacent channels were unreachable from the product.
@@ -135,15 +143,26 @@ async def start_scan(
     search_profile = await scan.ensure_search_profile(session, user, resume)
     search_profile = _with_overrides(search_profile, body)
 
-    if body.source == "habr":
+    company_groups = ("ru", "global") if body.include_global else ("ru",)
+
+    if body.source == "all":
+        try:
+            result = await scan.collect_all(
+                session, user.id, search_profile,
+                ask_habr_for_salary=not body.any_salary,
+                company_groups=company_groups,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    elif body.source == "habr":
         result = await scan.collect_habr(
-            session, user.id, search_profile, pages=body.pages,
+            session, user.id, search_profile, pages=body.pages or scan.HABR_PAGES,
             ask_habr_for_salary=not body.any_salary,
         )
     elif body.source == "geekjob":
         try:
             result = await scan.collect_geekjob(
-                session, user.id, search_profile, pages=body.pages,
+                session, user.id, search_profile, pages=body.pages or scan.GEEKJOB_PAGES,
             )
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -155,17 +174,17 @@ async def start_scan(
                 detail=f"geekjob не прочитан: {e}",
             ) from e
     elif body.source == "company":
-        # `groups` carries "ru" / "global" here, as it carries channel groups
-        # for Telegram; the default ["core"] means "the default group".
-        groups = tuple(g for g in body.groups if g in ("ru", "global")) or ("ru",)
         try:
-            result = await scan.collect_employers(session, user.id, search_profile, groups)
+            result = await scan.collect_employers(
+                session, user.id, search_profile, company_groups
+            )
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     else:
         result = await scan.collect_telegram(
             session, user.id, search_profile,
-            channels=body.channels, pages=body.pages, groups=tuple(body.groups),
+            channels=body.channels, pages=body.pages or scan.TELEGRAM_PAGES,
+            groups=tuple(body.groups),
         )
     await session.commit()
     return result

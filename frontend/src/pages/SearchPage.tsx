@@ -15,7 +15,7 @@ import {
   setSaved,
   useAppState,
 } from '../api/hooks'
-import type { FoundVacancy, ScanResult, TriageBucket } from '../api/types'
+import type { FoundVacancy, ScanResult, SourceScan, TriageBucket } from '../api/types'
 import { SalaryInput } from '../components/SalaryInput'
 import { BUCKET_TITLES, DROPPED_STAGES, VacancyRow } from '../components/VacancyRow'
 import { useToast } from '../components/toast'
@@ -30,16 +30,23 @@ type BucketKey = TriageBucket | null
  *  hand every memo below a new array identity on each render. */
 const EMPTY_ROWS: FoundVacancy[] = []
 
-/** One line per scan. Duplicates are named apart from the filter's drops:
- *  they are not rejected, they are already on the list from another source. */
-function scanSummary(source: string, result: ScanResult): string {
-  const dups = result.duplicates
-    ? `, уже найдены в другом источнике ${result.duplicates}`
-    : ''
-  return (
-    `${source}: собрано ${result.collected} → отсеяно бесплатно ${result.dropped}${dups}` +
-    ` → новых ${result.new}.`
-  )
+const SOURCE_TITLES: Record<string, string> = {
+  habr: 'Хабр Карьера',
+  company: 'Сайты компаний',
+  geekjob: 'geekjob',
+  telegram: 'Telegram-каналы',
+}
+
+/** One line per source. A source that failed is named with its error rather
+ *  than folded into a smaller total; duplicates are named apart from the
+ *  filter's drops — they are not rejected, they are already on the list. */
+function sourceLine(name: string, s: SourceScan): string {
+  const title = SOURCE_TITLES[name] ?? name
+  if (s.error) return `${title}: не прочитан — ${s.error}`
+  const dups = s.duplicates ? `, уже найдены в другом месте ${s.duplicates}` : ''
+  // Dead channels and failed boards answer too, just with nothing usable.
+  const problems = s.problems?.length ? `; пропущено: ${s.problems.length}` : ''
+  return `${title}: собрано ${s.collected}, прошло фильтры ${s.kept ?? 0}${dups}, новых ${s.new}${problems}`
 }
 
 export function SearchPage() {
@@ -51,18 +58,10 @@ export function SearchPage() {
   const [salary, setSalary] = useState<number | null>(null)
   const [anySalary, setAnySalary] = useState(true)
   const [remoteOnly, setRemoteOnly] = useState(true)
-  const [pages, setPages] = useState(5)
-  const [tgPages, setTgPages] = useState(1)
-  const [tgAdjacent, setTgAdjacent] = useState(false)
+  const [includeGlobal, setIncludeGlobal] = useState(false)
 
-  const [scanNote, setScanNote] = useState<string | null>(null)
-  const [tgNote, setTgNote] = useState<string | null>(null)
+  const [scanNote, setScanNote] = useState<ScanResult | null>(null)
   const [isScanning, startScan] = useTransition()
-  const [isTgScanning, startTgScan] = useTransition()
-  const [isGjScanning, startGjScan] = useTransition()
-  const [gjPages, setGjPages] = useState(5)
-  const [isCoScanning, startCoScan] = useTransition()
-  const [coGlobal, setCoGlobal] = useState(false)
   const [isTriaging, startTriage] = useTransition()
 
   const [visibleBuckets, setVisibleBuckets] = useState<ReadonlySet<BucketKey>>(
@@ -116,76 +115,18 @@ export function SearchPage() {
     })
   }
 
-  function scanHabr() {
+  function scan() {
     setScanNote(null)
     startScan(async () => {
       try {
         const result = await scanVacancies({
-          source: 'habr',
-          pages,
+          source: 'all',
           salary_min: salary,
           any_salary: anySalary,
           remote_only: remoteOnly,
+          include_global: includeGlobal,
         })
-        setScanNote(scanSummary('Хабр', result))
-        await mutate(STATE_KEY)
-      } catch (e) {
-        toast.error(e)
-      }
-    })
-  }
-
-  function scanTelegram() {
-    setTgNote(null)
-    startTgScan(async () => {
-      try {
-        const result = await scanVacancies({
-          source: 'telegram',
-          pages: tgPages,
-          groups: tgAdjacent ? ['core', 'adjacent'] : ['core'],
-        })
-        // A dead channel still answers 200 with last year's posts, so a
-        // skipped one is said out loud rather than passing for healthy.
-        const problems = result.problems?.length
-          ? ` Пропущены: ${result.problems.map((p) => p.why).join(' · ')}`
-          : ''
-        setTgNote(
-          `Каналов ${result.channels?.length ?? 0}. ${scanSummary('Telegram', result)}${problems}`,
-        )
-        await mutate(STATE_KEY)
-      } catch (e) {
-        toast.error(e)
-      }
-    })
-  }
-
-  function scanGeekjob() {
-    setScanNote(null)
-    startGjScan(async () => {
-      try {
-        const result = await scanVacancies({ source: 'geekjob', pages: gjPages })
-        setScanNote(scanSummary('geekjob', result))
-        await mutate(STATE_KEY)
-      } catch (e) {
-        toast.error(e)
-      }
-    })
-  }
-
-  function scanCompanies() {
-    setScanNote(null)
-    startCoScan(async () => {
-      try {
-        const result = await scanVacancies({
-          source: 'company',
-          pages: 1,
-          groups: coGlobal ? ['ru', 'global'] : ['ru'],
-        })
-        // A board that failed is named, not folded into a smaller total.
-        const problems = result.problems?.length
-          ? ` Не прочитаны: ${result.problems.map((p) => `${p.board}: ${p.why}`).join(' · ')}`
-          : ''
-        setScanNote(`${scanSummary('Сайты компаний', result)}${problems}`)
+        setScanNote(result)
         await mutate(STATE_KEY)
       } catch (e) {
         toast.error(e)
@@ -262,8 +203,10 @@ export function SearchPage() {
     <>
       <Card title="Подбор">
         <p className="muted" style={{ marginTop: 0 }}>
-          Сканер подбирает запросы и стоп-слова по вашему резюме, собирает вакансии и
-          отсеивает лишние <b>бесплатно</b>. Модель считает только то, что прошло отбор.
+          Сканер ищет по вашему резюме сразу везде: Хабр Карьера, сайты компаний (Сбер,
+          Яндекс, VK и другие), geekjob и Telegram-каналы. Лишнее отсеивается{' '}
+          <b>бесплатно</b>, одна вакансия из разных мест показывается один раз. Модель
+          считает только то, что прошло отбор.
         </p>
 
         <SalaryInput value={salary} anySalary={anySalary} onChange={setSalary} />
@@ -280,7 +223,10 @@ export function SearchPage() {
             />
             учитывать вакансии без указанной зарплаты
           </label>
-          <label className="check">
+          <label
+            className="check"
+            title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
+          >
             <input
               type="checkbox"
               checked={remoteOnly}
@@ -288,128 +234,46 @@ export function SearchPage() {
             />
             только удалёнка
           </label>
-          <label className="check">
-            страниц
-            <input
-              type="number"
-              className="select"
-              style={{ width: 62 }}
-              min={1}
-              max={20}
-              value={pages}
-              onChange={(e) => setPages(Number(e.target.value) || 1)}
-            />
-          </label>
-          <button className="btn" onClick={scanHabr} disabled={isScanning}>
-            {isScanning ? 'Собираю…' : 'Подобрать'}
-          </button>
-        </div>
-
-        {scanNote ? (
-          <p className="muted" role="status">
-            {scanNote}
-          </p>
-        ) : null}
-
-        <div
-          className="row"
-          style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}
-        >
-          <span className="muted">Второй источник:</span>
-          <label className="check">
-            страниц на канал
-            <input
-              type="number"
-              className="select"
-              style={{ width: 62 }}
-              min={1}
-              max={5}
-              value={tgPages}
-              onChange={(e) => setTgPages(Number(e.target.value) || 1)}
-            />
-          </label>
-          <label
-            className="check"
-            title="core — каналы, проверенные на этом профиле; adjacent — другие стеки"
-          >
-            <input
-              type="checkbox"
-              checked={tgAdjacent}
-              onChange={(e) => setTgAdjacent(e.target.checked)}
-            />
-            и смежные каналы
-          </label>
-          <button
-            className="btn btn--ghost"
-            onClick={scanTelegram}
-            disabled={isTgScanning}
-            title="Публичное превью t.me/s/ — сбор и бесплатные фильтры, модель не вызывается"
-          >
-            {isTgScanning ? 'Читаю каналы…' : 'Telegram-каналы'}
-          </button>
-        </div>
-
-        {tgNote ? (
-          <p className="muted" role="status">
-            {tgNote}
-          </p>
-        ) : null}
-
-        <div
-          className="row"
-          style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}
-        >
-          <span className="muted">geekjob.ru:</span>
-          <label
-            className="check"
-            title="На странице 20 вакансий, примерно два дня публикаций"
-          >
-            страниц
-            <input
-              type="number"
-              className="select"
-              style={{ width: 62 }}
-              min={1}
-              max={15}
-              value={gjPages}
-              onChange={(e) => setGjPages(Number(e.target.value) || 1)}
-            />
-          </label>
-          <button
-            className="btn btn--ghost"
-            onClick={scanGeekjob}
-            disabled={isGjScanning}
-            title="Свежие вакансии geekjob.ru — сбор и бесплатные фильтры по вашим ключевым словам, модель не вызывается"
-          >
-            {isGjScanning ? 'Читаю geekjob…' : 'geekjob'}
-          </button>
-        </div>
-
-        <div
-          className="row"
-          style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}
-        >
-          <span className="muted">Сайты компаний:</span>
           <label
             className="check"
             title="Nebius, JetBrains, Wrike, Xsolla и другие компании с русскоязычными командами — вакансии обычно за рубежом и на английском"
           >
             <input
               type="checkbox"
-              checked={coGlobal}
-              onChange={(e) => setCoGlobal(e.target.checked)}
+              checked={includeGlobal}
+              onChange={(e) => setIncludeGlobal(e.target.checked)}
             />
             и зарубежные компании
           </label>
-          <button
-            className="btn btn--ghost"
-            onClick={scanCompanies}
-            disabled={isCoScanning}
-            title="Сбер, Яндекс, VK и компании на Huntflow — прямо с их карьерных сайтов. Сбор и бесплатные фильтры, модель не вызывается"
-          >
-            {isCoScanning ? 'Читаю сайты…' : 'Сайты компаний'}
+          <button className="btn" onClick={scan} disabled={isScanning}>
+            {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
           </button>
         </div>
+
+        {isScanning ? (
+          <p className="muted" role="status">
+            Обычно это занимает одну-две минуты: источники читаются параллельно, модель не
+            вызывается.
+          </p>
+        ) : null}
+
+        {scanNote ? (
+          <div className="muted" role="status">
+            <p style={{ marginBottom: 4 }}>
+              Найдено {scanNote.collected}, прошло фильтры {scanNote.kept ?? 0}, новых{' '}
+              <b>{scanNote.new}</b>
+              {scanNote.duplicates
+                ? `, уже найдены в другом месте ${scanNote.duplicates}`
+                : ''}
+              .
+            </p>
+            <ul style={{ marginTop: 0 }}>
+              {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
+                <li key={name}>{sourceLine(name, s)}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </Card>
 
       <Card

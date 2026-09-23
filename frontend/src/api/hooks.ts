@@ -39,12 +39,13 @@ export function useAppState(enabled = true) {
 }
 
 export interface ScanParams {
-  source: 'habr' | 'telegram' | 'geekjob' | 'company'
-  pages: number
+  /** The cabinet sends 'all'; single sources remain for the API. */
+  source: 'all' | 'habr' | 'telegram' | 'geekjob' | 'company'
   salary_min?: number | null
   any_salary?: boolean
   remote_only?: boolean
-  groups?: string[]
+  /** Also read employers abroad hiring Russian speakers. */
+  include_global?: boolean
 }
 
 export const scanVacancies = (params: ScanParams) =>
