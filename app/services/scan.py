@@ -20,18 +20,18 @@ Two demo rules that are easy to lose in a rewrite and are kept here:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core import tg_scan
+from core import dedup, tg_scan
 from core.filters import PreScreen, SearchProfile
 from core.llm import LLM, Ledger
 from core.pipeline import build_search_profile
-from core.sources import habr_api
+from core.sources import geekjob, habr_api
 from core.sources.habr_api import Posting
 
 from ..models import Resume, User, Vacancy
@@ -52,6 +52,78 @@ def _published(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+# How a source is named in a duplicate's reason. Russian: the user reads it.
+SOURCE_LABELS = {"habr": "Хабр Карьере", "telegram": "Telegram", "geekjob": "geekjob"}
+
+# Telegram reposts older than this are not compared by text: a vacancy
+# reposted after a month is usually reopened, and worth a second look.
+FINGERPRINT_WINDOW_DAYS = 30
+
+
+class _Originals:
+    """Every visible row of the user's that a new posting could duplicate.
+
+    Loaded once per persist() and extended as rows are added, so two copies
+    arriving in the same scan are caught as well as a copy of an old row.
+
+    Only rows that are themselves visible count as originals. A row the free
+    filters dropped is no reason to hide a new copy: the copy may come from a
+    source with better fields and pass on its own merits — and marking it a
+    duplicate of something the user never saw would hide it for good.
+    """
+
+    def __init__(self, rows: list[Vacancy]) -> None:
+        self.by_key: dict[str, list[Vacancy]] = {}
+        self.by_ref: dict[tuple[str, str], Vacancy] = {}
+        self.with_fp: list[Vacancy] = []
+        for row in rows:
+            self.add(row)
+
+    def add(self, row: Vacancy) -> None:
+        if row.stage == SCREENED_OUT:
+            return
+        self.by_ref.setdefault((row.source, row.external_id), row)
+        if row.dedup_key:
+            self.by_key.setdefault(row.dedup_key, []).append(row)
+        if row.text_fp:
+            self.with_fp.append(row)
+
+    def find(self, row: Vacancy, text: str) -> Vacancy | None:
+        """The row this one copies, cheapest signal first."""
+        for ref in dedup.linked_vacancies(text):
+            original = self.by_ref.get(ref)
+            if original is not None and original is not row:
+                return original
+        # Company + title counts only ACROSS sources. Within one board two ids
+        # are two openings: a company runs "Python-разработчик" for two teams
+        # at once, and calling the second a copy would hide a real vacancy.
+        for original in self.by_key.get(row.dedup_key or "", []):
+            if original.source != row.source:
+                return original
+        if row.text_fp:
+            cutoff = datetime.now(UTC) - timedelta(days=FINGERPRINT_WINDOW_DAYS)
+            for original in self.with_fp:
+                if original is row:
+                    continue
+                if original.created_at and original.created_at < cutoff:
+                    continue
+                if dedup.similarity(row.text_fp, original.text_fp) >= dedup.SIMILARITY_THRESHOLD:
+                    return original
+        return None
+
+
+def _duplicate_reason(original: Vacancy) -> str:
+    label = SOURCE_LABELS.get(original.source, original.source)
+    return f"дубль: уже найдена в {label} — «{original.title}»"[:512]
+
+
+async def _originals(session: AsyncSession, user_id: uuid.UUID) -> _Originals:
+    result = await session.execute(
+        select(Vacancy).where(Vacancy.user_id == user_id, Vacancy.stage != SCREENED_OUT)
+    )
+    return _Originals(list(result.scalars()))
 
 
 async def _existing(session: AsyncSession, user_id: uuid.UUID, source: str) -> dict[str, Vacancy]:
@@ -98,15 +170,21 @@ async def persist(
     """
     texts = texts or {}
     stored = await _existing(session, user_id, source)
+    originals = await _originals(session, user_id)
     new_count = 0
+    duplicates = 0
 
     for posting, reason in [(p, "") for p, _ in kept] + list(dropped):
         is_kept = not reason
         stage = SHORTLIST if is_kept else SCREENED_OUT
+        text = texts.get(posting.id) or ""
 
         row = stored.get(posting.id)
         if row is None:
             row = Vacancy(
+                # Explicit so a copy later in this same batch can point at it
+                # before the flush assigns one.
+                id=uuid.uuid4(),
                 user_id=user_id,
                 source=source,
                 external_id=posting.id,
@@ -114,10 +192,23 @@ async def persist(
                 screen_reason=reason or None,
                 # Set once. A rescan must never overwrite it.
                 raw_text=texts.get(posting.id),
+                dedup_key=dedup.posting_key(posting) or None,
+                text_fp=dedup.fingerprint(text) or None,
                 **_listing_fields(posting),
             )
+            # Only a posting the free filters kept is checked: a dropped one
+            # already costs nothing and carries its own reason, which says
+            # more about it than "duplicate" would.
+            if is_kept:
+                original = originals.find(row, text)
+                if original is not None:
+                    row.stage = SCREENED_OUT
+                    row.screen_reason = _duplicate_reason(original)
+                    row.duplicate_of_id = original.id
+                    duplicates += 1
             session.add(row)
             stored[posting.id] = row
+            originals.add(row)
             new_count += 1
             continue
 
@@ -126,6 +217,11 @@ async def persist(
         for field, value in _listing_fields(posting).items():
             if value is not None:
                 setattr(row, field, value)
+        # A duplicate stays one on a rescan: re-screening it alone would pass
+        # it back to the shortlist and queue a second triage of a vacancy the
+        # user already has.
+        if row.duplicate_of_id is not None:
+            continue
         # A free re-screen may revise its own verdict, never a paid one.
         # TRIAGED_OUT used to be in this list: a rescan then pushed the row
         # back to SHORTLIST and cleared `screen_reason` while `triage_verdict`
@@ -135,7 +231,12 @@ async def persist(
             row.stage = stage
             row.screen_reason = reason or None
 
-    return {"new": new_count, "kept": len(kept), "dropped": len(dropped)}
+    return {
+        "new": new_count,
+        "kept": len(kept) - duplicates,
+        "dropped": len(dropped),
+        "duplicates": duplicates,
+    }
 
 
 async def ensure_search_profile(
@@ -292,3 +393,28 @@ async def collect_telegram(
         "problems": result["problems"],
         **counts,
     }
+
+
+async def collect_geekjob(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    pages: int = 5,
+) -> dict[str, Any]:
+    """Stage 1-2 for geekjob.ru: the newest listing pages, screened for free.
+
+    geekjob has no search we may use (robots.txt closes `/json/`, where its
+    search box posts), so the newest pages are read whole and PreScreen does
+    the filtering. That makes the keyword guard below matter more than for
+    Habr: with no positive keywords every card on the board would pass.
+    """
+    if not search_profile:
+        raise ValueError("профиль поиска не принят — подбор без него собрал бы всю ленту")
+    profile = SearchProfile.from_dict(search_profile)
+    if not profile.positive:
+        raise ValueError("в профиле поиска нет ключевых слов — geekjob сам не фильтрует")
+
+    postings = await run_in_threadpool(geekjob.collect, pages)
+    kept, dropped = screen_postings(postings, profile)
+    counts = await persist(session, user_id, "geekjob", kept, dropped)
+    return {"collected": len(postings), **counts}

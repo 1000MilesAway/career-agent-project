@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
@@ -13,11 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from core.llm import LLM, Ledger
+from core.sources import geekjob
 from core.triage import build_archetypes, run_triage
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Vacancy
-from ..services import scan
+from ..services import liveness, scan
 from ..services.spend import charge, ensure_can_spend
 from ..services.tracker import STATUSES, set_status
 
@@ -41,6 +43,10 @@ class VacancyResponse(BaseModel):
     score: float | None
     verdict: str | None
     status: str | None
+    duplicate_of_id: uuid.UUID | None = None
+    closed_at: datetime | None = None
+    closed_reason: str | None = None
+    checked_at: datetime | None = None
 
     @classmethod
     def of(cls, v: Vacancy) -> VacancyResponse:
@@ -62,11 +68,15 @@ class VacancyResponse(BaseModel):
             score=evaluation.score if evaluation else None,
             verdict=evaluation.verdict if evaluation else None,
             status=v.application.status if v.application else None,
+            duplicate_of_id=v.duplicate_of_id,
+            closed_at=v.closed_at,
+            closed_reason=v.closed_reason,
+            checked_at=v.checked_at,
         )
 
 
 class ScanRequest(BaseModel):
-    source: Literal["habr", "telegram"] = "habr"
+    source: Literal["habr", "telegram", "geekjob"] = "habr"
     pages: int = 1
     channels: list[str] | None = None
     # "и смежные каналы" on the scan form. The checkbox existed but was read
@@ -130,6 +140,20 @@ async def start_scan(
             session, user.id, search_profile, pages=body.pages,
             ask_habr_for_salary=not body.any_salary,
         )
+    elif body.source == "geekjob":
+        try:
+            result = await scan.collect_geekjob(
+                session, user.id, search_profile, pages=body.pages,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        except (geekjob.MarkupChanged, httpx.HTTPError) as e:
+            # Said out loud: an empty result here would read as "nothing new
+            # on geekjob today", which is exactly what a broken parser looks like.
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"geekjob не прочитан: {e}",
+            ) from e
     else:
         result = await scan.collect_telegram(
             session, user.id, search_profile,
@@ -184,6 +208,28 @@ async def _owned(session: SessionDep, user: UserDep, vacancy_id: uuid.UUID) -> V
     return vacancy
 
 
+@router.post("/recheck")
+async def recheck(session: SessionDep, user: UserDep) -> dict[str, int]:
+    """Ask the sources whether saved and shortlisted vacancies are still open.
+
+    Free: one page request per vacancy, no model. Bounded per call (see
+    services/liveness.py), oldest check first, so pressing it again continues
+    where the last press stopped.
+    """
+    counts = await liveness.recheck(session, user.id)
+    await session.commit()
+    return counts
+
+
+@router.post("/{vacancy_id}/check", response_model=VacancyResponse)
+async def check_one(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> VacancyResponse:
+    """Is this one vacancy still open? Free. Unknown sources answer unknown."""
+    vacancy = await _owned(session, user, vacancy_id)
+    await liveness.refresh(vacancy)
+    await session.commit()
+    return VacancyResponse.of(vacancy)
+
+
 @router.post("/triage")
 async def triage(
     session: SessionDep,
@@ -207,6 +253,9 @@ async def triage(
             Vacancy.user_id == user.id,
             Vacancy.stage == scan.SHORTLIST,
             Vacancy.triage_verdict.is_(None),
+            # A vacancy known to be closed is not worth a paid verdict. It
+            # stays in the list, marked, and is left unjudged.
+            Vacancy.closed_at.is_(None),
         )
     )
     rows = list(result.scalars())

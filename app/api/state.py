@@ -91,6 +91,14 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "report": evaluation.report if evaluation else None,
                 "artifacts": artifacts or None,
                 "rub": float(evaluation.cost_rub) if evaluation else None,
+                "duplicate_of": str(v.duplicate_of_id) if v.duplicate_of_id else None,
+                # Closed is shown, not hidden: the report and materials the
+                # user bought stay readable, and the mark says why to stop.
+                "closed": (
+                    {"at": v.closed_at.isoformat(), "reason": v.closed_reason}
+                    if v.closed_at
+                    else None
+                ),
             }
         )
 

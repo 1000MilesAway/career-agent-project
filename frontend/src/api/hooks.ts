@@ -16,6 +16,7 @@ import type {
   ChatProposal,
   ChatResponse,
   EvaluationResponse,
+  RecheckResult,
   ResumeResponse,
   ScanResult,
   SearchProfile,
@@ -38,7 +39,7 @@ export function useAppState(enabled = true) {
 }
 
 export interface ScanParams {
-  source: 'habr' | 'telegram'
+  source: 'habr' | 'telegram' | 'geekjob'
   pages: number
   salary_min?: number | null
   any_salary?: boolean
@@ -48,6 +49,11 @@ export interface ScanParams {
 
 export const scanVacancies = (params: ScanParams) =>
   api<ScanResult>('/api/vacancies/scan', { method: 'POST', json: params })
+
+/** Ask the sources whether saved and shortlisted vacancies are still open.
+ * Free: one page request each, no model. */
+export const recheckVacancies = () =>
+  api<RecheckResult>('/api/vacancies/recheck', { method: 'POST' })
 
 export const runTriage = () =>
   api<TriageResult>('/api/vacancies/triage', { method: 'POST' })

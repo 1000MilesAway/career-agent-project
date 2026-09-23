@@ -152,6 +152,25 @@ class Vacancy(Base, TimestampMixin):
     screen_reason: Mapped[str | None] = mapped_column(String(512))
     triage_verdict: Mapped[str | None] = mapped_column(String(16))  # worth | maybe | skip
 
+    # The same vacancy seen elsewhere first (core/dedup.py). A duplicate is
+    # stored screened out with the original named in `screen_reason`, so it
+    # costs no triage and no evaluation but stays visible — never dropped.
+    # `dedup_key` is company|title; `text_fp` a SimHash of the text, for
+    # Telegram reposts whose wrappers differ.
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="SET NULL")
+    )
+    dedup_key: Mapped[str | None] = mapped_column(String(255))
+    text_fp: Mapped[str | None] = mapped_column(String(16))
+
+    # Whether the posting is still open (core/liveness.py). `closed_at` is set
+    # only on positive evidence — a 404/410 or the page's archive banner;
+    # an unreachable page leaves it alone. A closed row keeps everything the
+    # user bought for it and stays visible, marked.
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_reason: Mapped[str | None] = mapped_column(String(255))
+
     # The user's own shortlist. Only a person moves a vacancy across this line —
     # no scan and no model does.
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -168,6 +187,7 @@ class Vacancy(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("user_id", "source", "external_id", name="uq_vacancies_user_source_ext"),
         Index("ix_vacancies_user_stage", "user_id", "stage"),
+        Index("ix_vacancies_user_dedup_key", "user_id", "dedup_key"),
     )
 
 

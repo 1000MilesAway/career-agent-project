@@ -6,11 +6,12 @@
  * that were paid for.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
   STATE_KEY,
   downloadTailored,
+  recheckVacancies,
   setSaved,
   setStatus,
   useAppState,
@@ -30,6 +31,26 @@ export function SavedPage() {
 
   const found = data?.found
   const saved = useMemo(() => found?.filter((row) => row.saved) ?? [], [found])
+  const [isRechecking, startRecheck] = useTransition()
+
+  function recheck() {
+    startRecheck(async () => {
+      try {
+        const result = await recheckVacancies()
+        await mutate(STATE_KEY)
+        // "Unknown" is said separately: a page that did not answer is not an
+        // open vacancy, and folding it into "open" would overstate the check.
+        const unknown = result.unknown ? `, не удалось проверить ${result.unknown}` : ''
+        toast.info(
+          result.checked
+            ? `Проверено ${result.checked}: открыты ${result.open}, закрыты ${result.closed}${unknown}.`
+            : 'Проверять нечего: всё проверено за последние 12 часов или источник не умеет отвечать.',
+        )
+      } catch (e) {
+        toast.error(e)
+      }
+    })
+  }
 
   async function unsave(id: string) {
     try {
@@ -61,9 +82,19 @@ export function SavedPage() {
         </p>
 
         {saved.length ? (
-          <p className="muted">
-            В работе <b>{saved.length}</b>.
-          </p>
+          <div className="row">
+            <p className="muted">
+              В работе <b>{saved.length}</b>.
+            </p>
+            <button
+              className="btn btn--ghost btn--small"
+              onClick={recheck}
+              disabled={isRechecking}
+              title="Спросить у Хабра и geekjob, не закрыты ли вакансии. Бесплатно, модель не вызывается. Telegram так проверить нельзя — у поста нет страницы."
+            >
+              {isRechecking ? 'Проверяю…' : 'Проверить, открыты ли'}
+            </button>
+          </div>
         ) : (
           <p className="muted">
             Пусто. Отложите вакансию кнопкой «В избранное» на странице поиска.

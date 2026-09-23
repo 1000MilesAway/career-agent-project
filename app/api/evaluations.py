@@ -16,7 +16,7 @@ from core.pipeline import evaluate, load_vacancy
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Evaluation, Vacancy
-from ..services import scan
+from ..services import liveness, scan
 from ..services.spend import charge, ensure_can_spend, ledger_totals
 
 router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
@@ -102,6 +102,18 @@ async def create(
     # Checked before the call, never after: refusing afterwards would mean the
     # money is already spent and the user is told they cannot have it.
     ensure_can_spend(user)
+
+    # Free, and before the paid call for the same reason as the budget check.
+    # An archived Habr page still answers 200 with a stub, so without this
+    # the model would be paid to score "Вакансия в архиве".
+    if liveness.needs_check(vacancy):
+        await liveness.refresh(vacancy)
+    if vacancy.closed_at is not None:
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Вакансия закрыта: {vacancy.closed_reason}. Оценка не покупалась.",
+        )
 
     text = await _vacancy_text(vacancy)
 

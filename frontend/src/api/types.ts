@@ -101,6 +101,11 @@ export interface FoundVacancy {
   report: Report | null
   artifacts: Partial<Record<ArtifactKind, ArtifactContent>> | null
   rub: number | null
+  /** The row this one copies, when the scan found it elsewhere first. The
+   * reason is in `screen_reason`; the id lets the row point at the original. */
+  duplicate_of?: string | null
+  /** Set only on positive evidence (404/410, the page's archive banner). */
+  closed?: { at: string; reason: string | null } | null
 }
 
 export interface ResumeProfile {
@@ -170,8 +175,18 @@ export interface ScanResult {
   collected: number
   dropped: number
   new: number
+  /** New postings already found elsewhere — stored screened out, with the
+   * original named in the reason. */
+  duplicates?: number
   channels?: string[]
   problems?: { channel?: string; why: string }[]
+}
+
+export interface RecheckResult {
+  checked: number
+  open: number
+  closed: number
+  unknown: number
 }
 
 export interface TriageResult {

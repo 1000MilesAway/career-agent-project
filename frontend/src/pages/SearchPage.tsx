@@ -15,7 +15,7 @@ import {
   setSaved,
   useAppState,
 } from '../api/hooks'
-import type { FoundVacancy, TriageBucket } from '../api/types'
+import type { FoundVacancy, ScanResult, TriageBucket } from '../api/types'
 import { SalaryInput } from '../components/SalaryInput'
 import { BUCKET_TITLES, DROPPED_STAGES, VacancyRow } from '../components/VacancyRow'
 import { useToast } from '../components/toast'
@@ -29,6 +29,18 @@ type BucketKey = TriageBucket | null
 /** A stable empty list, so a state payload that has not arrived yet does not
  *  hand every memo below a new array identity on each render. */
 const EMPTY_ROWS: FoundVacancy[] = []
+
+/** One line per scan. Duplicates are named apart from the filter's drops:
+ *  they are not rejected, they are already on the list from another source. */
+function scanSummary(source: string, result: ScanResult): string {
+  const dups = result.duplicates
+    ? `, уже найдены в другом источнике ${result.duplicates}`
+    : ''
+  return (
+    `${source}: собрано ${result.collected} → отсеяно бесплатно ${result.dropped}${dups}` +
+    ` → новых ${result.new}.`
+  )
+}
 
 export function SearchPage() {
   const { data, isLoading, error } = useAppState()
@@ -47,6 +59,8 @@ export function SearchPage() {
   const [tgNote, setTgNote] = useState<string | null>(null)
   const [isScanning, startScan] = useTransition()
   const [isTgScanning, startTgScan] = useTransition()
+  const [isGjScanning, startGjScan] = useTransition()
+  const [gjPages, setGjPages] = useState(5)
   const [isTriaging, startTriage] = useTransition()
 
   const [visibleBuckets, setVisibleBuckets] = useState<ReadonlySet<BucketKey>>(
@@ -111,9 +125,7 @@ export function SearchPage() {
           any_salary: anySalary,
           remote_only: remoteOnly,
         })
-        setScanNote(
-          `Собрано ${result.collected} → отсеяно бесплатно ${result.dropped} → новых ${result.new}`,
-        )
+        setScanNote(scanSummary('Хабр', result))
         await mutate(STATE_KEY)
       } catch (e) {
         toast.error(e)
@@ -136,9 +148,21 @@ export function SearchPage() {
           ? ` Пропущены: ${result.problems.map((p) => p.why).join(' · ')}`
           : ''
         setTgNote(
-          `Каналов ${result.channels?.length ?? 0} → собрано ${result.collected}` +
-            ` → отсеяно бесплатно ${result.dropped} → новых ${result.new}.${problems}`,
+          `Каналов ${result.channels?.length ?? 0}. ${scanSummary('Telegram', result)}${problems}`,
         )
+        await mutate(STATE_KEY)
+      } catch (e) {
+        toast.error(e)
+      }
+    })
+  }
+
+  function scanGeekjob() {
+    setScanNote(null)
+    startGjScan(async () => {
+      try {
+        const result = await scanVacancies({ source: 'geekjob', pages: gjPages })
+        setScanNote(scanSummary('geekjob', result))
         await mutate(STATE_KEY)
       } catch (e) {
         toast.error(e)
@@ -307,6 +331,36 @@ export function SearchPage() {
             {tgNote}
           </p>
         ) : null}
+
+        <div
+          className="row"
+          style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}
+        >
+          <span className="muted">geekjob.ru:</span>
+          <label
+            className="check"
+            title="На странице 20 вакансий, примерно два дня публикаций"
+          >
+            страниц
+            <input
+              type="number"
+              className="select"
+              style={{ width: 62 }}
+              min={1}
+              max={15}
+              value={gjPages}
+              onChange={(e) => setGjPages(Number(e.target.value) || 1)}
+            />
+          </label>
+          <button
+            className="btn btn--ghost"
+            onClick={scanGeekjob}
+            disabled={isGjScanning}
+            title="Свежие вакансии geekjob.ru — сбор и бесплатные фильтры по вашим ключевым словам, модель не вызывается"
+          >
+            {isGjScanning ? 'Читаю geekjob…' : 'geekjob'}
+          </button>
+        </div>
       </Card>
 
       <Card

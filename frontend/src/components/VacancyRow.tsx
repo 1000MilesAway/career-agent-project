@@ -17,6 +17,12 @@ export const BUCKET_TITLES: Record<TriageBucket, string> = {
   skip: 'мимо',
 }
 
+/** Named in the row for every source but Habr, the default one. */
+const SOURCE_LABELS: Record<string, string> = {
+  telegram: 'Telegram',
+  geekjob: 'geekjob',
+}
+
 /** Stages where a free filter or triage threw the posting out. */
 export const DROPPED_STAGES = new Set(['screened_out', 'triaged_out'])
 
@@ -28,7 +34,8 @@ function VacancyRowInner({
   actions: ReactNode
 }) {
   const dropped = DROPPED_STAGES.has(vacancy.stage)
-  const dimmed = dropped || vacancy.triage?.bucket === 'skip'
+  const dimmed = dropped || vacancy.triage?.bucket === 'skip' || Boolean(vacancy.closed)
+  const sourceLabel = SOURCE_LABELS[vacancy.source]
 
   return (
     <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
@@ -47,13 +54,24 @@ function VacancyRowInner({
             pipeline forbids, so the reason rides along with the row. */}
         {dropped ? (
           <p className="vrow__meta">
-            <span className="chip chip--neg">отсеяно</span>{' '}
+            <span className="chip chip--neg">
+              {vacancy.duplicate_of ? 'дубль' : 'отсеяно'}
+            </span>{' '}
             {vacancy.screen_reason || 'без причины'}
           </p>
         ) : null}
 
+        {/* Closed is marked, not hidden: what was bought for it stays
+            readable, and the reason says why applying is pointless. */}
+        {vacancy.closed ? (
+          <p className="vrow__meta">
+            <span className="chip chip--neg">закрыта</span>{' '}
+            {vacancy.closed.reason || 'источник сообщил, что вакансия закрыта'}
+          </p>
+        ) : null}
+
         <p className="vrow__meta">
-          {vacancy.source === 'telegram' ? 'Telegram · ' : ''}
+          {sourceLabel ? `${sourceLabel} · ` : ''}
           {vacancy.company || 'компания не указана'} ·{' '}
           {vacancy.qualification || 'грейд не указан'}
           {vacancy.remote ? ' · удалённо' : ''} ·{' '}
