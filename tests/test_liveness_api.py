@@ -178,3 +178,42 @@ class TestGeekjobScan:
         )
         assert r.status_code == 502
         assert "geekjob" in r.json()["detail"]
+
+
+@requires_db
+class TestCompanyScan:
+    async def test_descriptions_are_fetched_for_survivors_only_and_stored(
+        self, client, auth_headers, session, user, monkeypatch
+    ):
+        from core.sources import employers
+
+        await _resume_for(session, user)
+        cards = [
+            Posting(id="yandex/yandex/1", url="https://yandex.ru/jobs/vacancies/a-1",
+                    title="Python разработчик", company="Яндекс"),
+            Posting(id="yandex/yandex/2", url="https://yandex.ru/jobs/vacancies/b-2",
+                    title="Бухгалтер", company="Яндекс"),
+        ]
+        asked: list[str] = []
+
+        def fake_collect(queries, groups):
+            return employers.Collected(postings=cards)
+
+        def fake_describe(postings):
+            asked.extend(p.id for p in postings)
+            return {p.id: f"полное описание {p.id}" for p in postings}
+
+        monkeypatch.setattr(employers, "collect", fake_collect)
+        monkeypatch.setattr(employers, "describe", fake_describe)
+
+        r = await client.post(
+            "/api/vacancies/scan", headers=auth_headers, json={"source": "company", "pages": 1}
+        )
+        assert r.status_code == 200, r.text
+        # The page request is spent on the survivor only.
+        assert asked == ["yandex/yandex/1"]
+
+        rows = {v.external_id: v for v in (await session.execute(select(Vacancy))).scalars()}
+        assert rows["yandex/yandex/1"].raw_text == "полное описание yandex/yandex/1"
+        assert rows["yandex/yandex/2"].stage == scan.SCREENED_OUT
+        assert rows["yandex/yandex/2"].raw_text is None

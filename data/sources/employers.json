@@ -1,0 +1,34 @@
+{
+  "_about": "Сайты работодателей и их ATS. Каждая запись проверена живьём 2026-09-23 вместе с robots.txt. Группа ru — российские работодатели, читаются по умолчанию; global — компании с русскоязычными командами на международных ATS, включаются отдельно. Что проверено и отвергнуто — docs/decisions.md, 2026-09-23.",
+  "boards": [
+    {"kind": "sber", "name": "Сбер", "group": "ru"},
+    {"kind": "yandex", "name": "Яндекс", "group": "ru"},
+    {"kind": "vk", "name": "VK", "group": "ru"},
+    {"kind": "huntflow", "name": "Flowwow", "slug": "flowwow", "group": "ru"},
+    {"kind": "huntflow", "name": "iiko", "slug": "iiko", "group": "ru"},
+    {"kind": "huntflow", "name": "Emex", "slug": "emex", "group": "ru"},
+    {"kind": "huntflow", "name": "Банки.ру", "slug": "banki", "group": "ru"},
+    {"kind": "huntflow", "name": "BetBoom", "slug": "betboom", "group": "ru"},
+    {"kind": "huntflow", "name": "Coffeemania", "slug": "coffeemaniahr", "group": "ru"},
+    {"kind": "huntflow", "name": "ЭкоНива", "slug": "ekonivahr", "group": "ru"},
+    {"kind": "huntflow", "name": "Октябрьское", "slug": "oktyabrskoeteam", "group": "ru"},
+    {"kind": "huntflow", "name": "Lime", "slug": "limehr", "group": "ru"},
+    {"kind": "greenhouse", "name": "Nebius", "slug": "nebius", "group": "global"},
+    {"kind": "greenhouse", "name": "JetBrains", "slug": "jetbrains", "group": "global"},
+    {"kind": "greenhouse", "name": "Wrike", "slug": "wrike", "group": "global"},
+    {"kind": "greenhouse", "name": "Avride", "slug": "avride", "group": "global"},
+    {"kind": "greenhouse", "name": "Wheely", "slug": "wheely", "group": "global"},
+    {"kind": "greenhouse", "name": "Flo Health", "slug": "flohealth", "group": "global"},
+    {"kind": "greenhouse", "name": "Toloka", "slug": "toloka", "group": "global"},
+    {"kind": "greenhouse", "name": "Miro", "slug": "realtimeboardglobal", "group": "global"},
+    {"kind": "ashby", "name": "ClickHouse", "slug": "clickhouse", "group": "global"},
+    {"kind": "ashby", "name": "Gismart", "slug": "gismart", "group": "global"},
+    {"kind": "lever", "name": "Xsolla", "slug": "xsolla", "group": "global"}
+  ],
+  "rejected": {
+    "antibot": ["Ozon", "Альфа-Банк", "Т-Банк", "Exness", "Revolut"],
+    "robots_closes_api": ["Магнит", "Lamoda", "Kaspersky", "2ГИС (любой URL с параметрами)"],
+    "personal_data_in_api": ["Wildberries/RWB — деталь вакансии отдаёт ФИО, почту и телефон рекрутера"],
+    "no_json": ["Positive Technologies", "Ростелеком", "Avito (JSON несёт HTML-фрагмент)"]
+  }
+}

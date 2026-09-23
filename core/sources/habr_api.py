@@ -45,7 +45,9 @@ class Posting:
     company: str
     company_alias: str = ""
     qualification: str = ""
-    remote: bool = False
+    # None: the source does not say. Only employer boards produce it; Habr and
+    # Telegram always state a value.
+    remote: bool | None = False
     location: str = ""
     salary_from: int | None = None
     salary_to: int | None = None

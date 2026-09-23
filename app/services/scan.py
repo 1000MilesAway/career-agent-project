@@ -31,7 +31,7 @@ from core import dedup, tg_scan
 from core.filters import PreScreen, SearchProfile
 from core.llm import LLM, Ledger
 from core.pipeline import build_search_profile
-from core.sources import geekjob, habr_api
+from core.sources import employers, geekjob, habr_api
 from core.sources.habr_api import Posting
 
 from ..models import Resume, User, Vacancy
@@ -55,7 +55,13 @@ def _published(value: str | None) -> datetime | None:
 
 
 # How a source is named in a duplicate's reason. Russian: the user reads it.
-SOURCE_LABELS = {"habr": "Хабр Карьере", "telegram": "Telegram", "geekjob": "geekjob"}
+# With the preposition, which differs per source ("в Telegram", "на geekjob").
+SOURCE_LABELS = {
+    "habr": "в Хабр Карьере",
+    "telegram": "в Telegram",
+    "geekjob": "на geekjob",
+    "company": "на сайте компании",
+}
 
 # Telegram reposts older than this are not compared by text: a vacancy
 # reposted after a month is usually reopened, and worth a second look.
@@ -115,8 +121,8 @@ class _Originals:
 
 
 def _duplicate_reason(original: Vacancy) -> str:
-    label = SOURCE_LABELS.get(original.source, original.source)
-    return f"дубль: уже найдена в {label} — «{original.title}»"[:512]
+    label = SOURCE_LABELS.get(original.source, f"в источнике {original.source}")
+    return f"дубль: уже найдена {label} — «{original.title}»"[:512]
 
 
 async def _originals(session: AsyncSession, user_id: uuid.UUID) -> _Originals:
@@ -393,6 +399,37 @@ async def collect_telegram(
         "problems": result["problems"],
         **counts,
     }
+
+
+async def collect_employers(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    groups: tuple[str, ...] = ("ru",),
+) -> dict[str, Any]:
+    """Stage 1-2 for employers' own career sites (core/sources/employers.py).
+
+    Searchable boards are asked the profile's queries; small ATS feeds are
+    read whole and screened by the profile's keywords — so both guards below
+    are needed, one per kind of board.
+
+    Descriptions some boards do not list are fetched AFTER the free filters,
+    for the survivors only, and stored: the row's text is what the evaluation
+    reads, and a board page is not guaranteed to be there tomorrow.
+    """
+    if not search_profile:
+        raise ValueError("профиль поиска не принят — подбор без него собрал бы все вакансии")
+    profile = SearchProfile.from_dict(search_profile)
+    if not profile.queries or not profile.positive:
+        raise ValueError("в профиле поиска нет запросов или ключевых слов")
+
+    result = await run_in_threadpool(employers.collect, profile.queries, groups)
+    kept, dropped = screen_postings(result.postings, profile)
+    texts = dict(result.texts)
+    texts.update(await run_in_threadpool(employers.describe, [p for p, _ in kept]))
+
+    counts = await persist(session, user_id, "company", kept, dropped, texts=texts)
+    return {"collected": len(result.postings), "problems": result.problems, **counts}
 
 
 async def collect_geekjob(

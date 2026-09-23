@@ -39,7 +39,7 @@ export function useAppState(enabled = true) {
 }
 
 export interface ScanParams {
-  source: 'habr' | 'telegram' | 'geekjob'
+  source: 'habr' | 'telegram' | 'geekjob' | 'company'
   pages: number
   salary_min?: number | null
   any_salary?: boolean

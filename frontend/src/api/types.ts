@@ -179,7 +179,8 @@ export interface ScanResult {
    * original named in the reason. */
   duplicates?: number
   channels?: string[]
-  problems?: { channel?: string; why: string }[]
+  /** Telegram names the channel, employer boards the board. */
+  problems?: { channel?: string; board?: string; why: string }[]
 }
 
 export interface RecheckResult {

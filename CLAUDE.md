@@ -76,6 +76,7 @@
 | `core/sources/description_link.py` | где вакансия **описана**: белый список хостов для тизеров |
 | `core/tg_scan.py` | сбор + бесплатный отсев Telegram |
 | `core/sources/geekjob.py` | geekjob.ru: лента без поиска, отбор делает `PreScreen` |
+| `core/sources/employers.py` | сайты работодателей и ATS (Сбер, Яндекс, VK, Huntflow, Greenhouse…); список — `data/sources/employers.json` |
 | `core/sources/jobposting.py` | schema.org JobPosting из JSON-LD — общий читатель страниц вакансий |
 | `core/dedup.py` | одна вакансия из разных мест: ссылка, компания+заголовок, SimHash текста |
 | `core/liveness.py` | открыта ли вакансия; закрывает только явный признак, иначе «неизвестно» |
@@ -203,7 +204,7 @@ git-статуса в начале сессии этого не показыва
 
 ```bash
 uv sync --group dev                  # зависимости из uv.lock
-uv run pytest                        # тесты (576 шт., ключ API не нужен)
+uv run pytest                        # тесты (596 шт., ключ API не нужен)
 uv run ruff check .                  # линтер
 uv run ruff check --fix .            # линтер с автоправкой
 ```

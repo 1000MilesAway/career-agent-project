@@ -270,8 +270,10 @@ class PreScreen:
                 if QUAL_ORDER.index(p.qualification) < QUAL_ORDER.index(want):
                     return Decision(False, f"грейд ниже нужного: {p.qualification}")
 
-        # 5. Remote.
-        if self.profile.remote_only and not p.remote:
+        # 5. Remote. Only an explicit "not remote" drops: a board that states
+        #    no work mode at all (Sber, Huntflow) gives None, and punishing
+        #    the silence would hide every one of its vacancies.
+        if self.profile.remote_only and p.remote is False:
             return Decision(False, "не удалённая работа")
 
         # 6. Salary. Only judged when the employer stated a figure.

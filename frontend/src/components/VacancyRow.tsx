@@ -21,6 +21,7 @@ export const BUCKET_TITLES: Record<TriageBucket, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   telegram: 'Telegram',
   geekjob: 'geekjob',
+  company: 'сайт компании',
 }
 
 /** Stages where a free filter or triage threw the posting out. */

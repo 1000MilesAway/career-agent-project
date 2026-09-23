@@ -61,6 +61,8 @@ export function SearchPage() {
   const [isTgScanning, startTgScan] = useTransition()
   const [isGjScanning, startGjScan] = useTransition()
   const [gjPages, setGjPages] = useState(5)
+  const [isCoScanning, startCoScan] = useTransition()
+  const [coGlobal, setCoGlobal] = useState(false)
   const [isTriaging, startTriage] = useTransition()
 
   const [visibleBuckets, setVisibleBuckets] = useState<ReadonlySet<BucketKey>>(
@@ -163,6 +165,27 @@ export function SearchPage() {
       try {
         const result = await scanVacancies({ source: 'geekjob', pages: gjPages })
         setScanNote(scanSummary('geekjob', result))
+        await mutate(STATE_KEY)
+      } catch (e) {
+        toast.error(e)
+      }
+    })
+  }
+
+  function scanCompanies() {
+    setScanNote(null)
+    startCoScan(async () => {
+      try {
+        const result = await scanVacancies({
+          source: 'company',
+          pages: 1,
+          groups: coGlobal ? ['ru', 'global'] : ['ru'],
+        })
+        // A board that failed is named, not folded into a smaller total.
+        const problems = result.problems?.length
+          ? ` Не прочитаны: ${result.problems.map((p) => `${p.board}: ${p.why}`).join(' · ')}`
+          : ''
+        setScanNote(`${scanSummary('Сайты компаний', result)}${problems}`)
         await mutate(STATE_KEY)
       } catch (e) {
         toast.error(e)
@@ -359,6 +382,32 @@ export function SearchPage() {
             title="Свежие вакансии geekjob.ru — сбор и бесплатные фильтры по вашим ключевым словам, модель не вызывается"
           >
             {isGjScanning ? 'Читаю geekjob…' : 'geekjob'}
+          </button>
+        </div>
+
+        <div
+          className="row"
+          style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 12 }}
+        >
+          <span className="muted">Сайты компаний:</span>
+          <label
+            className="check"
+            title="Nebius, JetBrains, Wrike, Xsolla и другие компании с русскоязычными командами — вакансии обычно за рубежом и на английском"
+          >
+            <input
+              type="checkbox"
+              checked={coGlobal}
+              onChange={(e) => setCoGlobal(e.target.checked)}
+            />
+            и зарубежные компании
+          </label>
+          <button
+            className="btn btn--ghost"
+            onClick={scanCompanies}
+            disabled={isCoScanning}
+            title="Сбер, Яндекс, VK и компании на Huntflow — прямо с их карьерных сайтов. Сбор и бесплатные фильтры, модель не вызывается"
+          >
+            {isCoScanning ? 'Читаю сайты…' : 'Сайты компаний'}
           </button>
         </div>
       </Card>

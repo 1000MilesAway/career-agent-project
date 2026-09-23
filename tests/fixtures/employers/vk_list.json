@@ -1,0 +1,69 @@
+{
+ "count": 4,
+ "next": "http://team.vk.company/career/api/v2/vacancies/?limit=3&offset=3&title=python",
+ "previous": null,
+ "results": [
+  {
+   "id": 54615,
+   "prof_area": {
+    "id": 27,
+    "name": "Разработка и технические специальности"
+   },
+   "group": {
+    "id": 293,
+    "name": "VK Видео",
+    "project_logo": "https://corp.vkcdn.ru/media/images/logo_zone.png"
+   },
+   "title": "Python-разработчик",
+   "town": {
+    "id": 7,
+    "name": "Санкт-Петербург"
+   },
+   "work_format": "гибкий",
+   "tags": [
+    {
+     "id": 2221,
+     "name": "python"
+    }
+   ],
+   "remote": false,
+   "external_program": false,
+   "external_bonus": null,
+   "specialty": {
+    "id": 282,
+    "name": "Backend"
+   }
+  },
+  {
+   "id": 52629,
+   "prof_area": {
+    "id": 27,
+    "name": "Разработка и технические специальности"
+   },
+   "group": {
+    "id": 65,
+    "name": "Опыт сотрудников",
+    "project_logo": "https://corp.vkcdn.ru/media/images/color_color-5_arc1y08.png"
+   },
+   "title": "Python-разработчик в CRM Media",
+   "town": {
+    "id": 1,
+    "name": "Москва"
+   },
+   "work_format": "Дистанционный",
+   "tags": [
+    {
+     "id": 2221,
+     "name": "python"
+    }
+   ],
+   "remote": true,
+   "external_program": false,
+   "external_bonus": null,
+   "specialty": {
+    "id": 282,
+    "name": "Backend"
+   }
+  }
+ ]
+}

@@ -76,7 +76,7 @@ class VacancyResponse(BaseModel):
 
 
 class ScanRequest(BaseModel):
-    source: Literal["habr", "telegram", "geekjob"] = "habr"
+    source: Literal["habr", "telegram", "geekjob", "company"] = "habr"
     pages: int = 1
     channels: list[str] | None = None
     # "и смежные каналы" on the scan form. The checkbox existed but was read
@@ -154,6 +154,14 @@ async def start_scan(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"geekjob не прочитан: {e}",
             ) from e
+    elif body.source == "company":
+        # `groups` carries "ru" / "global" here, as it carries channel groups
+        # for Telegram; the default ["core"] means "the default group".
+        groups = tuple(g for g in body.groups if g in ("ru", "global")) or ("ru",)
+        try:
+            result = await scan.collect_employers(session, user.id, search_profile, groups)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     else:
         result = await scan.collect_telegram(
             session, user.id, search_profile,
