@@ -74,9 +74,14 @@ class TestScoreSanity:
     def test_score_off_the_scale_is_caught(self):
         assert not calibrate.from_stored([row(score=7.0, verdict="apply")]).ok
 
-    def test_score_not_on_the_half_step_is_caught(self):
+    def test_score_not_on_the_tenth_step_is_caught(self):
+        r = calibrate.from_stored([row(score=4.25, verdict="apply")])
+        assert any(f.kind == "балл не кратен 0.1" for f in r.findings)
+
+    def test_a_tenth_step_score_passes_despite_float_error(self):
+        """4.3 * 10 is not exactly 43 in binary; that is not the model's fault."""
         r = calibrate.from_stored([row(score=4.3, verdict="apply")])
-        assert any(f.kind == "балл не кратен 0.5" for f in r.findings)
+        assert not any(f.kind == "балл не кратен 0.1" for f in r.findings)
 
     def test_a_missing_score_is_caught_and_does_not_crash(self):
         r = calibrate.from_stored([{"id": "1", "title": "t", "report": {"verdict": "apply"}}])

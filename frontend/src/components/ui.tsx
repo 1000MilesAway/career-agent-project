@@ -58,6 +58,11 @@ export function Skeleton({ rows = 3 }: { rows?: number }) {
   )
 }
 
+/** One decimal always: a bare "4" reads as a rounded score next to a "4.3". */
+export function formatScore(score: number): string {
+  return score.toFixed(1)
+}
+
 export function Score({
   score,
   verdict,
@@ -69,7 +74,7 @@ export function Score({
   const tone = verdict === 'apply' ? 'm-full' : verdict === 'skip' ? 'm-none' : 'm-partial'
   return (
     <span className={tone} style={{ fontSize: 20, fontWeight: 600 }}>
-      {score}
+      {formatScore(score)}
     </span>
   )
 }

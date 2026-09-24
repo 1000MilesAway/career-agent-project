@@ -126,9 +126,10 @@ def check_report(case: str, report: dict, result: Result, schema: str = "") -> N
     if not 1.0 <= score <= 5.0:
         result.findings.append(Finding(case, "балл вне шкалы", f"{score}"))
 
-    # The prompt asks for steps of 0.5. A 4.3 means it stopped reading the rule.
-    if round(score * 2) != score * 2:
-        result.findings.append(Finding(case, "балл не кратен 0.5", f"{score}"))
+    # The prompt asks for steps of 0.1. A 4.25 means it stopped reading the rule.
+    # Compared with a tolerance: 4.3 * 10 is 42.99999... in binary floating point.
+    if abs(score * 10 - round(score * 10)) > 1e-6:
+        result.findings.append(Finding(case, "балл не кратен 0.1", f"{score}"))
 
     expected = verdict_for(score)
     if verdict != expected:

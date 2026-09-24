@@ -71,10 +71,10 @@ class TestEvaluate:
             assert key in r, key
 
     @pytest.mark.parametrize("name", ["evaluate_apply", "evaluate_skip"])
-    def test_score_is_on_the_half_point_scale(self, name):
+    def test_score_is_on_the_tenth_point_scale(self, name):
         score = load(name)["score"]
         assert 1.0 <= score <= 5.0
-        assert (score * 2) % 1 == 0, "шаг шкалы — 0.5"
+        assert abs(score * 10 - round(score * 10)) < 1e-6, "шаг шкалы — 0.1"
 
     @pytest.mark.parametrize(
         "name,verdict", [("evaluate_apply", "apply"), ("evaluate_skip", "skip")]
