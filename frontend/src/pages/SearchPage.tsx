@@ -15,16 +15,13 @@ import {
   setSaved,
   useAppState,
 } from '../api/hooks'
-import type { FoundVacancy, ScanResult, SourceScan, TriageBucket } from '../api/types'
+import type { FoundVacancy, ScanResult, SourceScan } from '../api/types'
 import { SalaryInput } from '../components/SalaryInput'
 import { BUCKET_TITLES, DROPPED_STAGES, VacancyRow } from '../components/VacancyRow'
 import { useToast } from '../components/toast'
 import { Card, ErrorNote, Skeleton, rub } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
-
-/** Buckets on screen. "skip" is off by default — the point is a short list —
- *  but one click brings it back. `null` is "no verdict yet". */
-type BucketKey = TriageBucket | null
+import { type BucketKey, loadFilters, saveFilters } from './searchFilters'
 
 /** A stable empty list, so a state payload that has not arrived yet does not
  *  hand every memo below a new array identity on each render. */
@@ -64,10 +61,13 @@ export function SearchPage() {
   const [isScanning, startScan] = useTransition()
   const [isTriaging, startTriage] = useTransition()
 
+  // Read once on mount; every change below writes it back, so a reload
+  // shows the list the way the user left it.
+  const [initialFilters] = useState(loadFilters)
   const [visibleBuckets, setVisibleBuckets] = useState<ReadonlySet<BucketKey>>(
-    () => new Set<BucketKey>(['worth', 'maybe', null]),
+    () => new Set(initialFilters.buckets),
   )
-  const [showDropped, setShowDropped] = useState(false)
+  const [showDropped, setShowDropped] = useState(initialFilters.showDropped)
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
   // useMemo below recompute, which is the opposite of what they are for.
@@ -106,13 +106,19 @@ export function SearchPage() {
     return base.filter((row) => visibleBuckets.has(row.triage?.bucket ?? null))
   }, [rows, kept, showDropped, anyJudged, visibleBuckets])
 
+  // Computed from the rendered value rather than inside a state updater: the
+  // write to storage is a side effect, and updaters must stay pure.
   function toggleBucket(key: BucketKey) {
-    setVisibleBuckets((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+    const next = new Set(visibleBuckets)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setVisibleBuckets(next)
+    saveFilters({ buckets: [...next], showDropped })
+  }
+
+  function toggleDropped() {
+    setShowDropped(!showDropped)
+    saveFilters({ buckets: [...visibleBuckets], showDropped: !showDropped })
   }
 
   function scan() {
@@ -306,7 +312,7 @@ export function SearchPage() {
           <p className="muted" style={{ marginTop: 0 }}>
             Найдено <b>{kept.length}</b>, оценено {scored}.{' '}
             {dropped.length ? (
-              <button className="linkish" onClick={() => setShowDropped((on) => !on)}>
+              <button className="linkish" onClick={toggleDropped}>
                 {showDropped ? 'скрыть' : 'показать'} отсеянные ({dropped.length})
               </button>
             ) : null}
