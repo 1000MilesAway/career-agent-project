@@ -11,8 +11,11 @@
   --ok: #2f855a;
   --warn: #b7791f;
   --bad: #c53030;
-  --link: #1f5c94;
-  --link-visited: #5b4a8a;
+  /* Links read as text, not as browser-default blue/purple: the underline
+     marks them, and a visited link keeps the same color so a list of
+     vacancies does not turn into a patchwork after a few clicks. */
+  --link: var(--ink);
+  --link-visited: var(--link);
 
   --radius: 10px;
   --radius-sm: 8px;
@@ -30,11 +33,6 @@
     --ok: #68d391;
     --warn: #f6ad55;
     --bad: #fc8181;
-    /* The browser default (#0000EE, #551A8B visited) is unreadable on this
-       background. These stay in the accent family and keep a visited link
-       legible instead of dropping it into dark purple. */
-    --link: #8fc0f0;
-    --link-visited: #c3aee6;
   }
 }
 
