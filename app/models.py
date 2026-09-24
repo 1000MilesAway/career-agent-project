@@ -96,6 +96,15 @@ class Resume(Base, TimestampMixin):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # An accepted chat edit makes a new row rather than rewriting this one: a
+    # report bought against the old profile must keep matching the profile it
+    # read, and a new resume_id is what lets the same vacancy be scored again.
+    # See docs/decisions.md, 2026-09-22 (variant B).
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("resumes.id", ondelete="SET NULL")
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
     user: Mapped[User] = relationship(back_populates="resumes")
 
     __table_args__ = (

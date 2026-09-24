@@ -38,7 +38,8 @@ export function loadFilters(): SearchFilters {
       buckets: Array.isArray(buckets)
         ? KNOWN.filter((key) => buckets.includes(key))
         : DEFAULT_FILTERS.buckets,
-      showDropped: typeof showDropped === 'boolean' ? showDropped : DEFAULT_FILTERS.showDropped,
+      showDropped:
+        typeof showDropped === 'boolean' ? showDropped : DEFAULT_FILTERS.showDropped,
     }
   } catch {
     return DEFAULT_FILTERS

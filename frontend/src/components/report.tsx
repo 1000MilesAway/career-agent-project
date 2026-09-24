@@ -42,7 +42,9 @@ export function ReportView({ report }: { report: Report }) {
   return (
     <div className="card">
       <div className="row" style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 34, fontWeight: 600, lineHeight: 1 }}>{formatScore(report.score)}</span>
+        <span style={{ fontSize: 34, fontWeight: 600, lineHeight: 1 }}>
+          {formatScore(report.score)}
+        </span>
         <span className={`pill pill--${report.verdict}`}>
           {VERDICT_TITLES[report.verdict] ?? report.verdict}
         </span>

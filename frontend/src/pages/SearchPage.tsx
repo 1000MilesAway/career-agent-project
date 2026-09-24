@@ -379,6 +379,16 @@ export function SearchPage() {
                       ? 'Отчёт'
                       : 'Оценить'}
                 </button>
+                {vacancy.outdated ? (
+                  <button
+                    className="btn btn--ghost btn--small"
+                    onClick={() => openReport(vacancy, true)}
+                    disabled={isBusy(`${vacancy.id}:report`)}
+                    title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                  >
+                    Переоценить
+                  </button>
+                ) : null}
                 <button
                   className={
                     vacancy.saved

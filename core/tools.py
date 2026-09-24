@@ -161,7 +161,10 @@ PROPOSE_PROFILE_PATCH = Tool(
             "value": {"type": "string", "description": "что добавить, словами пользователя"},
             "company": {
                 "type": "string",
-                "description": "для add_achievement: в какое место работы",
+                "description": (
+                    "для add_achievement: место работы, название ровно как в поле "
+                    "company профиля (посмотри get_profile), а не пересказом"
+                ),
             },
             "field": {
                 "type": "string",

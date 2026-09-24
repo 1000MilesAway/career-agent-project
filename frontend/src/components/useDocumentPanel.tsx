@@ -63,9 +63,10 @@ export function useDocumentPanel() {
   }, [])
 
   const openReport = useCallback(
-    async (vacancy: FoundVacancy) => {
-      // Already on the row: show it without asking the server again.
-      if (vacancy.report) {
+    async (vacancy: FoundVacancy, fresh = false) => {
+      // Already on the row: show it without asking the server again. `fresh`
+      // is the re-evaluation of an outdated score, which is a purchase.
+      if (vacancy.report && !fresh) {
         setPanel({
           title: vacancy.title,
           content: { type: 'report', report: vacancy.report },

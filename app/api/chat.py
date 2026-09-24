@@ -315,14 +315,28 @@ async def accept(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Резюме не загружено"
             )
-        resume.profile = chat_service.apply_profile_patch(
-            resume.profile, proposal.arguments
+        # A new revision, not an edit in place: reports bought against the old
+        # profile keep pointing at the profile they read, and the new resume_id
+        # is what lets the user buy a fresh evaluation of the same vacancy.
+        resume.is_active = False
+        # Flushed before the insert: one active CV per user is a unique index,
+        # and two active rows for a moment is enough to trip it.
+        await session.flush()
+        revision = Resume(
+            user_id=user.id,
+            filename=resume.filename,
+            raw_text=resume.raw_text,
+            profile=chat_service.apply_profile_patch(resume.profile, proposal.arguments),
+            # Confirmed by the user, so it carries over. Archetypes do not: the
+            # portrait triage screens against was derived from the old profile.
+            search_profile=resume.search_profile,
+            archetypes=None,
+            is_active=True,
+            parent_id=resume.id,
+            revision=resume.revision + 1,
         )
-        # The portrait triage screens against was derived from the old profile.
-        # Keeping it would let the cheap screen judge the user by a CV that no
-        # longer describes them.
-        resume.archetypes = None
-        proposal.proposed = {"profile": resume.profile}
+        session.add(revision)
+        proposal.proposed = {"profile": revision.profile}
 
     elif proposal.kind == "vacancy_status":
         vacancy = await _vacancy_of(session, user, proposal)

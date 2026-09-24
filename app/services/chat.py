@@ -14,6 +14,7 @@ promise in a prompt: there is no branch here that applies a change.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -331,6 +332,45 @@ class ToolRunner:
         )
 
 
+def _employer_key(name: str) -> str:
+    """A company name reduced to what a person would call it in a chat.
+
+    The CV says "Berezka VPN (свой проект, self-hosted)" or "iiko, Компания
+    Айко"; a user asking the assistant says "Berezka VPN" or "iiko".
+    """
+    name = re.sub(r"\(.*?\)", " ", name.casefold())
+    return " ".join(re.findall(r"\w+", name))
+
+
+def _find_employer(experience: list[dict], company: str) -> dict | None:
+    """The experience entry `company` refers to, or None.
+
+    Exact match first, then the name without the parenthetical note, then the
+    name as the leading words of the entry's. Exact-only matching sent an
+    achievement for "Berezka VPN" into a new blank job next to the real
+    "Berezka VPN (свой проект, self-hosted)" — see docs/decisions.md.
+    A loose match counts only when it is unambiguous: attaching an
+    achievement to the wrong employer is worse than a visible new entry.
+    """
+    if not company:
+        return None
+    for entry in experience:
+        if str(entry.get("company", "")).casefold() == company.casefold():
+            return entry
+
+    wanted = _employer_key(company)
+    if not wanted:
+        return None
+    for matches in (
+        lambda key: key == wanted,
+        lambda key: key.startswith(wanted + " "),
+    ):
+        found = [e for e in experience if matches(_employer_key(str(e.get("company", ""))))]
+        if len(found) == 1:
+            return found[0]
+    return None
+
+
 def apply_profile_patch(profile: dict[str, Any], arguments: dict) -> dict[str, Any]:
     """The accepted patch, applied to a copy of the profile.
 
@@ -361,11 +401,7 @@ def apply_profile_patch(profile: dict[str, Any], arguments: dict) -> dict[str, A
     if op == "add_achievement":
         company = str(arguments.get("company") or "").strip()
         experience = [dict(e) for e in (out.get("experience") or [])]
-        target = None
-        for entry in experience:
-            if company and str(entry.get("company", "")).casefold() == company.casefold():
-                target = entry
-                break
+        target = _find_employer(experience, company)
         if target is None:
             # No matching employer: the achievement is kept rather than dropped,
             # in a place the user can see and fix. Silently discarding an

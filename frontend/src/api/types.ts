@@ -101,6 +101,8 @@ export interface FoundVacancy {
   report: Report | null
   artifacts: Partial<Record<ArtifactKind, ArtifactContent>> | null
   rub: number | null
+  /** The score was bought against an earlier CV or revision of it. */
+  outdated?: boolean
   /** The row this one copies, when the scan found it elsewhere first. The
    * reason is in `screen_reason`; the id lets the row point at the original. */
   duplicate_of?: string | null

@@ -134,7 +134,8 @@ export async function download(path: string, fallbackName: string): Promise<void
   try {
     const link = document.createElement('a')
     link.href = url
-    link.download = filenameFrom(response.headers.get('Content-Disposition')) || fallbackName
+    link.download =
+      filenameFrom(response.headers.get('Content-Disposition')) || fallbackName
     document.body.appendChild(link)
     link.click()
     link.remove()

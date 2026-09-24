@@ -91,6 +91,13 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "report": evaluation.report if evaluation else None,
                 "artifacts": artifacts or None,
                 "rub": float(evaluation.cost_rub) if evaluation else None,
+                # The report on screen was bought against an earlier CV or an
+                # earlier revision of it. Shown rather than hidden — it was
+                # paid for — but marked, so the user knows a fresh score is
+                # one click away and what the old one was judged against.
+                "outdated": bool(
+                    evaluation and resume and evaluation.resume_id != resume.id
+                ),
                 "duplicate_of": str(v.duplicate_of_id) if v.duplicate_of_id else None,
                 # Closed is shown, not hidden: the report and materials the
                 # user bought stay readable, and the mark says why to stop.

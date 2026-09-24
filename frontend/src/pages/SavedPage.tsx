@@ -118,6 +118,16 @@ export function SavedPage() {
                       ? 'Отчёт'
                       : 'Оценить'}
                 </button>
+                {vacancy.outdated ? (
+                  <button
+                    className="btn btn--ghost btn--small"
+                    onClick={() => openReport(vacancy, true)}
+                    disabled={isBusy(`${vacancy.id}:report`)}
+                    title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                  >
+                    Переоценить
+                  </button>
+                ) : null}
 
                 {/* One button per document, each stating its own price. A
                     package made people pay for documents they did not ask

@@ -71,6 +71,14 @@ function VacancyRowInner({
           </p>
         ) : null}
 
+        {/* The resume changed after this score was bought: the report still
+            reads against the old profile, so it is marked, not replaced. */}
+        {vacancy.outdated ? (
+          <p className="vrow__meta">
+            <span className="chip">прежнее резюме</span> оценка сделана до правки резюме
+          </p>
+        ) : null}
+
         <p className="vrow__meta">
           {sourceLabel ? `${sourceLabel} · ` : ''}
           {vacancy.company || 'компания не указана'} ·{' '}

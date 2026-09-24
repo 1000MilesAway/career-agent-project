@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from sqlalchemy import select
 
 from app.models import Evaluation, Proposal, Resume, User, Vacancy
@@ -132,6 +133,34 @@ class TestApplyProfilePatch:
             {"op": "add_achievement", "value": "Кластеры Kubernetes", "company": "Авито"},
         )
         assert out["experience"][0]["achievements"] == ["Платежи", "Кластеры Kubernetes"]
+
+    @pytest.mark.parametrize(
+        "stored,said",
+        [
+            # The case that shipped: the chat named the project without the note.
+            ("Berezka VPN (свой проект, self-hosted)", "Berezka VPN"),
+            ("iiko, Компания Айко", "iiko"),
+            ("Лемана ПРО", "лемана про"),
+        ],
+    )
+    def test_an_achievement_finds_the_company_by_its_short_name(self, stored, said):
+        profile = {"experience": [{"company": "Авито"}, {"company": stored, "achievements": []}]}
+        out = chat_service.apply_profile_patch(
+            profile, {"op": "add_achievement", "value": "Claude Code", "company": said}
+        )
+        assert len(out["experience"]) == 2
+        assert out["experience"][1]["achievements"] == ["Claude Code"]
+
+    def test_an_ambiguous_short_name_does_not_guess(self):
+        """Two employers both start with the name: picking one would put the
+        achievement under the wrong job without saying so."""
+        profile = {"experience": [{"company": "Сбер Технологии"}, {"company": "Сбер Маркет"}]}
+        out = chat_service.apply_profile_patch(
+            profile, {"op": "add_achievement", "value": "Что-то", "company": "Сбер"}
+        )
+        assert [e["company"] for e in out["experience"]] == [
+            "Сбер Технологии", "Сбер Маркет", "Сбер",
+        ]
 
     def test_an_unmatched_company_is_kept_visibly_not_dropped(self):
         """Silently discarding an accepted change is worse than placing it

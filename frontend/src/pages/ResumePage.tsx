@@ -91,7 +91,8 @@ export function ResumePage() {
           </button>
         </div>
         <p className="muted" style={{ marginBottom: 0 }}>
-          PDF, DOC, DOCX, RTF, TXT или MD до 10 МБ. Разбор стоит около 0.05 ₽ и делается один раз.
+          PDF, DOC, DOCX, RTF, TXT или MD до 10 МБ. Разбор стоит около 0.05 ₽ и делается
+          один раз.
         </p>
       </Card>
 
@@ -136,7 +137,9 @@ function ProfileCard({ profile }: { profile: ResumeProfile }) {
   return (
     <Card
       title="Профиль"
-      actions={<DownloadButtons onDownload={downloadProfile} small label="Скачать резюме" />}
+      actions={
+        <DownloadButtons onDownload={downloadProfile} small label="Скачать резюме" />
+      }
     >
       <dl className="kv">
         <dt>Имя</dt>
@@ -178,7 +181,13 @@ function ProfileCard({ profile }: { profile: ResumeProfile }) {
           {profile.experience.map((item, index) => (
             <div key={`${item.company}-${index}`} style={{ marginBottom: 12 }}>
               <div>
-                <b>{item.role}</b> — {item.company}
+                {item.role ? (
+                  <>
+                    <b>{item.role}</b> — {item.company}
+                  </>
+                ) : (
+                  <b>{item.company}</b>
+                )}
               </div>
               <div className="muted">{item.period}</div>
               <ul style={{ margin: '4px 0' }}>

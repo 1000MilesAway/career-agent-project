@@ -76,6 +76,19 @@ describe('VacancyRow', () => {
     expect(screen.getByText(/стек смежный/)).toBeTruthy()
   })
 
+  it('оценка по прежнему резюме помечена и показана с одним знаком', () => {
+    render(
+      <VacancyRow
+        vacancy={{ ...base, score: 4, verdict: 'apply', outdated: true }}
+        actions={null}
+      />,
+    )
+
+    expect(screen.getByText('прежнее резюме')).toBeTruthy()
+    // «4» без дробной части читается как округлённый балл рядом с «4.3».
+    expect(screen.getByText('4.0')).toBeTruthy()
+  })
+
   it('вакансия без ссылки всё равно рисуется, заголовком без якоря', () => {
     const { container } = render(
       <VacancyRow vacancy={{ ...base, url: null, source: 'telegram' }} actions={null} />,

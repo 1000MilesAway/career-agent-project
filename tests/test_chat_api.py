@@ -12,7 +12,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from app.models import ChatMessage, Proposal, Resume, Vacancy
+from app.models import ChatMessage, Evaluation, Proposal, Resume, Vacancy
 from tests.dbmark import requires_db
 
 
@@ -80,6 +80,17 @@ async def _resume(session, user, profile: dict | None = None) -> Resume:
     await session.commit()
     await session.refresh(resume)
     return resume
+
+
+async def _active(session, user) -> Resume:
+    # populate_existing: the accept ran in the API's own session, so rows this
+    # session already holds are stale.
+    result = await session.execute(
+        select(Resume)
+        .where(Resume.user_id == user.id, Resume.is_active.is_(True))
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
 
 
 async def _vacancy(session, user) -> Vacancy:
@@ -211,7 +222,7 @@ class TestProposalsRequireConfirmation:
     async def test_accepting_applies_the_patch(
         self, client, auth_headers, session, user, reply
     ):
-        resume = await _resume(session, user)
+        await _resume(session, user)
         reply(
             calls("propose_profile_patch", {"op": "add_skill", "value": "Kubernetes"}),
             says("Готово к подтверждению."),
@@ -226,9 +237,75 @@ class TestProposalsRequireConfirmation:
         )
         assert response.status_code == 200, response.text
 
+        active = await _active(session, user)
+        assert "Kubernetes" in active.profile["skills"]
+        assert active.profile["provenance"]["skills"][0]["source"] == "user-stated"
+
+    async def test_accepting_makes_a_new_revision_and_keeps_the_old_one(
+        self, client, auth_headers, session, user, reply
+    ):
+        """Editing in place would leave bought reports describing a profile that
+        no longer exists, and the same resume_id would keep serving the old
+        evaluation from cache — no way to score the vacancy again."""
+        resume = await _resume(session, user)
+        resume.search_profile = {"queries": ["python"]}
+        await session.commit()
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
+            says("Готово."),
+        )
+        created = await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        proposal_id = created.json()["proposals"][0]["id"]
+        await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
+
+        active = await _active(session, user)
+        assert active.id != resume.id
+        assert active.parent_id == resume.id
+        assert active.revision == 2
+        # Confirmed by the user earlier — a chat edit must not lose it.
+        assert active.search_profile == {"queries": ["python"]}
+
         await session.refresh(resume)
-        assert "Kubernetes" in resume.profile["skills"]
-        assert resume.profile["provenance"]["skills"][0]["source"] == "user-stated"
+        assert resume.is_active is False
+        assert resume.profile["skills"] == ["Python"]
+
+    async def test_a_score_bought_before_the_edit_is_marked_outdated(
+        self, client, auth_headers, session, user, reply
+    ):
+        """The report stays on screen — it was paid for — but the row says it
+        was judged against the old profile, which is what offers a re-score."""
+        resume = await _resume(session, user)
+        vacancy = await _vacancy(session, user)
+        session.add(
+            Evaluation(
+                vacancy_id=vacancy.id,
+                resume_id=resume.id,
+                score=4.0,
+                verdict="apply",
+                report={"score": 4.0},
+                model="deepseek-flash",
+                cost_rub=0.17,
+            )
+        )
+        await session.commit()
+
+        def row():
+            return client.get("/api/state", headers=auth_headers)
+
+        before = (await row()).json()["found"][0]
+        assert before["outdated"] is False
+
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
+            says("Готово."),
+        )
+        created = await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        proposal_id = created.json()["proposals"][0]["id"]
+        await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
+
+        after = (await row()).json()["found"][0]
+        assert after["score"] == 4.0
+        assert after["outdated"] is True
 
     async def test_accepting_clears_the_cached_archetypes(
         self, client, auth_headers, session, user, reply
@@ -249,8 +326,7 @@ class TestProposalsRequireConfirmation:
         proposal_id = created.json()["proposals"][0]["id"]
         await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
 
-        await session.refresh(resume)
-        assert resume.archetypes is None
+        assert (await _active(session, user)).archetypes is None
 
     async def test_rejecting_changes_nothing(
         self, client, auth_headers, session, user, reply

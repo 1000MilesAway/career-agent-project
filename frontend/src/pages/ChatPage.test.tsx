@@ -35,7 +35,11 @@ vi.mock('../components/toast', () => ({
 
 const { ChatPage } = await import('./ChatPage')
 
-function message(role: 'user' | 'assistant', text: string, tools: string[] = []): ChatMessage {
+function message(
+  role: 'user' | 'assistant',
+  text: string,
+  tools: string[] = [],
+): ChatMessage {
   return { role, text, tools, created_at: `2026-09-22T12:0${text.length % 10}:00Z` }
 }
 
