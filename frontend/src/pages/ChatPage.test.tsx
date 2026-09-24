@@ -77,6 +77,22 @@ describe('ChatPage', () => {
     expect(bubbles).toEqual(['знаю kubernetes', 'Подготовил правку.'])
   })
 
+  it('смена резюме видна в ленте отметкой, а не репликой', () => {
+    mocks.messages = [
+      message('user', 'добавь Claude'),
+      {
+        ...message('assistant', 'x'),
+        role: 'event',
+        text: 'Загружено новое резюме «cv.md».',
+      },
+    ]
+    mocks.proposals = []
+    const { container } = render(<ChatPage />)
+
+    expect(container.querySelector('.chat__event')?.textContent).toMatch(/новое резюме/)
+    expect(container.querySelectorAll('.bubble')).toHaveLength(1)
+  })
+
   it('видно, что помощник смотрел, — молча сделанное проверить нельзя', () => {
     mocks.messages = [message('assistant', 'В профиле нет Kubernetes.', ['get_profile'])]
     mocks.proposals = []

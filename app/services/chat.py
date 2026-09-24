@@ -19,13 +19,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from core import chat as chat_core
 from core import tools
 
-from ..models import Evaluation, Proposal, Resume, User, Vacancy
+from ..models import ChatMessage, Evaluation, Proposal, Resume, User, Vacancy
 from .spend import remaining_rub
 from .tracker import STATUSES
 
@@ -136,6 +137,32 @@ def _evaluation_for(vacancy: Vacancy, resume: Resume | None) -> Evaluation | Non
     if resume is None:
         return None
     return next((e for e in vacancy.evaluations if e.resume_id == resume.id), None)
+
+
+async def next_seq(session: AsyncSession, user_id: uuid.UUID) -> int:
+    result = await session.execute(
+        select(func.coalesce(func.max(ChatMessage.seq), 0)).where(
+            ChatMessage.user_id == user_id
+        )
+    )
+    return int(result.scalar_one()) + 1
+
+
+async def note_resume_changed(session: AsyncSession, user_id: uuid.UUID, text: str) -> None:
+    """Mark in the conversation that the CV under it changed.
+
+    History is per user, not per resume, so after a new upload the chat still
+    held "added Claude Code" from the old CV and the model refused to add it
+    again. The note tells both the model and the user where the break is.
+    """
+    session.add(
+        ChatMessage(
+            user_id=user_id,
+            role=chat_core.EVENT,
+            payload={"role": chat_core.EVENT, "content": text},
+            seq=await next_seq(session, user_id),
+        )
+    )
 
 
 def enabled_tools(has_resume: bool) -> tuple[tools.Tool, ...]:

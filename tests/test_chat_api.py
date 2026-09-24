@@ -457,3 +457,120 @@ class TestClear:
         assert (await client.get("/api/chat", headers=auth_headers)).json() == []
         left = list((await session.execute(select(Proposal))).scalars())
         assert left == []
+
+
+@requires_db
+class TestResumeRollback:
+    """Going back to an earlier version, and what the chat learns of it."""
+
+    async def _two_revisions(self, client, auth_headers, session, user, reply):
+        first = await _resume(session, user)
+        first.search_profile = {"queries": ["python"]}
+        await session.commit()
+        reply(
+            calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
+            says("Готово."),
+        )
+        created = await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        proposal_id = created.json()["proposals"][0]["id"]
+        await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
+        return first, await _active(session, user)
+
+    async def test_restore_copies_the_old_version_forward(
+        self, client, auth_headers, session, user, reply
+    ):
+        """A copy, not a reactivation: the rollback is itself undoable, and
+        the version being left stays in the chain."""
+        first, second = await self._two_revisions(client, auth_headers, session, user, reply)
+        second.search_profile = {"queries": ["go"]}
+        await session.commit()
+
+        response = await client.post(
+            f"/api/resumes/{first.id}/restore", headers=auth_headers
+        )
+        assert response.status_code == 200, response.text
+
+        active = await _active(session, user)
+        assert active.id not in {first.id, second.id}
+        assert active.revision == 3
+        assert active.parent_id == second.id
+        assert active.profile["skills"] == ["Python"]
+        # The search profile is its own confirmed thing; a CV rollback does
+        # not reach into it.
+        assert active.search_profile == {"queries": ["go"]}
+
+    async def test_the_current_version_cannot_be_restored(
+        self, client, auth_headers, session, user
+    ):
+        resume = await _resume(session, user)
+        response = await client.post(f"/api/resumes/{resume.id}/restore", headers=auth_headers)
+        assert response.status_code == 409
+
+    async def test_the_chat_is_told_the_cv_changed(
+        self, client, auth_headers, session, user, reply
+    ):
+        """History is per user: without a note the model reads its own
+        "added it" from the old CV and refuses to add it again."""
+        first, _ = await self._two_revisions(client, auth_headers, session, user, reply)
+        await client.post(f"/api/resumes/{first.id}/restore", headers=auth_headers)
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert shown[-1]["role"] == "event"
+        assert "возвращено к версии 1" in shown[-1]["text"]
+
+        seen = reply(says("Проверю профиль."))
+        await client.post("/api/chat", json={"text": "добавь go"}, headers=auth_headers)
+        last = seen[0]["history"][-1]
+        assert last["role"] == "user"
+        assert "<event>" in last["content"] and last["content"].endswith("добавь go")
+        assert all(m["role"] != "event" for m in seen[0]["history"])
+
+    async def test_history_lists_every_version_with_its_changes(
+        self, client, auth_headers, session, user, reply
+    ):
+        await self._two_revisions(client, auth_headers, session, user, reply)
+
+        history = (await client.get("/api/state", headers=auth_headers)).json()[
+            "resume_history"
+        ]
+        assert [(h["revision"], h["active"]) for h in history] == [(2, True), (1, False)]
+        assert history[0]["changes"] == ["+ навык: Go"]
+        assert history[1]["changes"] == ["Загружен файл «cv.pdf»"]
+
+    async def test_a_new_upload_is_noted_in_the_chat(
+        self, client, auth_headers, session, user, monkeypatch
+    ):
+        """The case that was reported: after re-uploading the CV the chat said
+        it had already added Claude Code and would not do it again."""
+        await _resume(session, user)
+        monkeypatch.setattr("app.api.resumes.LLM", lambda *a, **kw: object())
+        monkeypatch.setattr(
+            "app.api.resumes.parse_resume", lambda llm, text: {"skills": ["Python"]}
+        )
+        monkeypatch.setattr("app.api.resumes.build_search_profile", lambda llm, p: {})
+
+        response = await client.post(
+            "/api/resumes",
+            files={"file": ("new.md", "# Резюме\nPython".encode(), "text/markdown")},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert shown[-1]["role"] == "event"
+        assert "«new.md»" in shown[-1]["text"]
+
+    async def test_a_first_upload_leaves_the_chat_alone(
+        self, client, auth_headers, monkeypatch
+    ):
+        """Nothing was replaced, so there is nothing to warn about."""
+        monkeypatch.setattr("app.api.resumes.LLM", lambda *a, **kw: object())
+        monkeypatch.setattr("app.api.resumes.parse_resume", lambda llm, text: {})
+        monkeypatch.setattr("app.api.resumes.build_search_profile", lambda llm, p: {})
+
+        await client.post(
+            "/api/resumes",
+            files={"file": ("cv.md", b"Python", "text/markdown")},
+            headers=auth_headers,
+        )
+        assert (await client.get("/api/chat", headers=auth_headers)).json() == []

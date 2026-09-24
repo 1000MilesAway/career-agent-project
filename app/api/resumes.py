@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,8 @@ from core.pipeline import build_search_profile, parse_resume, read_document
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Resume
+from ..services import chat as chat_service
+from ..services import revisions
 from ..services.spend import charge, ensure_can_spend
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
@@ -34,6 +37,10 @@ class ResumeResponse(BaseModel):
     profile: dict[str, Any]
     search_profile: dict[str, Any] | None
     archetypes: dict[str, Any] | None
+    revision: int
+    parent_id: uuid.UUID | None
+    is_active: bool
+    created_at: datetime
 
 
 def _as_response(resume: Resume) -> ResumeResponse:
@@ -43,6 +50,10 @@ def _as_response(resume: Resume) -> ResumeResponse:
         profile=resume.profile,
         search_profile=resume.search_profile,
         archetypes=resume.archetypes,
+        revision=resume.revision,
+        parent_id=resume.parent_id,
+        is_active=resume.is_active,
+        created_at=resume.created_at,
     )
 
 
@@ -110,11 +121,18 @@ async def upload(
     # A new CV replaces the old active one rather than deleting it: evaluations
     # point at the resume they judged against, and dropping it would take
     # paid-for reports with it.
-    await session.execute(
+    replaced = await session.execute(
         update(Resume)
         .where(Resume.user_id == user.id, Resume.is_active.is_(True))
         .values(is_active=False)
     )
+    if replaced.rowcount:
+        await chat_service.note_resume_changed(
+            session,
+            user.id,
+            f"Загружено новое резюме «{file.filename or 'resume'}». Правки, принятые "
+            "в разговоре выше, относились к прежнему резюме и в новом их нет.",
+        )
 
     resume = Resume(
         user_id=user.id,
@@ -183,6 +201,43 @@ async def accept_search_profile(
     await session.commit()
     await session.refresh(resume)
     return _as_response(resume)
+
+
+@router.post("/{resume_id}/restore", response_model=ResumeResponse)
+async def restore(
+    resume_id: uuid.UUID,
+    session: SessionDep,
+    user: UserDep,
+    resume: ResumeDep,
+) -> ResumeResponse:
+    """Go back to an earlier version. Free — nothing here calls the model.
+
+    The click is the confirmation: the user picked the version by hand. What
+    it does is copy that version forward as a new revision, so the rollback
+    can itself be rolled back.
+    """
+    result = await session.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user.id)
+    )
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Версия не найдена")
+    if target.id == resume.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Эта версия и так текущая"
+        )
+
+    restored = await revisions.restore(session, resume, target)
+    await chat_service.note_resume_changed(
+        session,
+        user.id,
+        f"Резюме возвращено к версии {target.revision} от "
+        f"{target.created_at:%d.%m.%Y %H:%M} UTC. Правки, сделанные после неё, "
+        "в текущем резюме отсутствуют.",
+    )
+    await session.commit()
+    await session.refresh(restored)
+    return _as_response(restored)
 
 
 @router.get("", response_model=list[ResumeResponse])

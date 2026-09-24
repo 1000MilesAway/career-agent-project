@@ -19,10 +19,39 @@ from core.profiles import steps_as_list
 
 from ..core.deps import SessionDep, UserDep
 from ..models import Evaluation, Resume, Vacancy
+from ..services import revisions
 from ..services.spend import remaining_rub
 from ..services.tracker import STATUSES
 
 router = APIRouter(prefix="/api", tags=["state"])
+
+# Versions listed under "История версий". Older ones stay in the database —
+# they back bought reports — but a list longer than this is not read.
+HISTORY_SHOWN = 20
+
+
+async def _resume_history(session: SessionDep, user_id: Any) -> list[dict[str, Any]]:
+    """Every version of the CV, newest first, with what each one changed.
+
+    Lives in the state payload rather than behind its own endpoint: the page
+    reads one SWR key, and a rollback revalidates it in one call.
+    """
+    rows = await session.execute(
+        select(Resume).where(Resume.user_id == user_id).order_by(Resume.created_at.desc())
+    )
+    resumes = list(rows.scalars())
+    by_id = {r.id: r for r in resumes}
+    return [
+        {
+            "id": str(r.id),
+            "revision": r.revision,
+            "filename": r.filename,
+            "created_at": r.created_at.isoformat(),
+            "active": r.is_active,
+            "changes": revisions.changes(r, by_id.get(r.parent_id) if r.parent_id else None),
+        }
+        for r in resumes[:HISTORY_SHOWN]
+    ]
 
 
 @router.get("/state")
@@ -114,6 +143,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         "resume_name": resume.filename if resume else None,
         "profile": resume.profile if resume else None,
         "search_profile": resume.search_profile if resume else None,
+        "resume_history": await _resume_history(session, user.id),
         "found": found,
         "statuses": STATUSES,
         "apply_steps": steps_as_list(),

@@ -38,6 +38,10 @@ MAX_ROUNDS = 3
 USER = "user"
 ASSISTANT = "assistant"
 TOOL = "tool"
+# Not a model role: a note the service writes into the history when the CV
+# changes under the conversation (new upload, rollback). Stored and shown as
+# its own kind; turned into user-turn text on the way to the model.
+EVENT = "event"
 
 
 class ToolHandler(Protocol):
@@ -166,6 +170,33 @@ def run_tools(calls: list[ToolCall], handler: ToolHandler) -> list[dict]:
             }
         )
     return results
+
+
+def fold_events(history: list[dict]) -> list[dict]:
+    """The stored history as the model API accepts it.
+
+    An event becomes user-turn text in an <event> envelope and is merged into
+    the user message next to it: the API knows no "event" role, and two user
+    messages in a row is a shape not every OpenAI-compatible server takes.
+    Without the note the model reads its own "added it" from before the new
+    CV and refuses to add it again — which is how this was found.
+    """
+    out: list[dict] = []
+    for message in history:
+        if message.get("role") == EVENT:
+            message = {"role": USER, "content": envelope("event", message.get("content", ""))}
+        previous = out[-1] if out else None
+        if (
+            previous is not None
+            and message.get("role") == USER
+            and previous.get("role") == USER
+            and isinstance(previous.get("content"), str)
+            and isinstance(message.get("content"), str)
+        ):
+            out[-1] = {"role": USER, "content": f"{previous['content']}\n\n{message['content']}"}
+            continue
+        out.append(message)
+    return out
 
 
 def build_messages(system: str, history: list[dict]) -> list[dict]:

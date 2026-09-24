@@ -137,3 +137,15 @@
     max-width: 100%;
   }
 }
+
+.chat__event {
+  align-self: center;
+  max-width: 90%;
+  margin: 4px 0;
+  padding: 4px 12px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}

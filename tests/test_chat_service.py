@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.models import Evaluation, Proposal, Resume, User, Vacancy
 from app.services import chat as chat_service
+from app.services import revisions
 from app.services.tracker import set_status
 from core import tools
 from tests.dbmark import requires_db
@@ -405,3 +406,28 @@ class TestProposalsNeverWrite:
         await session.commit()
         run = chat_service.ToolRunner(session, user)
         assert "error" in await run("drop_database", {})
+
+
+class TestRevisionChanges:
+    """What the history list says a version changed."""
+
+    def _resume(self, profile, filename="cv.md"):
+        return Resume(user_id=uuid.uuid4(), filename=filename, raw_text="", profile=profile)
+
+    def test_an_upload_names_its_file(self):
+        assert revisions.changes(self._resume({}), None) == ["Загружен файл «cv.md»"]
+
+    def test_added_and_removed_skills_and_achievements_are_listed(self):
+        parent = self._resume({
+            "skills": ["Python", "Go"],
+            "experience": [{"company": "Berezka VPN", "achievements": ["SPA"]}],
+        })
+        child = self._resume({
+            "skills": ["Python", "Claude Code"],
+            "experience": [{"company": "Berezka VPN", "achievements": ["SPA", "Claude Code"]}],
+        })
+        assert revisions.changes(child, parent) == [
+            "+ навык: Claude Code",
+            "− навык: Go",
+            "+ Berezka VPN: Claude Code",
+        ]

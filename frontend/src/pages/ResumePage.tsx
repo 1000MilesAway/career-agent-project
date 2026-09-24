@@ -8,14 +8,16 @@
 import { useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
+  CHAT_KEY,
   STATE_KEY,
   acceptSearchProfile,
   downloadProfile,
   proposeSearchProfile,
+  restoreResume,
   uploadResume,
   useAppState,
 } from '../api/hooks'
-import type { ResumeProfile, SearchProfile } from '../api/types'
+import type { ResumeProfile, ResumeVersion, SearchProfile } from '../api/types'
 import { useToast } from '../components/toast'
 import { Card, Chips, ErrorNote, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
@@ -97,6 +99,10 @@ export function ResumePage() {
       </Card>
 
       {data.profile ? <ProfileCard profile={data.profile} /> : null}
+
+      {data.resume_history && data.resume_history.length > 1 ? (
+        <VersionHistory versions={data.resume_history} />
+      ) : null}
 
       {data.search_profile ? (
         <Card
@@ -203,6 +209,70 @@ function ProfileCard({ profile }: { profile: ResumeProfile }) {
       <details style={{ marginTop: 10 }}>
         <summary className="muted">Исходный JSON</summary>
         <pre>{JSON.stringify(profile, null, 2)}</pre>
+      </details>
+    </Card>
+  )
+}
+
+/** Under a fold on purpose: the user asked not to dig through versions on the
+ * main screen — see docs/decisions.md, 2026-09-22. */
+function VersionHistory({ versions }: { versions: ResumeVersion[] }) {
+  const { mutate } = useSWRConfig()
+  const toast = useToast()
+  const [restoring, startRestoring] = useTransition()
+
+  function restore(version: ResumeVersion) {
+    startRestoring(async () => {
+      try {
+        await restoreResume(version.id)
+        await Promise.all([mutate(STATE_KEY), mutate(CHAT_KEY)])
+        toast.info(`Вернули версию ${version.revision}`)
+      } catch (e) {
+        toast.error(e)
+      }
+    })
+  }
+
+  return (
+    <Card title="История версий">
+      <details>
+        <summary className="muted">
+          Версий: {versions.length}. Правки из чата и возвраты не затирают прежние — любую
+          можно вернуть.
+        </summary>
+        <ol className="versions">
+          {versions.map((version) => (
+            <li key={version.id} className="versions__item">
+              <div className="row">
+                <b>Версия {version.revision}</b>
+                <span className="muted">
+                  {new Date(version.created_at).toLocaleString('ru-RU', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}{' '}
+                  · {version.filename}
+                </span>
+                {version.active ? (
+                  <span className="chip">текущая</span>
+                ) : (
+                  <button
+                    className="btn btn--ghost btn--small"
+                    onClick={() => restore(version)}
+                    disabled={restoring}
+                    title="Бесплатно. Создаст новую версию с этим содержимым — вернуться обратно тоже можно"
+                  >
+                    Вернуть
+                  </button>
+                )}
+              </div>
+              <ul className="muted" style={{ margin: '4px 0' }}>
+                {version.changes.map((change, i) => (
+                  <li key={i}>{change}</li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
       </details>
     </Card>
   )

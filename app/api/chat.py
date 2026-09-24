@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from core import chat as chat_core
 from core.llm import LLM, Ledger
@@ -28,6 +28,7 @@ from core.llm import LLM, Ledger
 from ..core.deps import SessionDep, UserDep
 from ..models import ChatMessage, Proposal, Resume, Vacancy
 from ..services import chat as chat_service
+from ..services import revisions
 from ..services.spend import charge, ensure_can_spend
 from ..services.tracker import set_status
 
@@ -155,15 +156,6 @@ async def _history(session: SessionDep, user_id: uuid.UUID) -> list[ChatMessage]
     return list(reversed(list(result.scalars())))
 
 
-async def _next_seq(session: SessionDep, user_id: uuid.UUID) -> int:
-    result = await session.execute(
-        select(func.coalesce(func.max(ChatMessage.seq), 0)).where(
-            ChatMessage.user_id == user_id
-        )
-    )
-    return int(result.scalar_one()) + 1
-
-
 @router.get("", response_model=list[MessageResponse])
 async def history(session: SessionDep, user: UserDep) -> list[MessageResponse]:
     """The conversation so far. Free."""
@@ -203,7 +195,7 @@ async def send(
     stored = await _history(session, user.id)
     history_payload = [row.payload for row in stored]
 
-    seq = await _next_seq(session, user.id)
+    seq = await chat_service.next_seq(session, user.id)
     question = ChatMessage(
         user_id=user.id,
         role=chat_core.USER,
@@ -229,7 +221,7 @@ async def send(
     # awaited from it.
     reply, appended, _calls = await chat_core.converse_async(
         llm,
-        [*history_payload, question.payload],
+        chat_core.fold_events([*history_payload, question.payload]),
         runner,
         enabled=chat_service.enabled_tools(has_resume),
         threaded=run_in_threadpool,
@@ -315,27 +307,12 @@ async def accept(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Резюме не загружено"
             )
-        # A new revision, not an edit in place: reports bought against the old
-        # profile keep pointing at the profile they read, and the new resume_id
-        # is what lets the user buy a fresh evaluation of the same vacancy.
-        resume.is_active = False
-        # Flushed before the insert: one active CV per user is a unique index,
-        # and two active rows for a moment is enough to trip it.
-        await session.flush()
-        revision = Resume(
-            user_id=user.id,
-            filename=resume.filename,
-            raw_text=resume.raw_text,
+        # A new revision, not an edit in place — see app/services/revisions.py.
+        revision = await revisions.new_revision(
+            session,
+            resume,
             profile=chat_service.apply_profile_patch(resume.profile, proposal.arguments),
-            # Confirmed by the user, so it carries over. Archetypes do not: the
-            # portrait triage screens against was derived from the old profile.
-            search_profile=resume.search_profile,
-            archetypes=None,
-            is_active=True,
-            parent_id=resume.id,
-            revision=resume.revision + 1,
         )
-        session.add(revision)
         proposal.proposed = {"profile": revision.profile}
 
     elif proposal.kind == "vacancy_status":

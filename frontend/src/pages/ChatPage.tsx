@@ -165,19 +165,27 @@ export function ChatPage() {
           </div>
         ) : null}
 
-        {messages?.map((message, index) => (
-          <div
-            key={`${message.created_at}-${index}`}
-            className={message.role === 'user' ? 'bubble bubble--me' : 'bubble'}
-          >
-            {message.tools.length ? (
-              <p className="bubble__tools">
-                {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
-              </p>
-            ) : null}
-            <p className="bubble__text">{message.text}</p>
-          </div>
-        ))}
+        {messages?.map((message, index) =>
+          message.role === 'event' ? (
+            // Not a turn of the conversation: the CV changed under it, and
+            // what was agreed above may no longer be in the profile.
+            <p key={`${message.created_at}-${index}`} className="chat__event">
+              {message.text}
+            </p>
+          ) : (
+            <div
+              key={`${message.created_at}-${index}`}
+              className={message.role === 'user' ? 'bubble bubble--me' : 'bubble'}
+            >
+              {message.tools.length ? (
+                <p className="bubble__tools">
+                  {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
+                </p>
+              ) : null}
+              <p className="bubble__text">{message.text}</p>
+            </div>
+          ),
+        )}
 
         {isSending ? <p className="muted chat__thinking">Думаю…</p> : null}
 

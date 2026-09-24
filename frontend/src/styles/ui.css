@@ -332,3 +332,15 @@ pre {
     background-position: -200% 0;
   }
 }
+
+/* Resume version history (ResumePage). */
+.versions {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.versions__item {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}

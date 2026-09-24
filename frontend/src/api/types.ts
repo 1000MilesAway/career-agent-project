@@ -161,11 +161,24 @@ export interface Spend {
   spent_total_rub: number
 }
 
+/** One version of the CV: an upload, a chat edit or a rollback. */
+export interface ResumeVersion {
+  id: string
+  revision: number
+  filename: string
+  created_at: string
+  active: boolean
+  /** What this version changed against the one before it, in words. */
+  changes: string[]
+}
+
 export interface AppState {
   has_resume: boolean
   resume_name: string | null
   profile: ResumeProfile | null
   search_profile: SearchProfile | null
+  /** Every version of the CV, newest first. */
+  resume_history?: ResumeVersion[]
   found: FoundVacancy[]
   statuses: Record<string, TrackerStatus>
   apply_steps: ApplyStep[]
@@ -251,7 +264,8 @@ export interface SearchProfileProposal {
  * into the reply that followed, so every message here has something to show;
  * `tools` says what was consulted on the way. */
 export interface ChatMessage {
-  role: 'user' | 'assistant'
+  /** `event` is a note from the service, e.g. that the CV was replaced. */
+  role: 'user' | 'assistant' | 'event'
   text: string
   created_at: string
   tools: string[]

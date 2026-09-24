@@ -251,3 +251,33 @@ class TestPromptGuards:
         from core import prompts
 
         assert "подтвержда" in prompts.CHAT
+
+
+class TestFoldEvents:
+    """A CV change is noted in the history; the API has no role for it."""
+
+    def test_an_event_reaches_the_model_inside_the_next_user_turn(self):
+        out = chat.fold_events([
+            {"role": "user", "content": "добавь Claude"},
+            {"role": "assistant", "content": "Добавил, подтвердите."},
+            {"role": "event", "content": "Загружено новое резюме"},
+            {"role": "user", "content": "добавь Claude"},
+        ])
+        assert [m["role"] for m in out] == ["user", "assistant", "user"]
+        assert "<event>" in out[-1]["content"]
+        assert "Загружено новое резюме" in out[-1]["content"]
+        assert out[-1]["content"].endswith("добавь Claude")
+
+    def test_no_role_the_api_does_not_know_survives(self):
+        out = chat.fold_events([{"role": "event", "content": "x"}])
+        assert out == [{"role": "user", "content": "<event>\nx\n</event>"}]
+
+    def test_tool_turns_pass_through_untouched(self):
+        """An assistant turn with tool_calls must be followed by its results,
+        verbatim — folding must never reach into them."""
+        history = [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "1"}]},
+            {"role": "tool", "tool_call_id": "1", "content": "r"},
+        ]
+        assert chat.fold_events(history) == history

@@ -85,6 +85,10 @@ export function uploadResume(file: File): Promise<ResumeResponse> {
   return api<ResumeResponse>('/api/resumes', { method: 'POST', form })
 }
 
+/** Free: copies an earlier version forward as the newest one. */
+export const restoreResume = (resumeId: string) =>
+  api<ResumeResponse>(`/api/resumes/${resumeId}/restore`, { method: 'POST' })
+
 export const proposeSearchProfile = () =>
   api<SearchProfileProposal>('/api/resumes/search-profile/propose', { method: 'POST' })
 
