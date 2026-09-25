@@ -1,48 +1,279 @@
-.head {
+/* The shell: a fixed sidebar and a scrolling page beside it. Below 860px the
+   sidebar folds into a bar on top — a phone has no room for a column, and
+   the four sections still fit in one row there. */
+
+.shell {
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  min-height: 100dvh;
+}
+
+.side {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 18px;
+  flex-direction: column;
+  gap: 24px;
+  padding: 22px 14px 16px;
+  border-right: 1px solid var(--line);
 }
 
-.head__title {
-  font-size: 20px;
-  margin: 0;
+.main {
+  min-width: 0;
 }
 
-.head__sub {
-  color: var(--muted);
-  font-size: 13px;
-  margin: 4px 0 0;
+/* ── Brand ───────────────────────────────────────────────────────────── */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+/* A square with a notch: the mark is a checked box, which is what the
+   product does to a list of vacancies. */
+.brand__mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--ink);
+  position: relative;
+  flex: none;
+}
+
+.brand__mark::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  width: 8px;
+  height: 5px;
+  border: solid var(--accent);
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+}
+
+.brand__name {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+/* ── Navigation ──────────────────────────────────────────────────────── */
+
+.side__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .nav {
   display: flex;
-  gap: 6px;
-  margin-bottom: 18px;
-  flex-wrap: wrap;
-}
-
-.nav__tab {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 14px;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--ink-2);
   text-decoration: none;
+  font-size: 14px;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
-.nav__tab:hover {
-  border-color: var(--muted);
+.nav:visited {
+  color: var(--ink-2);
+}
+
+.nav:hover {
+  background: var(--sunken);
   color: var(--ink);
 }
 
-.nav__tab--on,
-.nav__tab--on:hover {
+.nav--on,
+.nav--on:visited,
+.nav--on:hover {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.nav svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.nav--on svg {
+  color: var(--ink);
+}
+
+.nav__label {
+  flex: 1;
+}
+
+.nav__count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Changes waiting for a yes or a no: the one count that asks for action. */
+.nav__count--hot {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
   background: var(--accent);
   color: #fff;
-  border-color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+}
+
+/* ── Footer: spend and account ───────────────────────────────────────── */
+
+.side__foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 8px;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.meter__row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-2);
+}
+
+.meter__row b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.meter__row--sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.meter__bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.meter__bar span {
+  display: block;
+  height: 100%;
+  background: var(--ink-2);
+  border-radius: inherit;
+}
+
+.meter__bar--low span {
+  background: var(--accent);
+}
+
+.side__promise {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.side__user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.side__email {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  /* minmax(0, …), not 1fr: a bare 1fr track grows to the nav's min-content
+     width, and the whole page scrolled sideways on a phone. */
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  .brand__name,
+  .side__promise,
+  .meter,
+  .side__email {
+    display: none;
+  }
+
+  .brand {
+    padding: 0;
+  }
+
+  .side__nav {
+    flex-direction: row;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nav {
+    height: 34px;
+    white-space: nowrap;
+    padding: 0 10px;
+  }
+
+  .side__foot {
+    margin: 0;
+    padding: 0;
+  }
+
+  .side__user {
+    border: none;
+    padding: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .nav svg {
+    display: none;
+  }
 }

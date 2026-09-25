@@ -1,38 +1,68 @@
-/* Design tokens, carried over from the single-page cabinet so the product does
-   not change its appearance in the same commit that changes its technology. */
+/* Design tokens.
+
+   The palette is paper and ink: colour is reserved for meaning — a score, a
+   verdict, a drop — so that a green number reads as "good" rather than as
+   decoration. The primary button is ink, not a brand blue, for the same
+   reason: blue was everywhere and therefore said nothing.
+
+   Fonts are system stacks on purpose. A webfont is a request to a CDN that is
+   slow or blocked for part of the audience, and the cabinet must render the
+   same everywhere. The serif (Georgia ships with Cyrillic on every desktop OS)
+   carries page titles and scores — the two things the eye should land on. */
 
 :root {
-  --bg: #f7f7f5;
-  --card: #fff;
-  --ink: #1a1a18;
-  --muted: #6b6b66;
-  --line: #e2e2dd;
-  --accent: #2b6cb0;
-  --ok: #2f855a;
-  --warn: #b7791f;
-  --bad: #c53030;
-  /* Links read as text, not as browser-default blue/purple: the underline
-     marks them, and a visited link keeps the same color so a list of
-     vacancies does not turn into a patchwork after a few clicks. */
+  --bg: #f4f2ed;
+  --surface: #fffefb;
+  --sunken: #ece9e2;
+  --ink: #1b1a15;
+  --ink-2: #47453d;
+  --muted: #7a776d;
+  --line: #e4e0d6;
+  --line-strong: #cdc8bb;
+  --accent: #c2410c;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --ok: #2d7a4b;
+  --warn: #a86a12;
+  --bad: #b3412e;
+  --on-ink: #fbfaf6;
+
+  /* Kept for the components that still read the old names. */
+  --card: var(--surface);
+
+  /* Links read as text: the underline marks them, and a visited link keeps
+     the same colour so a list of vacancies does not turn into a patchwork. */
   --link: var(--ink);
   --link-visited: var(--link);
 
-  --radius: 10px;
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont,
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', 'PT Serif', serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  --radius: 12px;
   --radius-sm: 8px;
   --gap: 12px;
+  --shadow-pop: 0 1px 2px rgb(27 26 21 / 6%), 0 8px 28px rgb(27 26 21 / 10%);
 }
 
+/* Dark mode follows the system unless the page is told otherwise. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1a1a18;
-    --card: #232320;
-    --ink: #ececea;
-    --muted: #9a9a94;
-    --line: #35352f;
-    --accent: #7aa7d9;
-    --ok: #68d391;
-    --warn: #f6ad55;
-    --bad: #fc8181;
+  :root:not([data-theme='light']) {
+    --bg: #131310;
+    --surface: #1c1b17;
+    --sunken: #25241f;
+    --ink: #eeebe3;
+    --ink-2: #c9c5ba;
+    --muted: #8f8b80;
+    --line: #2f2d27;
+    --line-strong: #45423a;
+    --accent: #f08a4b;
+    --ok: #6cc28c;
+    --warn: #e0a84e;
+    --bad: #ec7b66;
+    --on-ink: #151410;
+    --shadow-pop: 0 1px 2px rgb(0 0 0 / 30%), 0 10px 30px rgb(0 0 0 / 40%);
   }
 }
 
@@ -42,31 +72,27 @@
 
 html {
   color-scheme: light dark;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font:
-    15px/1.55 -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font: 15px/1.55 var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
   color: var(--link);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
-  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent);
+  text-underline-offset: 3px;
 }
 
 a:visited {
   color: var(--link-visited);
-  text-decoration-color: color-mix(in srgb, var(--link-visited) 45%, transparent);
 }
 
 a:hover,
@@ -74,17 +100,17 @@ a:focus-visible {
   text-decoration-color: currentColor;
 }
 
-/* One visible focus ring for everything interactive. The old page only had
-   one on links, so keyboard users lost the caret on every button. */
+/* One visible focus ring for everything interactive. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
+summary:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
 h1,
@@ -92,6 +118,7 @@ h2,
 h3 {
   margin: 0;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 button {
@@ -109,6 +136,10 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

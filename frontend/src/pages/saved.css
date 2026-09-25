@@ -1,0 +1,103 @@
+/* The shortlist: a status funnel over the list. */
+
+.funnel {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-bottom: 16px;
+  padding-bottom: 2px;
+}
+
+.funnel__step {
+  flex: 1 0 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-2);
+  text-align: left;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.funnel__step:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.funnel__step[aria-pressed='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+  color: var(--ink);
+}
+
+/* An empty stage stays in place — the funnel keeps its shape — but it is
+   not a filter anyone can use. */
+.funnel__step:disabled {
+  opacity: 1;
+  background: transparent;
+  color: var(--muted);
+}
+
+.funnel__step:disabled .funnel__count {
+  color: var(--line-strong);
+}
+
+.funnel__step--end {
+  flex-basis: 92px;
+}
+
+.funnel__count {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink);
+}
+
+.funnel__label {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* The tracker select wears the stage's colour, so the list reads as a
+   board without being one. */
+.status {
+  font-weight: 500;
+}
+
+.status--applied,
+.status--responded {
+  color: var(--ink);
+  border-color: var(--ink-2);
+}
+
+.status--interview,
+.status--offer {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background-color: color-mix(in srgb, var(--ok) 8%, var(--surface));
+}
+
+.status--rejected,
+.status--discarded {
+  color: var(--muted);
+}
+
+.footer__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer__sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 4px;
+}

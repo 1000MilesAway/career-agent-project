@@ -26,7 +26,7 @@ import {
 } from '../api/hooks'
 import { ProposalCard } from '../components/ProposalCard'
 import { useToast } from '../components/toast'
-import { Card, ErrorNote, Skeleton } from '../components/ui'
+import { ErrorNote, PageHead, Skeleton } from '../components/ui'
 import '../components/chat.css'
 
 /** What each tool is called when the chat says what it looked at. The names
@@ -129,20 +129,23 @@ export function ChatPage() {
   const openChoices = last?.role === 'assistant' ? (last.choices ?? []) : []
 
   return (
-    <Card
-      title="Помощник"
-      actions={
-        hasMessages ? (
-          <button className="btn btn--ghost btn--small" onClick={clear}>
-            Очистить
-          </button>
-        ) : undefined
-      }
-    >
+    <div className="page chatpage">
+      <PageHead
+        title="Помощник"
+        lede="Расскажите то, чего нет в резюме, или спросите про найденные вакансии. Всё, что помощник предложит записать, вы подтверждаете сами."
+        actions={
+          hasMessages ? (
+            <button className="btn btn--quiet btn--small" onClick={clear}>
+              Очистить разговор
+            </button>
+          ) : undefined
+        }
+      />
+
       <ErrorNote error={error} />
 
       {state && !state.has_resume ? (
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="chat__warn">
           Пока резюме не загружено, помощник не сможет ничего в него дописать — загрузите
           его на странице «Моё резюме».
         </p>
@@ -153,10 +156,7 @@ export function ChatPage() {
 
         {!isLoading && !hasMessages ? (
           <div className="chat__empty">
-            <p className="muted" style={{ marginTop: 0 }}>
-              Расскажите то, чего нет в резюме, или спросите про найденные вакансии. Всё,
-              что помощник предложит записать, вы подтверждаете сами.
-            </p>
+            <p className="eyebrow">Можно начать, например, так</p>
             <div className="stack">
               {EXAMPLES.map((example) => (
                 <button
@@ -188,7 +188,13 @@ export function ChatPage() {
                   {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
                 </p>
               ) : null}
-              <p className="bubble__text">{message.text}</p>
+              <p className="bubble__text">
+                {message.role === 'assistant' ? (
+                  <Inline text={message.text} />
+                ) : (
+                  message.text
+                )}
+              </p>
             </div>
           ),
         )}
@@ -204,11 +210,20 @@ export function ChatPage() {
           </div>
         ) : null}
 
-        {isSending ? <p className="muted chat__thinking">Думаю…</p> : null}
+        {isSending ? (
+          <p className="chat__thinking" role="status">
+            <span className="typing" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            Думаю…
+          </p>
+        ) : null}
 
         {pending.length ? (
-          <div className="stack">
-            <p className="muted" style={{ margin: 0 }}>
+          <div className="stack chat__pending">
+            <p className="eyebrow" style={{ margin: 0 }}>
               {pending.length === 1
                 ? 'Одна правка ждёт вашего решения:'
                 : `${pending.length} правки ждут вашего решения:`}
@@ -227,26 +242,44 @@ export function ChatPage() {
         <div ref={endRef} />
       </div>
 
-      <div className="chat__compose">
-        <textarea
-          className="chat__input"
-          rows={2}
-          value={text}
-          placeholder="Напишите сообщение"
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends, Shift+Enter breaks the line: the box is a chat
-            // input, not a form field.
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              send()
-            }
-          }}
-        />
-        <button className="btn" onClick={() => send()} disabled={!text.trim() || isSending}>
-          {isSending ? '…' : 'Отправить'}
-        </button>
+      <div className="chat__dock">
+        <div className="chat__compose">
+          <textarea
+            className="chat__input"
+            rows={2}
+            value={text}
+            placeholder="Напишите сообщение"
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends, Shift+Enter breaks the line: the box is a chat
+              // input, not a form field.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send()
+              }
+            }}
+          />
+          <button
+            className="btn chat__send"
+            onClick={() => send()}
+            disabled={!text.trim() || isSending}
+          >
+            {isSending ? '…' : 'Отправить'}
+          </button>
+        </div>
+        <p className="chat__hint">Enter — отправить, Shift+Enter — новая строка</p>
       </div>
-    </Card>
+    </div>
   )
+}
+
+/** `**bold**` from the model, and nothing else.
+ *
+ * The model writes light Markdown whatever the prompt says, and raw asterisks
+ * read as noise. A full Markdown renderer would be a dependency for one
+ * construct, and would also render links and HTML the model was never meant
+ * to produce — so only bold is honoured. */
+function Inline({ text }: { text: string }) {
+  const parts = text.split(/\*\*(.+?)\*\*/g)
+  return <>{parts.map((part, index) => (index % 2 ? <b key={index}>{part}</b> : part))}</>
 }

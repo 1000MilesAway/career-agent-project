@@ -21,19 +21,44 @@ export function Card({
   return (
     <section className="card">
       {(title || actions) && (
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
-          {title ? (
-            <h2 className="card__title" style={{ margin: 0 }}>
-              {title}
-            </h2>
-          ) : (
-            <span />
-          )}
+        <div className="card__head">
+          {title ? <h2 className="card__title">{title}</h2> : <span />}
           {actions}
         </div>
       )}
       {children}
     </section>
+  )
+}
+
+/** The title of a page, the one line under it, and the page's own actions. */
+export function PageHead({
+  title,
+  lede,
+  actions,
+}: {
+  title: string
+  lede?: ReactNode
+  actions?: ReactNode
+}) {
+  return (
+    <header className="page__head">
+      <div>
+        <h1 className="page__title">{title}</h1>
+        {lede ? <p className="page__lede">{lede}</p> : null}
+      </div>
+      {actions ? <div className="row">{actions}</div> : null}
+    </header>
+  )
+}
+
+/** An empty list that says what to do next rather than just "nothing". */
+export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="empty">
+      <h2 className="empty__title">{title}</h2>
+      {children}
+    </div>
   )
 }
 
@@ -71,9 +96,12 @@ export function Score({
   verdict: Verdict | null
 }) {
   if (score == null) return null
-  const tone = verdict === 'apply' ? 'm-full' : verdict === 'skip' ? 'm-none' : 'm-partial'
+  const tone = verdict === 'apply' ? 'good' : verdict === 'skip' ? 'bad' : 'mid'
   return (
-    <span className={tone} style={{ fontSize: 20, fontWeight: 600 }}>
+    <span
+      className={`score score--${tone}`}
+      title={verdict ? `Оценка из 5 — ${VERDICT_TITLES[verdict]}` : 'Оценка из 5'}
+    >
       {formatScore(score)}
     </span>
   )

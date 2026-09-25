@@ -18,14 +18,21 @@ import {
 import type { FoundVacancy, ScanResult, SourceScan } from '../api/types'
 import { SalaryInput } from '../components/SalaryInput'
 import { BUCKET_TITLES, DROPPED_STAGES, VacancyRow } from '../components/VacancyRow'
+import { StarIcon } from '../components/icons'
 import { useToast } from '../components/toast'
-import { Card, ErrorNote, Skeleton, rub } from '../components/ui'
+import { Empty, ErrorNote, PageHead, Skeleton, rub } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
 import { type BucketKey, loadFilters, saveFilters } from './searchFilters'
+import './search.css'
 
 /** A stable empty list, so a state payload that has not arrived yet does not
  *  hand every memo below a new array identity on each render. */
 const EMPTY_ROWS: FoundVacancy[] = []
+
+/** Rows rendered before "show more". A scan returns several hundred postings,
+ *  and rendering all of them made the page twenty thousand pixels tall — the
+ *  scroll bar stopped meaning anything. */
+const PAGE_SIZE = 50
 
 const SOURCE_TITLES: Record<string, string> = {
   habr: 'Хабр Карьера',
@@ -60,6 +67,7 @@ export function SearchPage() {
   const [scanNote, setScanNote] = useState<ScanResult | null>(null)
   const [isScanning, startScan] = useTransition()
   const [isTriaging, startTriage] = useTransition()
+  const [limit, setLimit] = useState(PAGE_SIZE)
 
   // Read once on mount; every change below writes it back, so a reload
   // shows the list the way the user left it.
@@ -113,11 +121,13 @@ export function SearchPage() {
     if (next.has(key)) next.delete(key)
     else next.add(key)
     setVisibleBuckets(next)
+    setLimit(PAGE_SIZE)
     saveFilters({ buckets: [...next], showDropped })
   }
 
   function toggleDropped() {
     setShowDropped(!showDropped)
+    setLimit(PAGE_SIZE)
     saveFilters({ buckets: [...visibleBuckets], showDropped: !showDropped })
   }
 
@@ -189,102 +199,141 @@ export function SearchPage() {
     }
   }
 
-  if (error) return <ErrorNote error={error} />
-  if (isLoading || !data) return <Skeleton rows={6} />
+  if (error)
+    return (
+      <div className="page">
+        <ErrorNote error={error} />
+      </div>
+    )
+  if (isLoading || !data)
+    return (
+      <div className="page">
+        <Skeleton rows={6} />
+      </div>
+    )
 
   if (!data.has_resume) {
     return (
-      <Card title="Подбор">
-        <p style={{ marginTop: 0 }}>
-          Сначала загрузите резюме — по нему строятся запросы и фильтры.
-        </p>
-        <a className="btn" href="#/resume">
-          К резюме
-        </a>
-      </Card>
+      <div className="page">
+        <PageHead title="Поиск" />
+        <div className="card">
+          <Empty title="Сначала резюме">
+            <p>По нему строятся запросы и фильтры — без него искать нечем.</p>
+            <a className="btn" href="#/resume">
+              Загрузить резюме
+            </a>
+          </Empty>
+        </div>
+      </div>
     )
   }
 
-  return (
-    <>
-      <Card title="Подбор">
-        <p className="muted" style={{ marginTop: 0 }}>
-          Сканер ищет по вашему резюме сразу везде: Хабр Карьера, сайты компаний (Сбер,
-          Яндекс, VK и другие), geekjob и Telegram-каналы. Лишнее отсеивается{' '}
-          <b>бесплатно</b>, одна вакансия из разных мест показывается один раз. Модель
-          считает только то, что прошло отбор.
-        </p>
+  const shown = visible.slice(0, limit)
 
+  return (
+    <div className="page">
+      <PageHead
+        title="Поиск"
+        lede={
+          <>
+            Хабр Карьера, сайты компаний, geekjob и Telegram-каналы — одним запуском. Лишнее
+            отсеивается бесплатно, одна вакансия из разных мест показывается один раз.
+            Модель считает только то, что прошло отбор.
+          </>
+        }
+      />
+
+      <section className="card scan" aria-label="Параметры поиска">
         <SalaryInput value={salary} anySalary={anySalary} onChange={setSalary} />
 
-        <div className="row" style={{ marginTop: 12 }}>
-          <label
-            className="check"
-            title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана — их оценят бесплатные фильтры по заголовку."
-          >
-            <input
-              type="checkbox"
-              checked={anySalary}
-              onChange={(e) => setAnySalary(e.target.checked)}
-            />
-            учитывать вакансии без указанной зарплаты
-          </label>
-          <label
-            className="check"
-            title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
-          >
-            <input
-              type="checkbox"
-              checked={remoteOnly}
-              onChange={(e) => setRemoteOnly(e.target.checked)}
-            />
-            только удалёнка
-          </label>
-          <label
-            className="check"
-            title="Nebius, JetBrains, Wrike, Xsolla и другие компании с русскоязычными командами — вакансии обычно за рубежом и на английском"
-          >
-            <input
-              type="checkbox"
-              checked={includeGlobal}
-              onChange={(e) => setIncludeGlobal(e.target.checked)}
-            />
-            и зарубежные компании
-          </label>
-          <button className="btn" onClick={scan} disabled={isScanning}>
-            {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
-          </button>
+        <div className="scan__side">
+          <p className="eyebrow">Условия</p>
+          <div className="scan__opts">
+            <label
+              className="toggle"
+              title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана — их оценят бесплатные фильтры по заголовку."
+            >
+              <input
+                type="checkbox"
+                checked={anySalary}
+                onChange={(e) => setAnySalary(e.target.checked)}
+              />
+              и без указанной зарплаты
+            </label>
+            <label
+              className="toggle"
+              title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
+            >
+              <input
+                type="checkbox"
+                checked={remoteOnly}
+                onChange={(e) => setRemoteOnly(e.target.checked)}
+              />
+              только удалёнка
+            </label>
+            <label
+              className="toggle"
+              title="Nebius, JetBrains, Wrike, Xsolla и другие компании с русскоязычными командами — вакансии обычно за рубежом и на английском"
+            >
+              <input
+                type="checkbox"
+                checked={includeGlobal}
+                onChange={(e) => setIncludeGlobal(e.target.checked)}
+              />
+              и зарубежные компании
+            </label>
+          </div>
+
+          <div className="scan__go">
+            <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
+              {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
+            </button>
+            <span className="muted">бесплатно · 1–2 минуты</span>
+          </div>
         </div>
 
         {isScanning ? (
-          <p className="muted" role="status">
-            Обычно это занимает одну-две минуты: источники читаются параллельно, модель не
-            вызывается.
-          </p>
+          <div className="scan__progress" role="status">
+            <span className="scan__bar" aria-hidden="true" />
+            Источники читаются параллельно, модель не вызывается.
+          </div>
         ) : null}
 
         {scanNote ? (
-          <div className="muted" role="status">
-            <p style={{ marginBottom: 4 }}>
-              Найдено {scanNote.collected}, прошло фильтры {scanNote.kept ?? 0}, новых{' '}
-              <b>{scanNote.new}</b>
+          <div className="scan__result" role="status">
+            <p className="scan__total">
+              Найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
+              <b className="num">{scanNote.kept ?? 0}</b>, новых{' '}
+              <b className="num">{scanNote.new}</b>
               {scanNote.duplicates
                 ? `, уже найдены в другом месте ${scanNote.duplicates}`
                 : ''}
               .
             </p>
-            <ul style={{ marginTop: 0 }}>
+            <ul className="scan__sources">
               {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
-                <li key={name}>{sourceLine(name, s)}</li>
+                <li key={name} className={s.error ? 'scan__source--err' : undefined}>
+                  {sourceLine(name, s)}
+                </li>
               ))}
             </ul>
           </div>
         ) : null}
-      </Card>
+      </section>
 
-      <Card
-        title="Найденные вакансии"
-        actions={
+      <section aria-label="Найденные вакансии">
+        <div className="listbar">
+          <div className="listbar__title">
+            <h2>Найденные</h2>
+            {rows.length ? (
+              <span className="muted num">
+                {kept.length} · оценено {scored}
+                {data.spend.free_to_reopen
+                  ? ` · ${data.spend.free_to_reopen} откроются бесплатно`
+                  : ''}
+              </span>
+            ) : null}
+          </div>
           <div className="row">
             {kept.length ? (
               <button
@@ -294,11 +343,12 @@ export function SearchPage() {
                 title="Один дешёвый прогон: разложить список на «стоит посмотреть / может быть / мимо»"
               >
                 {isTriaging ? 'Отсеиваю…' : 'Отсеять моделью'}
+                {isTriaging ? null : <span className="btn__price">~0.01 ₽/шт</span>}
               </button>
             ) : null}
             {rows.length ? (
               <button
-                className="btn btn--ghost btn--small"
+                className="btn btn--quiet btn--small"
                 onClick={clear}
                 title="Убрать из списка всё, кроме избранного"
               >
@@ -306,138 +356,138 @@ export function SearchPage() {
               </button>
             ) : null}
           </div>
-        }
-      >
+        </div>
+
         {rows.length ? (
-          <p className="muted" style={{ marginTop: 0 }}>
-            Найдено <b>{kept.length}</b>, оценено {scored}.{' '}
+          <div className="listbar listbar--filters">
+            {anyJudged ? (
+              <div className="seg" role="group" aria-label="Вердикт отсева">
+                {(['worth', 'maybe', 'skip'] as const).map((bucket) => (
+                  <button
+                    key={bucket}
+                    className="seg__item"
+                    aria-pressed={visibleBuckets.has(bucket)}
+                    onClick={() => toggleBucket(bucket)}
+                  >
+                    <span className={`dot dot--${bucket}`} aria-hidden="true" />
+                    {BUCKET_TITLES[bucket]}
+                    <span className="seg__count">{bucketCounts.get(bucket) ?? 0}</span>
+                  </button>
+                ))}
+                {bucketCounts.get(null) ? (
+                  <button
+                    className="seg__item"
+                    aria-pressed={visibleBuckets.has(null)}
+                    onClick={() => toggleBucket(null)}
+                  >
+                    <span className="dot" aria-hidden="true" />
+                    без вердикта
+                    <span className="seg__count">{bucketCounts.get(null)}</span>
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <span className="muted">
+                Список ещё не разобран — «Отсеять моделью» разложит его по вердиктам.
+              </span>
+            )}
             {dropped.length ? (
-              <button className="linkish" onClick={toggleDropped}>
+              <button className="linkish listbar__dropped" onClick={toggleDropped}>
                 {showDropped ? 'скрыть' : 'показать'} отсеянные ({dropped.length})
-              </button>
-            ) : null}
-          </p>
-        ) : (
-          <p className="muted" style={{ marginTop: 0 }}>
-            Пока ничего не найдено — запустите подбор.
-          </p>
-        )}
-
-        <SpendLine spend={data.spend} />
-
-        {anyJudged ? (
-          <div className="row" style={{ margin: '8px 0' }}>
-            {(['worth', 'maybe', 'skip'] as const).map((bucket) => (
-              <button
-                key={bucket}
-                className={
-                  visibleBuckets.has(bucket)
-                    ? 'btn btn--ghost btn--small btn--on'
-                    : 'btn btn--ghost btn--small'
-                }
-                aria-pressed={visibleBuckets.has(bucket)}
-                onClick={() => toggleBucket(bucket)}
-              >
-                {BUCKET_TITLES[bucket]} {bucketCounts.get(bucket) ?? 0}
-              </button>
-            ))}
-            {bucketCounts.get(null) ? (
-              <button
-                className={
-                  visibleBuckets.has(null)
-                    ? 'btn btn--ghost btn--small btn--on'
-                    : 'btn btn--ghost btn--small'
-                }
-                aria-pressed={visibleBuckets.has(null)}
-                onClick={() => toggleBucket(null)}
-              >
-                без вердикта {bucketCounts.get(null)}
               </button>
             ) : null}
           </div>
         ) : null}
 
-        {visible.map((vacancy) => (
-          <VacancyRow
-            key={vacancy.id}
-            vacancy={vacancy}
-            actions={
-              <>
-                <button
-                  className="btn btn--ghost btn--small"
-                  onClick={() => openReport(vacancy)}
-                  disabled={isBusy(`${vacancy.id}:report`)}
-                  title={
-                    vacancy.score != null
-                      ? 'Отчёт уже куплен — показ бесплатный'
-                      : 'Полная оценка — около 0.17 ₽'
-                  }
-                >
-                  {isBusy(`${vacancy.id}:report`)
-                    ? 'Считаю…'
-                    : vacancy.score != null
-                      ? 'Отчёт'
-                      : 'Оценить'}
-                </button>
-                {vacancy.outdated ? (
-                  <button
-                    className="btn btn--ghost btn--small"
-                    onClick={() => openReport(vacancy, true)}
-                    disabled={isBusy(`${vacancy.id}:report`)}
-                    title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
-                  >
-                    Переоценить
-                  </button>
-                ) : null}
-                <button
-                  className={
-                    vacancy.saved
-                      ? 'btn btn--ghost btn--small btn--done'
-                      : 'btn btn--ghost btn--small'
-                  }
-                  onClick={() => toggleSave(vacancy)}
-                  title={
-                    vacancy.saved
-                      ? 'Уже в избранном — нажмите, чтобы убрать'
-                      : 'Отложить: материалы и статусы готовятся там'
-                  }
-                >
-                  {vacancy.saved ? 'В избранном ✓' : 'В избранное'}
-                </button>
-              </>
-            }
-          />
-        ))}
-      </Card>
+        {rows.length === 0 ? (
+          <div className="card">
+            <Empty title="Пока пусто">
+              <p>Задайте зарплату и условия выше и запустите поиск — это бесплатно.</p>
+            </Empty>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="card">
+            <Empty title="Под фильтр ничего не попало">
+              <p>Включите другие вердикты выше или покажите отсеянные.</p>
+            </Empty>
+          </div>
+        ) : (
+          <div className="vlist">
+            {shown.map((vacancy) => (
+              <VacancyRow
+                key={vacancy.id}
+                vacancy={vacancy}
+                actions={
+                  <>
+                    {vacancy.outdated ? (
+                      <button
+                        className="btn btn--quiet btn--small"
+                        onClick={() => openReport(vacancy, true)}
+                        disabled={isBusy(`${vacancy.id}:report`)}
+                        title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                      >
+                        Переоценить
+                      </button>
+                    ) : null}
+                    <button
+                      className="btn btn--ghost btn--small"
+                      onClick={() => openReport(vacancy)}
+                      disabled={isBusy(`${vacancy.id}:report`)}
+                      title={
+                        vacancy.score != null
+                          ? 'Отчёт уже куплен — показ бесплатный'
+                          : 'Полная оценка — около 0.17 ₽'
+                      }
+                    >
+                      {isBusy(`${vacancy.id}:report`)
+                        ? 'Считаю…'
+                        : vacancy.score != null
+                          ? 'Отчёт'
+                          : 'Оценить'}
+                      {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
+                        <span className="btn__price">0.17 ₽</span>
+                      ) : null}
+                    </button>
+                    <button
+                      className={
+                        vacancy.saved
+                          ? 'btn btn--quiet btn--small btn--icon star star--on'
+                          : 'btn btn--quiet btn--small btn--icon star'
+                      }
+                      onClick={() => toggleSave(vacancy)}
+                      aria-pressed={vacancy.saved}
+                      aria-label={vacancy.saved ? 'В избранном' : 'В избранное'}
+                      title={
+                        vacancy.saved
+                          ? 'Уже в избранном — нажмите, чтобы убрать'
+                          : 'Отложить: материалы и статусы готовятся там'
+                      }
+                    >
+                      <StarIcon filled={vacancy.saved} />
+                    </button>
+                  </>
+                }
+              />
+            ))}
+          </div>
+        )}
+
+        {visible.length > shown.length ? (
+          <div className="more">
+            <button
+              className="btn btn--ghost"
+              onClick={() => setLimit((current) => current + PAGE_SIZE)}
+            >
+              Показать ещё {Math.min(PAGE_SIZE, visible.length - shown.length)}
+            </button>
+            <span className="muted num">
+              показано {shown.length} из {visible.length}
+            </span>
+          </div>
+        ) : null}
+      </section>
 
       {panel}
-    </>
-  )
-}
-
-/** The running total: "what have I spent so far", which is the question a
- *  paying user actually asks. */
-function SpendLine({
-  spend,
-}: {
-  spend: {
-    found: number
-    scored: number
-    with_artifacts: number
-    rub: number
-    free_to_reopen: number
-    limit_rub: number | null
-  }
-}) {
-  if (!spend.found) return null
-  return (
-    <p className="cost">
-      Найдено {spend.found} · оценено {spend.scored} · с материалами {spend.with_artifacts}{' '}
-      · потрачено <b>{rub(spend.rub)}</b>
-      {spend.free_to_reopen
-        ? ` · ${spend.free_to_reopen} можно открыть повторно бесплатно`
-        : ''}
-      {spend.limit_rub != null ? ` · остаток бюджета ${rub(spend.limit_rub)}` : ''}
-    </p>
+    </div>
   )
 }

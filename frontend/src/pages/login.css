@@ -1,0 +1,114 @@
+/* The gate: what the service does on the left, the form on the right. The
+   pitch is here because this is the one screen a new account sees before
+   anything else, and "log in to what?" deserves an answer. */
+
+.login {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+}
+
+.login__pitch {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 40px 56px;
+  border-right: 1px solid var(--line);
+}
+
+.login__pitch .brand {
+  padding: 0;
+}
+
+.login__title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  max-width: 15ch;
+  margin: 0;
+}
+
+.login__title em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.login__steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 760px;
+}
+
+.login__steps li {
+  counter-increment: step;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  border-top: 1px solid var(--line-strong);
+  padding-top: 12px;
+}
+
+.login__steps li::before {
+  content: '0' counter(step);
+  display: block;
+  font-family: var(--font-serif);
+  font-variant-numeric: lining-nums;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.login__steps b {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.login__promise {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  padding: 40px 56px;
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.login__form-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 28px;
+}
+
+@media (max-width: 900px) {
+  .login {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login__pitch {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 28px 20px;
+    gap: 24px;
+  }
+  .login__steps {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .login__form {
+    padding: 28px 20px 48px;
+  }
+}

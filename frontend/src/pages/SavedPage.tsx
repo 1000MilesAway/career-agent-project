@@ -4,9 +4,13 @@
  * decides what is worth keeping, this one does the work on it. Clearing the
  * search list never touches these rows — they carry reports and documents
  * that were paid for.
+ *
+ * The statuses run across the top as a funnel with counts, the shape job
+ * trackers settled on: "where am I stuck" is answered by the numbers before
+ * any row is read.
  */
 
-import { useMemo, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
   STATE_KEY,
@@ -19,19 +23,39 @@ import {
 import type { ApplyStep, FoundVacancy } from '../api/types'
 import { DownloadButtons } from '../components/DownloadButtons'
 import { VacancyRow } from '../components/VacancyRow'
+import { CloseIcon } from '../components/icons'
 import { useToast } from '../components/toast'
-import { Card, ErrorNote, Skeleton, rub } from '../components/ui'
+import { Empty, ErrorNote, PageHead, Skeleton, rub } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
+import './saved.css'
+
+/** `null` is "all". */
+type StatusFilter = string | null
 
 export function SavedPage() {
   const { data, isLoading, error } = useAppState()
   const { mutate } = useSWRConfig()
   const toast = useToast()
   const { openReport, openArtifact, isBusy, panel } = useDocumentPanel()
+  const [filter, setFilter] = useState<StatusFilter>(null)
 
   const found = data?.found
   const saved = useMemo(() => found?.filter((row) => row.saved) ?? [], [found])
   const [isRechecking, startRecheck] = useTransition()
+
+  const counts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of saved) {
+      const key = row.status ?? 'none'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+  }, [saved])
+
+  // A filter on a status that has just emptied would show a blank list with
+  // no way to tell why; fall back to "all" instead.
+  const active = filter && counts.get(filter) ? filter : null
+  const shown = active ? saved.filter((row) => (row.status ?? 'none') === active) : saved
 
   function recheck() {
     startRecheck(async () => {
@@ -70,22 +94,26 @@ export function SavedPage() {
     }
   }
 
-  if (error) return <ErrorNote error={error} />
-  if (isLoading || !data) return <Skeleton rows={4} />
+  if (error)
+    return (
+      <div className="page">
+        <ErrorNote error={error} />
+      </div>
+    )
+  if (isLoading || !data)
+    return (
+      <div className="page">
+        <Skeleton rows={4} />
+      </div>
+    )
 
   return (
-    <>
-      <Card title="Избранное">
-        <p className="muted" style={{ marginTop: 0 }}>
-          Вакансии, которые вы отложили. Здесь готовятся материалы к отклику и отмечается,
-          на каком этапе вы находитесь. Очистка поиска это не трогает.
-        </p>
-
-        {saved.length ? (
-          <div className="row">
-            <p className="muted">
-              В работе <b>{saved.length}</b>.
-            </p>
+    <div className="page">
+      <PageHead
+        title="Избранное"
+        lede="Вакансии, которые вы отложили. Здесь готовятся материалы к отклику и отмечается, на каком вы этапе. Очистка поиска их не трогает."
+        actions={
+          saved.length ? (
             <button
               className="btn btn--ghost btn--small"
               onClick={recheck}
@@ -94,104 +122,162 @@ export function SavedPage() {
             >
               {isRechecking ? 'Проверяю…' : 'Проверить, открыты ли'}
             </button>
+          ) : null
+        }
+      />
+
+      {saved.length ? (
+        <>
+          <div className="funnel" role="group" aria-label="Этап отклика">
+            <button
+              className="funnel__step"
+              aria-pressed={active === null}
+              onClick={() => setFilter(null)}
+            >
+              <span className="funnel__count">{saved.length}</span>
+              <span className="funnel__label">В работе</span>
+            </button>
+            {Object.entries(data.statuses).map(([key, status]) => {
+              const count = counts.get(key) ?? 0
+              return (
+                <button
+                  key={key}
+                  className={
+                    status.terminal ? 'funnel__step funnel__step--end' : 'funnel__step'
+                  }
+                  aria-pressed={active === key}
+                  disabled={!count}
+                  onClick={() => setFilter(active === key ? null : key)}
+                >
+                  <span className="funnel__count">{count}</span>
+                  <span className="funnel__label">{status.title}</span>
+                </button>
+              )
+            })}
           </div>
-        ) : (
-          <p className="muted">
-            Пусто. Отложите вакансию кнопкой «В избранное» на странице поиска.
-          </p>
-        )}
 
-        {saved.map((vacancy) => (
-          <VacancyRow
-            key={vacancy.id}
-            vacancy={vacancy}
-            actions={
-              <>
-                <button
-                  className="btn btn--ghost btn--small"
-                  onClick={() => openReport(vacancy)}
-                  disabled={isBusy(`${vacancy.id}:report`)}
-                >
-                  {isBusy(`${vacancy.id}:report`)
-                    ? 'Считаю…'
-                    : vacancy.score != null
-                      ? 'Отчёт'
-                      : 'Оценить'}
-                </button>
-                {vacancy.outdated ? (
-                  <button
-                    className="btn btn--ghost btn--small"
-                    onClick={() => openReport(vacancy, true)}
-                    disabled={isBusy(`${vacancy.id}:report`)}
-                    title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
-                  >
-                    Переоценить
-                  </button>
-                ) : null}
-
-                {/* One button per document, each stating its own price. A
-                    package made people pay for documents they did not ask
-                    for — see docs/decisions.md, 2026-09-18. */}
-                {vacancy.score != null
-                  ? data.apply_steps.map((step) => (
-                      <ArtifactButton
-                        key={step.step}
-                        step={step}
-                        vacancy={vacancy}
-                        busy={isBusy(`${vacancy.id}:${step.step}`)}
-                        onClick={() => openArtifact(vacancy, step.step)}
-                      />
-                    ))
-                  : null}
-
-                {/* The tailored CV is the one document that leaves the
-                    cabinet — it is what gets attached to an application. It
-                    appears only once bought: a download button over nothing
-                    would hand back an empty file. */}
-                {vacancy.artifacts?.tailor ? (
-                  <DownloadButtons
-                    small
-                    label={`Скачать резюме под «${vacancy.title}»`}
-                    onDownload={(fmt) => downloadTailored(vacancy.id, fmt)}
-                  />
-                ) : null}
-
-                {vacancy.score != null ? (
+          <div className="vlist">
+            {shown.map((vacancy) => (
+              <VacancyRow
+                key={vacancy.id}
+                vacancy={vacancy}
+                actions={
                   <>
-                    <label className="sr-only" htmlFor={`status-${vacancy.id}`}>
-                      Статус отклика
-                    </label>
-                    <select
-                      id={`status-${vacancy.id}`}
-                      className="select"
-                      value={vacancy.status ?? 'none'}
-                      onChange={(e) => move(vacancy.id, e.target.value)}
+                    {vacancy.score != null ? (
+                      <>
+                        <label className="sr-only" htmlFor={`status-${vacancy.id}`}>
+                          Статус отклика
+                        </label>
+                        <select
+                          id={`status-${vacancy.id}`}
+                          className={`select status status--${vacancy.status ?? 'none'}`}
+                          value={vacancy.status ?? 'none'}
+                          onChange={(e) => move(vacancy.id, e.target.value)}
+                        >
+                          {Object.entries(data.statuses).map(([key, value]) => (
+                            <option key={key} value={key}>
+                              {value.title}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    ) : null}
+                    <button
+                      className="btn btn--quiet btn--small btn--icon"
+                      onClick={() => unsave(vacancy.id)}
+                      title="Убрать из избранного"
+                      aria-label={`Убрать «${vacancy.title}» из избранного`}
                     >
-                      {Object.entries(data.statuses).map(([key, value]) => (
-                        <option key={key} value={key}>
-                          {value.title}
-                        </option>
-                      ))}
-                    </select>
+                      <CloseIcon />
+                    </button>
                   </>
-                ) : null}
+                }
+                footer={
+                  <>
+                    <button
+                      className="btn btn--ghost btn--small"
+                      onClick={() => openReport(vacancy)}
+                      disabled={isBusy(`${vacancy.id}:report`)}
+                      title={
+                        vacancy.score != null
+                          ? 'Отчёт уже куплен — показ бесплатный'
+                          : 'Полная оценка — около 0.17 ₽'
+                      }
+                    >
+                      {isBusy(`${vacancy.id}:report`)
+                        ? 'Считаю…'
+                        : vacancy.score != null
+                          ? 'Отчёт'
+                          : 'Оценить'}
+                      {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
+                        <span className="btn__price">0.17 ₽</span>
+                      ) : null}
+                    </button>
+                    {vacancy.outdated ? (
+                      <button
+                        className="btn btn--quiet btn--small"
+                        onClick={() => openReport(vacancy, true)}
+                        disabled={isBusy(`${vacancy.id}:report`)}
+                        title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                      >
+                        Переоценить
+                      </button>
+                    ) : null}
 
-                <button
-                  className="btn btn--ghost btn--small"
-                  onClick={() => unsave(vacancy.id)}
-                  title="Убрать из избранного"
-                  aria-label={`Убрать «${vacancy.title}» из избранного`}
-                >
-                  ✕
-                </button>
-              </>
-            }
-          />
-        ))}
-      </Card>
+                    {/* One button per document, each stating its own price. A
+                        package made people pay for documents they did not ask
+                        for — see docs/decisions.md, 2026-09-18. */}
+                    {vacancy.score != null ? (
+                      <>
+                        <span className="footer__sep" aria-hidden="true" />
+                        {data.apply_steps.map((step) => (
+                          <ArtifactButton
+                            key={step.step}
+                            step={step}
+                            vacancy={vacancy}
+                            busy={isBusy(`${vacancy.id}:${step.step}`)}
+                            onClick={() => openArtifact(vacancy, step.step)}
+                          />
+                        ))}
+                      </>
+                    ) : null}
+
+                    {/* The tailored CV is the one document that leaves the
+                        cabinet — it is what gets attached to an application.
+                        It appears only once bought: a download button over
+                        nothing would hand back an empty file. */}
+                    {vacancy.artifacts?.tailor ? (
+                      <>
+                        <span className="footer__sep" aria-hidden="true" />
+                        <span className="footer__group">
+                          <span className="muted">Скачать</span>
+                          <DownloadButtons
+                            small
+                            label={`Скачать резюме под «${vacancy.title}»`}
+                            onDownload={(fmt) => downloadTailored(vacancy.id, fmt)}
+                          />
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                }
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="card">
+          <Empty title="Пока пусто">
+            <p>Отложите вакансию звёздочкой на странице поиска — она появится здесь.</p>
+            <a className="btn btn--ghost" href="#/search">
+              К поиску
+            </a>
+          </Empty>
+        </div>
+      )}
 
       {panel}
-    </>
+    </div>
   )
 }
 
@@ -209,7 +295,7 @@ function ArtifactButton({
   const done = Boolean(vacancy.artifacts?.[step.step])
   return (
     <button
-      className={done ? 'btn btn--ghost btn--small btn--done' : 'btn btn--ghost btn--small'}
+      className={done ? 'btn btn--ghost btn--small btn--done' : 'btn btn--quiet btn--small'}
       onClick={onClick}
       disabled={busy}
       title={
@@ -217,6 +303,7 @@ function ArtifactButton({
       }
     >
       {busy ? 'Готовлю…' : done ? `${step.title} ✓` : step.title}
+      {!busy && !done ? <span className="btn__price">{rub(step.rub)}</span> : null}
     </button>
   )
 }

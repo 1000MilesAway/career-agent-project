@@ -14,7 +14,9 @@ import type {
   Requirement,
   TailoredResume,
 } from '../api/types'
+import { useState } from 'react'
 import { formatScore, VERDICT_TITLES } from './ui'
+import './report.css'
 
 const MATCH_TITLES: Record<MatchLevel, string> = {
   full: 'полностью',
@@ -38,111 +40,161 @@ function weightOf(requirement: Requirement): string {
   return (key && WEIGHT_TITLES[key]) || '—'
 }
 
+const MATCH_MARKS: Record<MatchLevel, string> = { full: '✓', partial: '~', none: '✕' }
+
+/** The report opens on the verdict, then the coverage of requirements as one
+ *  bar — matched, partly, missing — the readout people know from resume
+ *  scanners. The list under it is sorted by nothing but the model's order:
+ *  re-sorting would hide which requirement the posting led with. */
 export function ReportView({ report }: { report: Report }) {
+  const requirements = report.requirements ?? []
+  const tally = { full: 0, partial: 0, none: 0 }
+  for (const requirement of requirements) {
+    if (requirement.match in tally) tally[requirement.match]++
+  }
+
   return (
-    <div className="card">
-      <div className="row" style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 34, fontWeight: 600, lineHeight: 1 }}>
+    <div className="report">
+      <header className="report__head">
+        <span className={`report__score report__score--${report.verdict}`}>
           {formatScore(report.score)}
+          <small>/5</small>
         </span>
-        <span className={`pill pill--${report.verdict}`}>
-          {VERDICT_TITLES[report.verdict] ?? report.verdict}
-        </span>
-      </div>
+        <div>
+          <span className={`pill pill--${report.verdict}`}>
+            {VERDICT_TITLES[report.verdict] ?? report.verdict}
+          </span>
+          <p className="report__summary">{report.role_summary}</p>
+        </div>
+      </header>
 
-      <p style={{ marginTop: 0 }}>{report.role_summary}</p>
-
-      {report.requirements?.length ? (
-        <>
-          <h3 className="card__title" style={{ marginTop: 18 }}>
-            Требования
-          </h3>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>требование</th>
-                  <th>вес</th>
-                  <th>совпадение</th>
-                  <th>обоснование</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.requirements.map((requirement, index) => (
-                  <tr key={`${requirement.text}-${index}`}>
-                    <td>{requirement.text}</td>
-                    <td className="muted">{weightOf(requirement)}</td>
-                    <td className={`m-${requirement.match}`}>
-                      {MATCH_TITLES[requirement.match] ?? requirement.match}
-                    </td>
-                    <td>
-                      {requirement.evidence}
-                      {requirement.gap_advice ? (
-                        <>
-                          <br />
-                          <span className="muted">{requirement.gap_advice}</span>
-                        </>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {requirements.length ? (
+        <section className="report__section">
+          <div className="report__cover-head">
+            <h3 className="eyebrow">Требования</h3>
+            <span className="muted num">
+              совпало {tally.full} · частично {tally.partial} · нет {tally.none}
+            </span>
           </div>
-        </>
+          <div className="cover" aria-hidden="true">
+            {tally.full ? (
+              <span className="cover--full" style={{ flex: tally.full }} />
+            ) : null}
+            {tally.partial ? (
+              <span className="cover--partial" style={{ flex: tally.partial }} />
+            ) : null}
+            {tally.none ? (
+              <span className="cover--none" style={{ flex: tally.none }} />
+            ) : null}
+          </div>
+
+          <ul className="reqs">
+            {requirements.map((requirement, index) => (
+              <li key={`${requirement.text}-${index}`} className="req">
+                <span
+                  className={`req__mark req__mark--${requirement.match}`}
+                  title={`Совпадение: ${MATCH_TITLES[requirement.match] ?? requirement.match}`}
+                >
+                  {MATCH_MARKS[requirement.match] ?? '?'}
+                </span>
+                <div className="req__body">
+                  <p className="req__text">
+                    {requirement.text}
+                    <span className="req__weight">{weightOf(requirement)}</span>
+                  </p>
+                  {requirement.evidence ? (
+                    <p className="req__evidence">{requirement.evidence}</p>
+                  ) : null}
+                  {requirement.gap_advice ? (
+                    <p className="req__advice">{requirement.gap_advice}</p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {report.red_flags?.length ? (
-        <>
-          <h3 className="card__title" style={{ marginTop: 18 }}>
-            Красные флаги
-          </h3>
-          <ul>
+        <section className="report__section">
+          <h3 className="eyebrow">Красные флаги</h3>
+          <ul className="flags">
             {report.red_flags.map((flag, index) => (
               <li key={index}>{flag}</li>
             ))}
           </ul>
-        </>
+        </section>
       ) : null}
 
       {report.salary ? (
-        <>
-          <h3 className="card__title" style={{ marginTop: 18 }}>
-            Зарплата
-          </h3>
-          <p className="muted" style={{ margin: '0 0 4px' }}>
-            Вилка: {report.salary.vacancy_range ?? 'не указана'} · Рынок:{' '}
-            {report.salary.market_estimate ?? '?'}
-          </p>
-          <p style={{ margin: 0 }}>{report.salary.comment}</p>
-        </>
+        <section className="report__section">
+          <h3 className="eyebrow">Зарплата</h3>
+          <div className="money">
+            <div>
+              <span className="money__label">Вилка в вакансии</span>
+              <span className="money__value">
+                {report.salary.vacancy_range ?? 'не указана'}
+              </span>
+            </div>
+            <div>
+              <span className="money__label">Рынок</span>
+              <span className="money__value">{report.salary.market_estimate ?? '?'}</span>
+            </div>
+          </div>
+          <p className="report__text">{report.salary.comment}</p>
+        </section>
       ) : null}
 
       {report.questions_to_employer?.length ? (
-        <>
-          <h3 className="card__title" style={{ marginTop: 18 }}>
-            Вопросы работодателю
-          </h3>
-          <ul>
+        <section className="report__section">
+          <h3 className="eyebrow">Вопросы работодателю</h3>
+          <ol className="report__list">
             {report.questions_to_employer.map((question, index) => (
               <li key={index}>{question}</li>
             ))}
-          </ul>
-        </>
+          </ol>
+        </section>
       ) : null}
     </div>
   )
 }
 
+/** The letter is set as a letter — prose on a page, not monospace in a box —
+ *  because what the user checks is how it reads. It leaves the cabinet by
+ *  copy and paste into a job board, so copying is one click. */
 export function CoverLetterView({ value }: { value: CoverLetter }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value.letter)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard denied (plain http, an old browser): the text is still
+      // selectable on screen, which is what people fall back to anyway.
+    }
+  }
+
   return (
-    <div>
-      {value.angles?.length ? (
-        <p className="muted" style={{ marginTop: 0 }}>
-          Углы: {value.angles.join(' · ')}
-        </p>
-      ) : null}
-      <pre>{value.letter}</pre>
+    <div className="report">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        {value.angles?.length ? (
+          <div className="chips">
+            {value.angles.map((angle) => (
+              <span key={angle} className="chip">
+                {angle}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span />
+        )}
+        <button className="btn btn--ghost btn--small" onClick={copy}>
+          {copied ? 'Скопировано ✓' : 'Скопировать'}
+        </button>
+      </div>
+      <div className="letter">{value.letter}</div>
     </div>
   )
 }
@@ -193,26 +245,15 @@ export function InterviewPrepView({ value }: { value: InterviewPrep }) {
   return (
     <div>
       {value.questions?.length ? (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>вопрос</th>
-                <th>почему спросят</th>
-                <th>на что опереться</th>
-              </tr>
-            </thead>
-            <tbody>
-              {value.questions.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.question}</td>
-                  <td className="muted">{item.why}</td>
-                  <td>{item.answer_hint}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ol className="qa">
+          {value.questions.map((item, index) => (
+            <li key={index} className="qa__item">
+              <p className="qa__q">{item.question}</p>
+              <p className="qa__why">{item.why}</p>
+              <p className="qa__hint">{item.answer_hint}</p>
+            </li>
+          ))}
+        </ol>
       ) : null}
 
       {value.star_stories?.length ? (

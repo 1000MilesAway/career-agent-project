@@ -4,10 +4,15 @@
  * decides what is worth keeping, the shortlist does the work on it. Keeping
  * the materials and the tracker on both made one screen answer two questions
  * at once — see docs/decisions.md, 2026-09-19.
+ *
+ * The score leads the row, the way a match percentage leads a card in the job
+ * trackers people already know: it is the one number a scan of the list is
+ * for. Salary is set in ink rather than grey because it is the second.
  */
 
 import { memo, type ReactNode } from 'react'
 import type { FoundVacancy, TriageBucket } from '../api/types'
+import { ExternalIcon } from './icons'
 import { Score } from './ui'
 import './vacancy.css'
 
@@ -30,32 +35,67 @@ export const DROPPED_STAGES = new Set(['screened_out', 'triaged_out'])
 function VacancyRowInner({
   vacancy,
   actions,
+  footer,
 }: {
   vacancy: FoundVacancy
   actions: ReactNode
+  /** A second line of controls under the row, for the shortlist's materials. */
+  footer?: ReactNode
 }) {
   const dropped = DROPPED_STAGES.has(vacancy.stage)
   const dimmed = dropped || vacancy.triage?.bucket === 'skip' || Boolean(vacancy.closed)
   const sourceLabel = SOURCE_LABELS[vacancy.source]
 
+  const meta = [
+    vacancy.qualification || 'грейд не указан',
+    vacancy.remote ? 'удалённо' : null,
+    sourceLabel ?? null,
+  ].filter(Boolean)
+
   return (
     <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
+      <div className="vrow__lead">
+        {vacancy.score != null ? (
+          <Score score={vacancy.score} verdict={vacancy.verdict} />
+        ) : (
+          <span
+            className={`vrow__pending dot${vacancy.triage && !dropped ? ` dot--${vacancy.triage.bucket}` : ''}`}
+            aria-hidden="true"
+          />
+        )}
+      </div>
+
       <div className="vrow__main">
         <h3 className="vrow__title">
           {vacancy.url ? (
             <a href={vacancy.url} target="_blank" rel="noopener noreferrer">
               {vacancy.title}
+              <ExternalIcon />
             </a>
           ) : (
             vacancy.title
           )}
         </h3>
 
+        <p className="vrow__meta">
+          <span className="vrow__company">{vacancy.company || 'компания не указана'}</span>
+          {/* Ink only when there is a number to read; "не указана" is an
+              absence and should not shout like one. */}
+          {vacancy.salary_text ? (
+            <span className="vrow__salary">{vacancy.salary_text}</span>
+          ) : (
+            <span>зарплата не указана</span>
+          )}
+          {meta.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </p>
+
         {/* A drop without its reason is exactly the silent rejection the
             pipeline forbids, so the reason rides along with the row. */}
         {dropped ? (
-          <p className="vrow__meta">
-            <span className="chip chip--neg">
+          <p className="vrow__note">
+            <span className="chip chip--flag">
               {vacancy.duplicate_of ? 'дубль' : 'отсеяно'}
             </span>{' '}
             {vacancy.screen_reason || 'без причины'}
@@ -65,8 +105,8 @@ function VacancyRowInner({
         {/* Closed is marked, not hidden: what was bought for it stays
             readable, and the reason says why applying is pointless. */}
         {vacancy.closed ? (
-          <p className="vrow__meta">
-            <span className="chip chip--neg">закрыта</span>{' '}
+          <p className="vrow__note">
+            <span className="chip chip--flag">закрыта</span>{' '}
             {vacancy.closed.reason || 'источник сообщил, что вакансия закрыта'}
           </p>
         ) : null}
@@ -74,31 +114,22 @@ function VacancyRowInner({
         {/* The resume changed after this score was bought: the report still
             reads against the old profile, so it is marked, not replaced. */}
         {vacancy.outdated ? (
-          <p className="vrow__meta">
-            <span className="chip">прежнее резюме</span> оценка сделана до правки резюме
+          <p className="vrow__note">
+            <span className="chip chip--flag">прежнее резюме</span> оценка сделана до правки
+            резюме
           </p>
         ) : null}
 
-        <p className="vrow__meta">
-          {sourceLabel ? `${sourceLabel} · ` : ''}
-          {vacancy.company || 'компания не указана'} ·{' '}
-          {vacancy.qualification || 'грейд не указан'}
-          {vacancy.remote ? ' · удалённо' : ''} ·{' '}
-          {vacancy.salary_text || 'зарплата не указана'}
-        </p>
-
         {vacancy.triage && !dropped ? (
-          <p className="vrow__meta">
+          <p className="vrow__note">
             <span className={`tag tag--${vacancy.triage.bucket}`}>
               {BUCKET_TITLES[vacancy.triage.bucket] ?? vacancy.triage.bucket}
             </span>{' '}
             {vacancy.triage.reason}
           </p>
         ) : null}
-      </div>
 
-      <div className="vrow__score">
-        <Score score={vacancy.score} verdict={vacancy.verdict} />
+        {footer ? <div className="vrow__footer">{footer}</div> : null}
       </div>
 
       <div className="vrow__acts">{actions}</div>

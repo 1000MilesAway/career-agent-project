@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, type ReactNode } from 'react'
+import { CloseIcon } from './icons'
 import './drawer.css'
 
 export function Drawer({
@@ -49,8 +50,14 @@ export function Drawer({
     >
       <header className="drawer__head">
         <h2 className="drawer__title">{title}</h2>
-        <button type="button" className="btn btn--ghost btn--small" onClick={onClose}>
-          Закрыть
+        <button
+          type="button"
+          className="btn btn--quiet btn--small btn--icon"
+          onClick={onClose}
+          aria-label="Закрыть"
+          title="Закрыть (Esc)"
+        >
+          <CloseIcon />
         </button>
       </header>
       <div className="drawer__body">{children}</div>

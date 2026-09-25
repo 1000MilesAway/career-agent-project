@@ -1,27 +1,85 @@
-/* Shared presentational classes. Kept as plain CSS with predictable names
-   rather than a styling library: the cabinet is small, and a build-time
-   dependency to produce a dozen rules would be weight with nothing to do. */
+/* Shared presentational classes. Plain CSS with predictable names rather than
+   a styling library: the cabinet is small, and a build-time dependency to
+   produce a few dozen rules would be weight with nothing to do. */
 
-.wrap {
-  max-width: 900px;
+/* ── Page frame ──────────────────────────────────────────────────────── */
+
+.page {
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 24px 16px 64px;
+  padding: 36px 40px 96px;
 }
 
+.page__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.page__title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+.page__lede {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 8px 0 0;
+  max-width: 62ch;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 20px 16px 80px;
+  }
+  .page__title {
+    font-size: 28px;
+  }
+}
+
+/* ── Surfaces ────────────────────────────────────────────────────────── */
+
 .card {
-  background: var(--card);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 20px 22px;
   margin-bottom: 16px;
 }
 
+.card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
 .card__title {
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 600;
   margin: 0 0 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.card__head .card__title {
+  margin: 0;
+}
+
+/* A label over a group of fields or a section inside a card. */
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
+  letter-spacing: 0.02em;
+  margin: 0 0 8px;
 }
 
 .muted {
@@ -47,44 +105,105 @@
   gap: 8px;
 }
 
+.spacer {
+  flex: 1;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 
 .btn {
-  background: var(--accent);
-  color: #fff;
-  border: 1px solid var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  background: var(--ink);
+  color: var(--on-ink);
+  border: 1px solid var(--ink);
   border-radius: var(--radius-sm);
-  padding: 9px 16px;
   font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.05s;
+}
+
+.btn:visited {
+  color: var(--on-ink);
+}
+
+.btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 86%, var(--bg));
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn--ghost {
   background: transparent;
-  color: var(--muted);
-  border-color: var(--line);
+  color: var(--ink-2);
+  border-color: var(--line-strong);
 }
 
 .btn--ghost:hover:not(:disabled) {
-  border-color: var(--muted);
+  background: var(--sunken);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+/* Borderless: for the third and fourth action in a row, which should be
+   findable without competing with the first two. */
+.btn--quiet {
+  background: transparent;
+  color: var(--ink-2);
+  border-color: transparent;
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--sunken);
   color: var(--ink);
 }
 
 .btn--small {
-  padding: 5px 11px;
+  height: 30px;
+  padding: 0 11px;
   font-size: 13px;
+  border-radius: 7px;
 }
 
-/* A document already bought reopens for free, and the row should say so
-   before the click rather than after. */
+.btn--icon {
+  width: 30px;
+  padding: 0;
+}
+
+/* A document already bought reopens for free, and the button says so before
+   the click rather than after. */
 .btn--done {
-  border-color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
   color: var(--ok);
 }
 
-.btn--on {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+.btn--on,
+.btn--on:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--on-ink);
+  border-color: var(--ink);
+}
+
+.btn__price {
+  font-size: 12px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
 }
 
 .linkish {
@@ -93,27 +212,170 @@
   padding: 0;
   font: inherit;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--ink-2);
   text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.linkish:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+/* ── Segmented filter ────────────────────────────────────────────────── */
+
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: var(--sunken);
+  border-radius: 10px;
+}
+
+.seg__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.seg__item:hover {
+  color: var(--ink);
+}
+
+/* Off reads as off: the dot fades with the label, so a glance tells which
+   verdicts the list is showing. */
+.seg__item[aria-pressed='false'] {
+  color: var(--muted);
+}
+
+.seg__item[aria-pressed='false'] .dot {
+  opacity: 0.35;
+}
+
+.seg__item[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 1px 2px rgb(0 0 0 / 6%);
+}
+
+.seg__count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  flex: none;
+}
+
+.dot--worth {
+  background: var(--ok);
+}
+.dot--maybe {
+  background: var(--warn);
+}
+.dot--skip {
+  background: var(--bad);
 }
 
 /* ── Inputs ──────────────────────────────────────────────────────────── */
 
 .input {
-  padding: 9px 11px;
-  border: 1px solid var(--line);
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: var(--bg);
-  font-size: 14px;
+  background: var(--surface);
+  font-size: 15px;
   width: 100%;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--ink);
 }
 
 .select {
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
+  height: 30px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237a776d' stroke-width='1.5'/%3E%3C/svg%3E")
+    no-repeat right 10px center;
+  appearance: none;
   font-size: 13px;
+  color: var(--ink);
+}
+
+/* A switch-like checkbox: a pill that is either on or off. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.toggle input {
+  appearance: none;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.toggle input:checked {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.toggle input:checked::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  border: solid var(--on-ink);
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.toggle:has(input:checked) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.toggle:hover {
+  border-color: var(--ink-2);
 }
 
 .check {
@@ -144,45 +406,53 @@
 
 .pill {
   font-size: 13px;
-  padding: 3px 9px;
-  border-radius: 20px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
   display: inline-block;
 }
 
 .pill--apply {
-  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  background: color-mix(in srgb, var(--ok) 13%, transparent);
   color: var(--ok);
 }
 
 .pill--apply_with_caveats {
-  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
   color: var(--warn);
 }
 
 .pill--skip {
-  background: color-mix(in srgb, var(--bad) 15%, transparent);
+  background: color-mix(in srgb, var(--bad) 13%, transparent);
   color: var(--bad);
 }
 
 .tag {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 20px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .tag--worth {
-  background: color-mix(in srgb, var(--ok) 15%, transparent);
   color: var(--ok);
 }
 
 .tag--maybe {
-  background: color-mix(in srgb, var(--warn) 15%, transparent);
   color: var(--warn);
 }
 
 .tag--skip {
-  background: color-mix(in srgb, var(--bad) 15%, transparent);
   color: var(--bad);
 }
 
@@ -190,45 +460,62 @@
 
 .chips {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .chip {
-  font-size: 12px;
-  padding: 2px 9px;
-  border-radius: 20px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12.5px;
+  line-height: 1.3;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--sunken);
+  color: var(--ink-2);
 }
 
 .chip--neg {
-  border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  color: color-mix(in srgb, var(--bad) 80%, var(--ink));
 }
 
 .chip--add {
-  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 11%, transparent);
   color: var(--ok);
+}
+
+.chip--flag {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink-2);
+  font-size: 12px;
+  padding: 1px 7px;
 }
 
 /* A preset is a button, not a decoration: it must look pressable. */
 .chip--pick {
   cursor: pointer;
   font-family: inherit;
+  background: transparent;
+  border-color: var(--line-strong);
+  font-variant-numeric: tabular-nums;
   transition:
     border-color 0.15s,
-    color 0.15s;
+    color 0.15s,
+    background 0.15s;
 }
 
 .chip--pick:hover {
-  border-color: var(--muted);
+  border-color: var(--ink-2);
   color: var(--ink);
 }
 
 .chip--pick[aria-pressed='true'] {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-ink);
 }
 
 /* ── Tables and long text ────────────────────────────────────────────── */
@@ -246,7 +533,7 @@ table {
 th,
 td {
   text-align: left;
-  padding: 7px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
@@ -254,27 +541,23 @@ td {
 th {
   color: var(--muted);
   font-weight: 500;
+  font-size: 12px;
 }
 
 pre {
   white-space: pre-wrap;
-  font:
-    13px/1.6 ui-monospace,
-    Menlo,
-    monospace;
-  background: var(--bg);
-  padding: 12px;
+  font: 13px/1.6 var(--font-mono);
+  background: var(--sunken);
+  padding: 14px;
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 0;
 }
 
 .cost {
-  font:
-    12px/1.5 ui-monospace,
-    Menlo,
-    monospace;
+  font-size: 12px;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .cost b {
@@ -284,8 +567,8 @@ pre {
 
 .kv {
   display: grid;
-  grid-template-columns: minmax(130px, auto) 1fr;
-  gap: 6px 14px;
+  grid-template-columns: minmax(150px, auto) 1fr;
+  gap: 10px 20px;
   font-size: 14px;
   margin: 0;
 }
@@ -293,10 +576,21 @@ pre {
 .kv dt {
   color: var(--muted);
   font-size: 13px;
+  padding-top: 3px;
 }
 
 .kv dd {
   margin: 0;
+}
+
+@media (max-width: 560px) {
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .kv dd {
+    margin-bottom: 10px;
+  }
 }
 
 /* Announced politely to a screen reader, invisible on screen. */
@@ -312,15 +606,32 @@ pre {
   border: 0;
 }
 
+/* ── Empty state ─────────────────────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--muted);
+}
+
+.empty__title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.empty p {
+  margin: 0 auto 16px;
+  max-width: 44ch;
+  font-size: 14px;
+}
+
 /* ── Skeletons ───────────────────────────────────────────────────────── */
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--line) 60%, transparent),
-    color-mix(in srgb, var(--line) 20%, transparent),
-    color-mix(in srgb, var(--line) 60%, transparent)
-  );
+  background: linear-gradient(90deg, var(--sunken), var(--line) 50%, var(--sunken));
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
   border-radius: 6px;
@@ -333,14 +644,48 @@ pre {
   }
 }
 
+/* ── Details that fold ───────────────────────────────────────────────── */
+
+details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details > summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  flex: none;
+  margin: 0 2px;
+}
+
+details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
 /* Resume version history (ResumePage). */
 .versions {
   list-style: none;
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   padding: 0;
 }
 
 .versions__item {
-  padding: 8px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--line);
+}
+
+.versions__item ul {
+  padding-left: 18px;
 }

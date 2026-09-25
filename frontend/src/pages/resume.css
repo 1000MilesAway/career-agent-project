@@ -1,0 +1,249 @@
+/* "Моё резюме": the profile as a document on the left, the file and its
+   versions on the right. */
+
+.resume {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.resume__side {
+  position: sticky;
+  top: 24px;
+}
+
+.resume__file {
+  margin: -4px 0 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.resume-first {
+  max-width: 560px;
+  padding: 28px;
+}
+
+@media (max-width: 960px) {
+  .resume {
+    grid-template-columns: 1fr;
+  }
+  .resume__side {
+    position: static;
+  }
+}
+
+/* ── Upload ──────────────────────────────────────────────────────────── */
+
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.drop:hover,
+.drop--over {
+  border-color: var(--ink-2);
+  background: var(--sunken);
+}
+
+.drop:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.drop__title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.drop__hint {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.drop__file {
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.upload__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── Profile ─────────────────────────────────────────────────────────── */
+
+.profile {
+  padding: 28px 30px;
+}
+
+.profile__name {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.profile__role {
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin: 22px 0 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.facts > div {
+  background: var(--surface);
+  padding: 12px 14px;
+}
+
+.facts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.profile__group {
+  margin-top: 26px;
+}
+
+.profile__raw {
+  margin-top: 26px;
+}
+
+.profile__raw pre {
+  margin-top: 10px;
+}
+
+@media (max-width: 560px) {
+  .profile {
+    padding: 20px 18px;
+  }
+  .facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Experience ──────────────────────────────────────────────────────── */
+
+.timeline {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.timeline__item {
+  position: relative;
+  padding: 0 0 20px 22px;
+  border-left: 1px solid var(--line);
+  margin-left: 4px;
+}
+
+.timeline__item:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
+}
+
+.timeline__item::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--ink-2);
+}
+
+.timeline__role {
+  margin: 0;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.timeline__company {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.timeline__period {
+  margin: 1px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.timeline__list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ── Search profile ──────────────────────────────────────────────────── */
+
+.sprofile {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 32px;
+}
+
+.sprofile__col .eyebrow {
+  margin-top: 18px;
+}
+
+.sprofile__col .eyebrow:first-child {
+  margin-top: 0;
+}
+
+.sprofile__grade {
+  margin: 0;
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .sprofile {
+    grid-template-columns: 1fr;
+  }
+  .sprofile__col + .sprofile__col .eyebrow:first-child {
+    margin-top: 18px;
+  }
+}

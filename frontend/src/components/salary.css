@@ -1,32 +1,43 @@
 .salary__label {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
-  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
 }
 
+/* The number is the point of the field, so it is set large: "250 000" has
+   to read at a glance as thousands, which is what people got wrong. */
 .salary__field {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0 12px 0 0;
-  background: var(--bg);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1.5px solid var(--line-strong);
+  padding: 0 0 6px;
   transition: border-color 0.15s;
+  max-width: 340px;
 }
 
 .salary__field:focus-within {
-  border-color: var(--accent);
+  border-color: var(--ink);
 }
 
 .salary__field input {
   border: none;
   background: none;
-  padding: 10px 0 10px 12px;
-  font-size: 17px;
-  width: 150px;
-  letter-spacing: 0.3px;
+  padding: 0;
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1.2;
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+}
+
+.salary__field input::placeholder {
+  color: var(--line-strong);
 }
 
 .salary__field input:focus {
@@ -43,11 +54,13 @@
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 14px;
 }
 
 .salary__hint {
-  font-size: 12px;
-  margin: 7px 0 0;
-  min-height: 16px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 10px 0 0;
+  min-height: 18px;
+  max-width: 46ch;
 }

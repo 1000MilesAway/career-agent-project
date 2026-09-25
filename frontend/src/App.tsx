@@ -1,16 +1,23 @@
-/** The cabinet shell: who is logged in, which page is open.
+/** The cabinet shell: who is logged in, which page is open, what it has cost.
  *
- * Three stages, three pages: describe yourself, find work, work the shortlist.
- * The route keeps the current page across a reload — a scan takes up to a
- * minute, and a refresh should not dump the user back on the resume page.
+ * Four stages, four pages: describe yourself, find work, work the shortlist,
+ * talk it through. The route keeps the current page across a reload — a scan
+ * takes up to a minute, and a refresh should not dump the user back on the
+ * resume page.
+ *
+ * A sidebar rather than tabs over the content: the pages are places the user
+ * moves between all session, and the counts beside them (saved vacancies,
+ * changes waiting for a decision) should stay in view while they work.
  */
 
-import { Suspense } from 'react'
+import { Suspense, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { useAppState, useProposals } from './api/hooks'
+import type { Spend } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
-import { Skeleton } from './components/ui'
+import { ChatIcon, LogoutIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
+import { Skeleton, rub } from './components/ui'
 import { lazyPage } from './lazyPage'
 import './App.css'
 
@@ -39,42 +46,58 @@ function Cabinet() {
   const home = data && !data.has_resume ? '/resume' : '/search'
 
   return (
-    <div className="wrap">
-      <header className="head">
-        <div>
-          <h1 className="head__title">career-agent</h1>
-          <p className="head__sub">
-            Оценка вакансий по резюме. Отклик отправляете вы сами.
-          </p>
+    <div className="shell">
+      <aside className="side">
+        <div className="brand">
+          <span className="brand__mark" aria-hidden="true" />
+          <span className="brand__name">career-agent</span>
         </div>
-        <div className="row">
-          <span className="muted">{data?.user.email}</span>
-          <button className="btn btn--ghost btn--small" onClick={logout}>
-            Выйти
-          </button>
+
+        <nav className="side__nav" aria-label="Разделы">
+          <NavItem to="/search" icon={<SearchIcon />}>
+            Поиск
+          </NavItem>
+          <NavItem to="/saved" icon={<StarIcon />} count={savedCount}>
+            Избранное
+          </NavItem>
+          {/* The count is what keeps a prepared change from being lost: the
+              user may leave the chat before deciding, and nothing is written
+              until they do. */}
+          <NavItem to="/chat" icon={<ChatIcon />} count={pendingCount} attention>
+            Помощник
+          </NavItem>
+          <NavItem to="/resume" icon={<ResumeIcon />}>
+            Моё резюме
+          </NavItem>
+        </nav>
+
+        <div className="side__foot">
+          {data ? <SpendMeter spend={data.spend} /> : null}
+          <p className="side__promise">Отклик всегда отправляете вы сами.</p>
+          <div className="side__user">
+            <span className="side__email" title={data?.user.email}>
+              {data?.user.email}
+            </span>
+            <button
+              className="btn btn--quiet btn--small btn--icon"
+              onClick={logout}
+              title="Выйти"
+              aria-label="Выйти"
+            >
+              <LogoutIcon />
+            </button>
+          </div>
         </div>
-      </header>
+      </aside>
 
-      <nav className="nav" aria-label="Разделы">
-        <NavLink className={navClass} to="/resume">
-          Моё резюме
-        </NavLink>
-        <NavLink className={navClass} to="/search">
-          Поиск
-        </NavLink>
-        <NavLink className={navClass} to="/saved">
-          Избранное{savedCount ? ` ${savedCount}` : ''}
-        </NavLink>
-        {/* The count is what keeps a prepared change from being lost: the
-            user may leave the chat before deciding, and nothing is written
-            until they do. */}
-        <NavLink className={navClass} to="/chat">
-          Помощник{pendingCount ? ` ${pendingCount}` : ''}
-        </NavLink>
-      </nav>
-
-      <main>
-        <Suspense fallback={<Skeleton rows={5} />}>
+      <main className="main">
+        <Suspense
+          fallback={
+            <div className="page">
+              <Skeleton rows={5} />
+            </div>
+          }
+        >
           <Routes>
             <Route path="/resume" element={<ResumePage />} />
             <Route path="/search" element={<SearchPage />} />
@@ -88,5 +111,64 @@ function Cabinet() {
   )
 }
 
-const navClass = ({ isActive }: { isActive: boolean }) =>
-  isActive ? 'nav__tab nav__tab--on' : 'nav__tab'
+function NavItem({
+  to,
+  icon,
+  count = 0,
+  attention = false,
+  children,
+}: {
+  to: string
+  icon: ReactNode
+  count?: number
+  /** A count that asks for action, not one that merely tallies. */
+  attention?: boolean
+  children: ReactNode
+}) {
+  return (
+    <NavLink to={to} className={({ isActive }) => (isActive ? 'nav nav--on' : 'nav')}>
+      {icon}
+      <span className="nav__label">{children}</span>
+      {count ? (
+        <span className={attention ? 'nav__count nav__count--hot' : 'nav__count'}>
+          {count}
+        </span>
+      ) : null}
+    </NavLink>
+  )
+}
+
+/** "What have I spent so far, and how much is left" — the question a paying
+ *  user actually asks, answered before they hit the ceiling rather than by a
+ *  402 when they do. */
+function SpendMeter({ spend }: { spend: Spend }) {
+  const spent = spend.spent_total_rub
+  const left = spend.limit_rub
+  const share = left != null && spent + left > 0 ? spent / (spent + left) : null
+  return (
+    <div className="meter">
+      <div className="meter__row">
+        <span>Потрачено</span>
+        <b className="num">{rub(spent)}</b>
+      </div>
+      {share != null ? (
+        <>
+          <div
+            className={share > 0.85 ? 'meter__bar meter__bar--low' : 'meter__bar'}
+            role="meter"
+            aria-label="Израсходовано бюджета"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(share * 100)}
+          >
+            <span style={{ width: `${Math.min(100, share * 100)}%` }} />
+          </div>
+          <div className="meter__row meter__row--sub">
+            <span>Осталось</span>
+            <span className="num">{rub(left ?? 0)}</span>
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}

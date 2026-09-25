@@ -2,7 +2,8 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { useAuth } from '../auth'
-import { Card, ErrorNote } from '../components/ui'
+import { ErrorNote } from '../components/ui'
+import './login.css'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -24,18 +25,40 @@ export function LoginPage() {
   }
 
   return (
-    <main className="wrap" style={{ maxWidth: 420 }}>
-      <h1 style={{ fontSize: 20, marginBottom: 4 }}>career-agent</h1>
-      <p className="muted" style={{ marginTop: 0, marginBottom: 20 }}>
-        Оценка вакансий по резюме. Отклик отправляете вы сами.
-      </p>
+    <main className="login">
+      <section className="login__pitch">
+        <div className="brand">
+          <span className="brand__mark" aria-hidden="true" />
+          <span className="brand__name">career-agent</span>
+        </div>
+        <h1 className="login__title">
+          Сотни вакансий — <em>короткий список</em> тех, что стоят отклика.
+        </h1>
+        <ol className="login__steps">
+          <li>
+            <b>Ищет везде сразу.</b> Хабр Карьера, сайты компаний, geekjob и
+            Telegram-каналы.
+          </li>
+          <li>
+            <b>Отсеивает бесплатно.</b> Каждая выброшенная вакансия — с причиной одной
+            строкой.
+          </li>
+          <li>
+            <b>Оценивает по резюме.</b> Что совпало, чего не хватает, и что с этим делать.
+          </li>
+        </ol>
+        <p className="login__promise">Отклик всегда отправляете вы сами.</p>
+      </section>
 
-      <Card title="Вход">
+      <section className="login__form">
+        <h2 className="login__form-title">Вход</h2>
         {/* A real <form>: Enter submits, and password managers recognise it.
             The old page wired keydown handlers onto both inputs by hand. */}
-        <form className="stack" onSubmit={onSubmit}>
-          <label className="stack" style={{ gap: 4 }}>
-            <span className="muted">Email</span>
+        <form className="stack" style={{ gap: 14 }} onSubmit={onSubmit}>
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="eyebrow" style={{ margin: 0 }}>
+              Email
+            </span>
             <input
               className="input"
               type="email"
@@ -46,8 +69,10 @@ export function LoginPage() {
               autoFocus
             />
           </label>
-          <label className="stack" style={{ gap: 4 }}>
-            <span className="muted">Пароль</span>
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="eyebrow" style={{ margin: 0 }}>
+              Пароль
+            </span>
             <input
               className="input"
               type="password"
@@ -57,7 +82,12 @@ export function LoginPage() {
               required
             />
           </label>
-          <button className="btn" type="submit" disabled={isPending}>
+          <button
+            className="btn"
+            type="submit"
+            disabled={isPending}
+            style={{ height: 44, marginTop: 4 }}
+          >
             {isPending ? 'Вхожу…' : 'Войти'}
           </button>
         </form>
@@ -65,9 +95,9 @@ export function LoginPage() {
         <ErrorNote error={error} />
 
         <p className="muted" style={{ marginBottom: 0 }}>
-          Регистрации нет — учётку заводит администратор.
+          Регистрации пока нет — учётку заводит администратор.
         </p>
-      </Card>
+      </section>
     </main>
   )
 }

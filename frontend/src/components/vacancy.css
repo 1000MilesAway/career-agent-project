@@ -1,43 +1,178 @@
+/* A vacancy row: score, what it is, what to do with it.
+
+   The list is a list, not a stack of cards — a hundred bordered boxes turn a
+   scan into a wall. Rows are divided by a hairline and lift on hover, so the
+   eye runs down the scores and titles without any chrome in the way. */
+
+.vlist {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
 .vrow {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  align-items: start;
+  padding: 16px 18px 16px 12px;
   border-bottom: 1px solid var(--line);
-  padding: 12px 0;
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  transition: background 0.12s;
+}
+
+.vrow:last-child {
+  border-bottom: none;
+}
+
+.vrow:hover {
+  background: color-mix(in srgb, var(--sunken) 55%, transparent);
 }
 
 /* A screened-out row is dimmed, never hidden: the model screens on listing
-   data alone and has to stay auditable. */
-.vrow--dim {
+   data alone and has to stay auditable. Hover brings it back to full
+   contrast so the reason can be read comfortably. */
+.vrow--dim > * {
   opacity: 0.55;
+  transition: opacity 0.12s;
+}
+
+.vrow--dim:hover > * {
+  opacity: 1;
+}
+
+.vrow__lead {
+  display: flex;
+  justify-content: center;
+  padding-top: 1px;
+}
+
+/* No score yet: a dot in the triage colour, grey when not judged. */
+.vrow__pending {
+  margin-top: 9px;
 }
 
 .vrow__main {
-  flex: 1;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .vrow__title {
+  font-size: 15px;
   font-weight: 600;
-  font-size: 14px;
+  line-height: 1.35;
   margin: 0;
 }
 
-.vrow__meta {
-  color: var(--muted);
-  font-size: 12px;
-  margin: 2px 0 0;
+.vrow__title a {
+  text-decoration: none;
+  color: var(--ink);
 }
 
-.vrow__score {
-  min-width: 44px;
-  text-align: right;
+.vrow__title a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+}
+
+.vrow__title svg {
+  margin-left: 5px;
+  color: var(--muted);
+  opacity: 0;
+  vertical-align: 1px;
+  transition: opacity 0.12s;
+}
+
+.vrow:hover .vrow__title svg,
+.vrow__title a:focus-visible svg {
+  opacity: 1;
+}
+
+.vrow__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 0;
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.vrow__meta > span + span::before {
+  content: '·';
+  margin: 0 7px;
+  color: var(--line-strong);
+}
+
+.vrow__company {
+  color: var(--ink-2);
+}
+
+.vrow__salary {
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.vrow__note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.vrow__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
 }
 
 .vrow__acts {
   display: flex;
   gap: 6px;
   align-items: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+/* The score: a serif number in the verdict's colour on a tint of it. */
+.score {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1;
+}
+
+.score--good {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 11%, transparent);
+}
+
+.score--mid {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
+.score--bad {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 11%, transparent);
+}
+
+@media (max-width: 720px) {
+  .vrow {
+    grid-template-columns: 44px minmax(0, 1fr);
+    padding: 14px 14px 14px 8px;
+  }
+
+  .vrow__acts {
+    grid-column: 2;
+    justify-content: flex-start;
+    margin-top: 8px;
+  }
 }
