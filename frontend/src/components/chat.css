@@ -33,6 +33,26 @@
   color: var(--ink);
 }
 
+/* Answers to the assistant's question: solid, unlike the dashed examples,
+   because pressing one sends it straight away. */
+.chat__choices {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 85%;
+}
+
+.chat__choices .chat__example {
+  border-style: solid;
+  color: var(--ink);
+}
+
+.chat__choices-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
 .chat__thinking {
   margin: 0;
   font-style: italic;

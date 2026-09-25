@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from core import chat as chat_core
+from core import tools
 from core.llm import LLM, Ledger
 
 from ..core.deps import SessionDep, UserDep
@@ -74,6 +75,9 @@ class MessageResponse(BaseModel):
     # Tool names that ran for this turn, so the UI can say what was looked at
     # rather than leaving a silent gap between question and answer.
     tools: list[str] = []
+    # Answers to pick when the turn ended on a question (`ask_choice`). The
+    # screen offers them as buttons; typing an answer of one's own still works.
+    choices: list[str] = []
 
 
 class ChatResponse(BaseModel):
@@ -96,6 +100,11 @@ def _visible(message: ChatMessage) -> MessageResponse | None:
         return None
 
     text = (payload.get("content") or "").strip()
+    question = _question(message)
+    if question is not None and question["question"] not in text:
+        # The model often asks with the tool alone and no words around it; the
+        # question is then the whole reply, not a bubble left empty.
+        text = f"{text}\n\n{question['question']}".strip()
     if not text:
         return None
     return MessageResponse(
@@ -103,7 +112,16 @@ def _visible(message: ChatMessage) -> MessageResponse | None:
         text=text,
         created_at=message.created_at,
         tools=_tool_names(message),
+        choices=question["options"] if question else [],
     )
+
+
+def _question(message: ChatMessage) -> dict | None:
+    """The question a stored assistant turn put to the user, if any."""
+    if message.role != chat_core.ASSISTANT:
+        return None
+    calls = chat_core.parse_tool_calls((message.payload or {}).get("tool_calls"))
+    return chat_core.asked(calls)
 
 
 def _tool_names(message: ChatMessage) -> list[str]:
@@ -111,7 +129,8 @@ def _tool_names(message: ChatMessage) -> list[str]:
         c.get("function", {}).get("name", "")
         for c in (message.payload or {}).get("tool_calls") or []
     ]
-    return [n for n in names if n]
+    # A question is the reply itself, not something the chat looked at.
+    return [n for n in names if n and n != tools.ASK_CHOICE.name]
 
 
 def _as_conversation(stored: list[ChatMessage]) -> list[MessageResponse]:

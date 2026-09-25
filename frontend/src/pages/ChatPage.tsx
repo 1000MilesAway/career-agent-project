@@ -36,6 +36,7 @@ const TOOL_TITLES: Record<string, string> = {
   get_vacancy: 'открыл вакансию',
   list_vacancies: 'просмотрел список вакансий',
   skill_gap: 'разобрал требования',
+  open_gaps: 'сверил с купленными отчётами',
   get_spend: 'проверил расходы',
   propose_profile_patch: 'подготовил правку резюме',
   set_vacancy_status: 'подготовил смену статуса',
@@ -66,8 +67,9 @@ export function ChatPage() {
     endRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
   }, [messages?.length, proposals?.length])
 
-  function send() {
-    const value = text.trim()
+  /** Sends the box, or `answer` when a choice button was pressed. */
+  function send(answer?: string) {
+    const value = (answer ?? text).trim()
     if (!value || isSending) return
     startSending(async () => {
       try {
@@ -121,6 +123,10 @@ export function ChatPage() {
 
   const pending = proposals ?? []
   const hasMessages = (messages?.length ?? 0) > 0
+  // Buttons only under the question still open: an older one was answered,
+  // and pressing its button now would answer a question nobody is asking.
+  const last = messages?.at(-1)
+  const openChoices = last?.role === 'assistant' ? (last.choices ?? []) : []
 
   return (
     <Card
@@ -187,6 +193,17 @@ export function ChatPage() {
           ),
         )}
 
+        {openChoices.length && !isSending ? (
+          <div className="chat__choices">
+            {openChoices.map((choice) => (
+              <button key={choice} className="chat__example" onClick={() => send(choice)}>
+                {choice}
+              </button>
+            ))}
+            <p className="muted chat__choices-hint">или напишите свой ответ</p>
+          </div>
+        ) : null}
+
         {isSending ? <p className="muted chat__thinking">Думаю…</p> : null}
 
         {pending.length ? (
@@ -226,7 +243,7 @@ export function ChatPage() {
             }
           }}
         />
-        <button className="btn" onClick={send} disabled={!text.trim() || isSending}>
+        <button className="btn" onClick={() => send()} disabled={!text.trim() || isSending}>
           {isSending ? '…' : 'Отправить'}
         </button>
       </div>

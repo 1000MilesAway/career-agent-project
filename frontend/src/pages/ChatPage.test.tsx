@@ -4,7 +4,7 @@
  * применяются сами. Уход со страницы ничего не решает: молчание — это отказ.
  */
 
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatProposal } from '../api/types'
 
@@ -109,6 +109,37 @@ describe('ChatPage', () => {
     expect(screen.getByText('Kubernetes')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Добавить' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Не надо' })).toBeTruthy()
+  })
+
+  it('вопрос помощника показан с вариантами, и нажатый вариант уходит ответом', async () => {
+    const { sendMessage } = await import('../api/hooks')
+    mocks.messages = [
+      message('user', 'добавь Claude Code'),
+      {
+        ...message('assistant', 'Как вы использовали Claude Code?'),
+        choices: ['Основной способ писать код', 'Помощник на части задач'],
+      },
+    ]
+    mocks.proposals = []
+    render(<ChatPage />)
+    expect(screen.getByText(/напишите свой ответ/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Основной способ писать код' }))
+    expect(sendMessage).toHaveBeenCalledWith('Основной способ писать код')
+    // Hidden while the answer is on its way: a second press is a second paid reply.
+    expect(screen.queryByRole('button', { name: 'Помощник на части задач' })).toBeNull()
+  })
+
+  it('варианты уже отвеченного вопроса не показываются', () => {
+    mocks.messages = [
+      { ...message('assistant', 'Как?'), choices: ['так', 'иначе'] },
+      message('user', 'так'),
+      message('assistant', 'Подготовил правку.'),
+    ]
+    mocks.proposals = []
+    render(<ChatPage />)
+
+    expect(screen.queryByRole('button', { name: 'иначе' })).toBeNull()
   })
 
   it('без резюме сказано, почему помощник не сможет ничего дописать', () => {

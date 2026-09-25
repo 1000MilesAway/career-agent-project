@@ -269,6 +269,8 @@ export interface ChatMessage {
   text: string
   created_at: string
   tools: string[]
+  /** Answers to pick when the assistant ended its turn on a question. */
+  choices?: string[]
 }
 
 /** What the chat prepared and the user has to confirm.

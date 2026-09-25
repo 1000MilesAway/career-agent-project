@@ -14,6 +14,9 @@ Three properties are enforced here rather than asked for in the prompt:
   - Vacancy text arrives as a tool RESULT inside a marked envelope, never as a
     message. A posting is data; a message is an instruction. Keeping them in
     one place is how a vacancy gets to edit a CV.
+  - A question to the user ends the turn. `ask_choice` is answered here, not
+    by the handler, and the loop stops on it: letting the model run on after
+    asking is how it ends up proposing the vague line before hearing the answer.
 
 What this module deliberately does NOT do: decide whether the user is allowed
 to spend, read the database, or apply anything. That belongs to `app/`, which
@@ -148,6 +151,38 @@ def envelope(kind: str, payload: Any) -> str:
     return f"<{kind}>\n{body}\n</{kind}>"
 
 
+MAX_OPTIONS = 4
+
+
+def choice_of(call: ToolCall) -> dict | None:
+    """The question and options of a well-formed `ask_choice`, else None."""
+    if not call.ok or call.name != tools.ASK_CHOICE.name:
+        return None
+    question = str(call.arguments.get("question") or "").strip()
+    raw = call.arguments.get("options")
+    options = [str(o).strip() for o in raw if str(o).strip()] if isinstance(raw, list) else []
+    if not question or not 2 <= len(options) <= MAX_OPTIONS:
+        return None
+    return {"question": question, "options": options}
+
+
+def _ask(call: ToolCall) -> dict:
+    """The result the model reads after asking.
+
+    A malformed question comes back as an error and does not end the turn, so
+    the model can fix it instead of leaving the user with a question without
+    answers to pick.
+    """
+    if choice_of(call) is None:
+        return {"error": f"нужен вопрос и от 2 до {MAX_OPTIONS} вариантов ответа"}
+    return {"status": "shown", "note": "Вопрос показан пользователю, ответ придёт сообщением."}
+
+
+def asked(calls: list[ToolCall]) -> dict | None:
+    """The question this round put to the user, if it did."""
+    return next((c for c in map(choice_of, calls) if c is not None), None)
+
+
 def run_tools(calls: list[ToolCall], handler: ToolHandler) -> list[dict]:
     """Execute the calls and format the results for the next round.
 
@@ -159,10 +194,13 @@ def run_tools(calls: list[ToolCall], handler: ToolHandler) -> list[dict]:
         if not call.ok:
             results.append({"tool_call_id": call.id, "content": f"Ошибка: {call.error}"})
             continue
-        try:
-            payload = handler(call.name, call.arguments)
-        except Exception as e:  # a handler blew up: report, do not crash the chat
-            payload = {"error": f"{type(e).__name__}: {e}"[:300]}
+        if tools.BY_NAME[call.name].ends_turn:
+            payload = _ask(call)
+        else:
+            try:
+                payload = handler(call.name, call.arguments)
+            except Exception as e:  # a handler blew up: report, do not crash the chat
+                payload = {"error": f"{type(e).__name__}: {e}"[:300]}
         results.append(
             {
                 "tool_call_id": call.id,
@@ -267,6 +305,10 @@ def converse(
             working.append(entry)
             appended.append(entry)
 
+        question = asked(turn.calls)
+        if question is not None:
+            return turn.text or question["question"], appended, made
+
     # Out of rounds with tools still pending. Saying so is better than a silent
     # stop: the user asked for something and deserves to know it was not
     # finished, rather than reading an empty reply as a refusal.
@@ -291,10 +333,13 @@ async def run_tools_async(calls: list[ToolCall], handler: Any) -> list[dict]:
         if not call.ok:
             results.append({"tool_call_id": call.id, "content": f"Ошибка: {call.error}"})
             continue
-        try:
-            payload = await handler(call.name, call.arguments)
-        except Exception as e:
-            payload = {"error": f"{type(e).__name__}: {e}"[:300]}
+        if tools.BY_NAME[call.name].ends_turn:
+            payload = _ask(call)
+        else:
+            try:
+                payload = await handler(call.name, call.arguments)
+            except Exception as e:
+                payload = {"error": f"{type(e).__name__}: {e}"[:300]}
         results.append(
             {
                 "tool_call_id": call.id,
@@ -341,5 +386,9 @@ async def converse_async(
             entry = {"role": TOOL, **result}
             working.append(entry)
             appended.append(entry)
+
+        question = asked(turn.calls)
+        if question is not None:
+            return turn.text or question["question"], appended, made
 
     return OUT_OF_ROUNDS, appended, made

@@ -228,6 +228,95 @@ class TestConverse:
         assert appended[1]["tool_call_id"] == "xyz"
 
 
+class TestAskChoice:
+    """A question ends the turn. Found against career-ops on 2026-09-25: asked
+    to add "Claude Code in Berezka", CO asked how deep the use went and wrote
+    a real line; ours proposed "работа над проектом с использованием Claude
+    Code" first and offered to improve it afterwards."""
+
+    QUESTION = {
+        "question": "Как вы использовали Claude Code?",
+        "options": ["Основной способ писать код", "Помощник на части задач"],
+    }
+
+    def test_asking_is_free_and_writes_nothing(self):
+        assert tools.ASK_CHOICE.rub == 0.0
+        assert not tools.ASK_CHOICE.writes
+        assert tools.ASK_CHOICE.ends_turn
+
+    def test_a_question_ends_the_turn_without_another_paid_round(self):
+        llm = FakeLLM(
+            [
+                assistant(calls=[call("ask_choice", self.QUESTION)]),
+                assistant("это не должно быть вызвано"),
+            ]
+        )
+        text, appended, _made = chat.converse(llm, [{"role": "user", "content": "..."}], None)
+        assert text == "Как вы использовали Claude Code?"
+        assert len(llm.seen) == 1
+        # The tool result is stored: the API wants it after the call, before
+        # the user's answer arrives as the next message.
+        assert [m["role"] for m in appended] == ["assistant", "tool"]
+
+    def test_the_question_never_reaches_the_app_handler(self):
+        def handler(name, args):
+            raise AssertionError("ask_choice must be answered by the loop")
+
+        chat.converse(
+            FakeLLM([assistant(calls=[call("ask_choice", self.QUESTION)])]),
+            [{"role": "user", "content": "..."}],
+            handler,
+        )
+
+    def test_proposals_in_the_same_round_still_run(self):
+        seen = []
+        chat.converse(
+            FakeLLM(
+                [
+                    assistant(
+                        calls=[
+                            call("get_profile", {}, call_id="a"),
+                            call("ask_choice", self.QUESTION, call_id="b"),
+                        ]
+                    )
+                ]
+            ),
+            [{"role": "user", "content": "..."}],
+            lambda n, a: seen.append(n) or {},
+        )
+        assert seen == ["get_profile"]
+
+    def test_a_malformed_question_does_not_end_the_turn(self):
+        """One option is not a choice. The model hears why and carries on,
+        instead of the user getting a question with nothing to press."""
+        llm = FakeLLM(
+            [
+                assistant(calls=[call("ask_choice", {"question": "Как?", "options": ["так"]})]),
+                assistant("Расскажите подробнее."),
+            ]
+        )
+        text, appended, _made = chat.converse(llm, [{"role": "user", "content": "..."}], None)
+        assert text == "Расскажите подробнее."
+        assert "Ошибка" in appended[1]["content"] or "error" in appended[1]["content"]
+
+    def test_words_around_the_question_are_kept(self):
+        llm = FakeLLM([assistant("Уточню одно.", calls=[call("ask_choice", self.QUESTION)])])
+        text, _a, _m = chat.converse(llm, [{"role": "user", "content": "..."}], None)
+        assert text == "Уточню одно."
+
+    async def test_the_async_loop_stops_on_a_question_too(self):
+        llm = FakeLLM([assistant(calls=[call("ask_choice", self.QUESTION)]), assistant("нет")])
+
+        async def handler(name, args):
+            return {}
+
+        text, _a, _m = await chat.converse_async(
+            llm, [{"role": "user", "content": "..."}], handler
+        )
+        assert text == "Как вы использовали Claude Code?"
+        assert len(llm.seen) == 1
+
+
 class TestPromptGuards:
     """The prompt is the thing under test, as `test_prompt_shapes.py` puts it."""
 
@@ -246,6 +335,18 @@ class TestPromptGuards:
         from core import prompts
 
         assert "не подставляй" in prompts.CHAT.lower() or "домысливать" in prompts.CHAT
+
+    def test_the_prompt_asks_before_proposing_a_vague_line(self):
+        from core import prompts
+
+        assert "сначала спроси, потом предлагай" in prompts.CHAT
+        assert "ask_choice" in prompts.CHAT
+        assert "«использовал X»" in prompts.CHAT
+
+    def test_the_prompt_ties_an_edit_to_the_gaps_it_closes(self):
+        from core import prompts
+
+        assert "open_gaps" in prompts.CHAT
 
     def test_the_prompt_says_nothing_is_written_without_confirmation(self):
         from core import prompts

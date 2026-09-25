@@ -182,6 +182,93 @@ class TestSend:
         assert [m["text"] for m in shown] == ["знаю go", "Готово, подтвердите."]
         assert shown[1]["tools"] == ["get_profile", "propose_profile_patch"]
 
+    async def test_a_question_is_shown_with_its_answers(
+        self, client, auth_headers, session, user, reply
+    ):
+        """The model asks with the tool alone; the question is the reply, and
+        its options come back for the screen to show as buttons."""
+        await _resume(session, user)
+        question = {
+            "question": "Как вы использовали Claude Code?",
+            "options": ["Основной способ писать код", "Помощник на части задач"],
+        }
+        seen = reply(calls("ask_choice", question), says("не должно прозвучать"))
+        response = await client.post(
+            "/api/chat", json={"text": "добавь Claude Code"}, headers=auth_headers
+        )
+        body = response.json()
+        assert body["reply"] == question["question"]
+        assert body["proposals"] == []
+        assert len(seen) == 1
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert shown[-1]["text"] == question["question"]
+        assert shown[-1]["choices"] == question["options"]
+        # Asking is the reply itself, not something the chat looked at.
+        assert shown[-1]["tools"] == []
+
+    async def test_the_answer_continues_a_valid_history(
+        self, client, auth_headers, session, user, reply
+    ):
+        """The API requires a tool result right after the call; the answer
+        then arrives as an ordinary user message."""
+        await _resume(session, user)
+        question = {"question": "Как?", "options": ["так", "иначе"]}
+        reply(calls("ask_choice", question))
+        await client.post("/api/chat", json={"text": "добавь"}, headers=auth_headers)
+
+        seen = reply(says("Понял."))
+        await client.post("/api/chat", json={"text": "так"}, headers=auth_headers)
+        roles = [m["role"] for m in seen[0]["history"]]
+        assert roles == ["user", "assistant", "tool", "user"]
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert [m["text"] for m in shown] == ["добавь", "Как?", "так", "Понял."]
+
+    async def test_open_gaps_lists_unmet_requirements_of_the_current_cv(
+        self, client, auth_headers, session, user, reply
+    ):
+        """What lets the chat name the vacancy an edit closes a gap in.
+        Reports against an older CV are left out: judged against another
+        profile, their gaps may already be closed."""
+        old = await _resume(session, user)
+        old.is_active = False
+        await session.commit()
+        resume = await _resume(session, user)
+        vacancy = await _vacancy(session, user)
+        stale = await _vacancy(session, user)
+        requirements = [
+            {"text": "Опыт с AI coding tools", "match": "missing", "weight": "critical"},
+            {"text": "Go", "match": "partial", "weight": "high"},
+            {"text": "PostgreSQL", "match": "full", "weight": "high"},
+        ]
+        for v, r in ((vacancy, resume), (stale, old)):
+            session.add(
+                Evaluation(
+                    vacancy_id=v.id,
+                    resume_id=r.id,
+                    score=3.8,
+                    verdict="maybe",
+                    report={"requirements": requirements},
+                    model="deepseek-flash",
+                    cost_rub=0.17,
+                )
+            )
+        await session.commit()
+
+        reply(calls("open_gaps", {}), says("ок"))
+        await client.post("/api/chat", json={"text": "что не закрыто?"}, headers=auth_headers)
+
+        result = (
+            await session.execute(select(ChatMessage).where(ChatMessage.role == "tool"))
+        ).scalar_one()
+        content = result.payload["content"]
+        assert "Опыт с AI coding tools" in content
+        assert "Go" in content
+        assert "PostgreSQL" not in content
+        assert str(vacancy.id) in content
+        assert str(stale.id) not in content
+
     async def test_without_a_cv_the_profile_tools_are_not_offered(
         self, client, auth_headers, session, user, reply
     ):

@@ -14,6 +14,8 @@ Three classes, and the class decides the safety rules — not the prompt:
   SPEND   costs money. Not exposed in the first version at all — evaluation
           and application materials stay behind the buttons on screen, where
           the price is stated before the click.
+  ASK     a question to the user with answers to pick from. Free, writes
+          nothing, and ends the turn: the next step belongs to the person.
 
 The split matters because a model that is merely *asked* not to write will
 eventually write. `core/proposals.py` exists for the same reason: the rule
@@ -29,6 +31,7 @@ from typing import Any
 READ = "read"
 PROPOSE = "propose"
 SPEND = "spend"
+ASK = "ask"
 
 
 @dataclass(frozen=True)
@@ -46,7 +49,11 @@ class Tool:
 
     @property
     def writes(self) -> bool:
-        return self.kind != READ
+        return self.kind in {PROPOSE, SPEND}
+
+    @property
+    def ends_turn(self) -> bool:
+        return self.kind == ASK
 
     def as_schema(self) -> dict:
         """The OpenAI-compatible function declaration sent to the model."""
@@ -130,6 +137,19 @@ SKILL_GAP = Tool(
     ),
 )
 
+OPEN_GAPS = Tool(
+    name="open_gaps",
+    kind=READ,
+    title="Незакрытые требования",
+    description=(
+        "Незакрытые и частично закрытые требования из всех уже купленных отчётов по "
+        "текущему резюме, с вакансией и важностью. Бесплатно, модель не вызывается. "
+        "Вызывай вместе с правкой опыта, чтобы сказать, в каких вакансиях она "
+        "закрывает пробел: оценки после правки устаревают, и переоценить стоит именно их."
+    ),
+    parameters=_object({}),
+)
+
 GET_SPEND = Tool(
     name="get_spend",
     kind=READ,
@@ -158,7 +178,14 @@ PROPOSE_PROFILE_PATCH = Tool(
                     "место работы; set_field — простое поле профиля"
                 ),
             },
-            "value": {"type": "string", "description": "что добавить, словами пользователя"},
+            "value": {
+                "type": "string",
+                "description": (
+                    "что добавить. Для навыка — название. Для достижения — готовая "
+                    "строка резюме по смыслу сказанного: что делал сам человек, чем "
+                    "и в каком контексте. Не «работа с X» и не «использовал X»"
+                ),
+            },
             "company": {
                 "type": "string",
                 "description": (
@@ -176,6 +203,32 @@ PROPOSE_PROFILE_PATCH = Tool(
             },
         },
         ["op", "value"],
+    ),
+)
+
+ASK_CHOICE = Tool(
+    name="ask_choice",
+    kind=ASK,
+    title="Вопрос с вариантами",
+    description=(
+        "Задать пользователю один вопрос с 2–4 вариантами ответа — он увидит их "
+        "кнопками и сможет написать свой. После вызова ход заканчивается, ответ придёт "
+        "следующим сообщением. Используй, когда для правки не хватает того, что решает "
+        "формулировку: роли человека, глубины, масштаба. Варианты — от скромного к "
+        "сильному, честно различимые; не подсказывай выгодный."
+    ),
+    parameters=_object(
+        {
+            "question": {"type": "string", "description": "вопрос, одной фразой"},
+            "options": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 2,
+                "maxItems": 4,
+                "description": "варианты ответа, каждый — короткая фраза от первого лица",
+            },
+        },
+        ["question", "options"],
     ),
 )
 
@@ -224,7 +277,9 @@ TOOLS: tuple[Tool, ...] = (
     GET_VACANCY,
     LIST_VACANCIES,
     SKILL_GAP,
+    OPEN_GAPS,
     GET_SPEND,
+    ASK_CHOICE,
     PROPOSE_PROFILE_PATCH,
     SET_VACANCY_STATUS,
     SAVE_VACANCY,

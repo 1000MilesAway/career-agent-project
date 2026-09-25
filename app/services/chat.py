@@ -39,6 +39,11 @@ REJECTED = "rejected"
 # costs more per reply than the reply is worth.
 HISTORY_LIMIT = 40
 
+# How many unmet requirements `open_gaps` hands back. Enough to find the one a
+# new line of experience closes, not so many that the list costs more to read
+# than the reply is worth.
+OPEN_GAPS_LIMIT = 40
+
 # Vacancy text handed to the model is trimmed: a posting is context for the
 # conversation, not the subject of it, and a 20 KB wall of text would crowd out
 # the profile it has to be compared against.
@@ -177,7 +182,7 @@ def enabled_tools(has_resume: bool) -> tuple[tools.Tool, ...]:
     return tuple(
         t
         for t in tools.TOOLS
-        if t.name not in {"get_profile", "propose_profile_patch", "skill_gap"}
+        if t.name not in {"get_profile", "propose_profile_patch", "skill_gap", "open_gaps"}
     )
 
 
@@ -277,6 +282,39 @@ class ToolRunner:
             "score": evaluation.score,
             **split_requirements(evaluation.report),
         }
+
+    async def _open_gaps(self, _arguments: dict) -> dict:
+        """Unmet requirements across every report bought against this CV.
+
+        What lets the chat say "this closes the gap in Vital Partners" after a
+        profile edit — the thing career-ops did by hand. Reports against an
+        older CV are left out: their gaps were judged against another profile.
+        """
+        resume = await _active_resume(self.session, self.user)
+        if resume is None:
+            return {"error": "резюме не загружено"}
+        result = await self.session.execute(
+            select(Evaluation, Vacancy)
+            .join(Vacancy, Evaluation.vacancy_id == Vacancy.id)
+            .where(Vacancy.user_id == self.user.id, Evaluation.resume_id == resume.id)
+            .order_by(Evaluation.score.desc().nulls_last())
+        )
+        gaps: list[dict[str, Any]] = []
+        for evaluation, vacancy in result.all():
+            buckets = split_requirements(evaluation.report)
+            for match in ("missing", "partial"):
+                for item in buckets[match]:
+                    gaps.append(
+                        {
+                            "vacancy_id": str(vacancy.id),
+                            "vacancy": f"{vacancy.title} — {vacancy.company or '?'}",
+                            "score": evaluation.score,
+                            "requirement": item["text"],
+                            "weight": item["weight"],
+                            "match": match,
+                        }
+                    )
+        return {"count": len(gaps), "gaps": gaps[:OPEN_GAPS_LIMIT]}
 
     # --- proposals: prepared, never applied ------------------------------
 
