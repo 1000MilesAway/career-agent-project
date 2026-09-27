@@ -12,6 +12,7 @@ import {
   clearFound,
   runTriage,
   scanVacancies,
+  setHidden,
   setSaved,
   useAppState,
 } from '../api/hooks'
@@ -28,6 +29,20 @@ import './search.css'
 /** A stable empty list, so a state payload that has not arrived yet does not
  *  hand every memo below a new array identity on each render. */
 const EMPTY_ROWS: FoundVacancy[] = []
+
+/** Where a row sits in the list. Every group but "kept" is folded under its
+ *  own toggle — folded, never removed: a row that disappears without a trace
+ *  is the silent drop the pipeline forbids. The user's own «Скрыть» wins over
+ *  everything; a closed or stale posting outranks a filter's drop, because
+ *  "it is gone" matters more than "it did not fit". */
+type Group = 'kept' | 'dropped' | 'inactive' | 'hidden'
+
+function groupOf(row: FoundVacancy): Group {
+  if (row.hidden) return 'hidden'
+  if (row.closed || row.stale) return 'inactive'
+  if (DROPPED_STAGES.has(row.stage)) return 'dropped'
+  return 'kept'
+}
 
 /** Rows rendered before "show more". A scan returns several hundred postings,
  *  and rendering all of them made the page twenty thousand pixels tall — the
@@ -76,43 +91,50 @@ export function SearchPage() {
     () => new Set(initialFilters.buckets),
   )
   const [showDropped, setShowDropped] = useState(initialFilters.showDropped)
+  const [showInactive, setShowInactive] = useState(initialFilters.showInactive)
+  const [showHidden, setShowHidden] = useState(initialFilters.showHidden)
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
   // useMemo below recompute, which is the opposite of what they are for.
   const rows = data?.found ?? EMPTY_ROWS
 
-  // One pass over the list instead of three filters: the split feeds the
-  // counters, the bucket filter and the rendered rows alike.
-  const { kept, dropped, scored } = useMemo(() => {
-    const kept: FoundVacancy[] = []
-    const dropped: FoundVacancy[] = []
+  // One pass over the list: the split feeds the counters, the bucket filter
+  // and the rendered rows alike. `base` keeps the payload's order, so a
+  // toggled-in group lands where its rows were found rather than at the end.
+  const { counts, base, scored } = useMemo(() => {
+    const shownGroups: Record<Group, boolean> = {
+      kept: true,
+      dropped: showDropped,
+      inactive: showInactive,
+      hidden: showHidden,
+    }
+    const counts: Record<Group, number> = { kept: 0, dropped: 0, inactive: 0, hidden: 0 }
+    const base: FoundVacancy[] = []
     let scored = 0
     for (const row of rows) {
-      if (DROPPED_STAGES.has(row.stage)) dropped.push(row)
-      else {
-        kept.push(row)
-        if (row.score != null) scored++
-      }
+      const group = groupOf(row)
+      counts[group]++
+      if (group === 'kept' && row.score != null) scored++
+      if (shownGroups[group]) base.push(row)
     }
-    return { kept, dropped, scored }
-  }, [rows])
+    return { counts, base, scored }
+  }, [rows, showDropped, showInactive, showHidden])
 
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
-    for (const row of showDropped ? rows : kept) {
+    for (const row of base) {
       const key = row.triage?.bucket ?? null
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return counts
-  }, [rows, kept, showDropped])
+  }, [base])
 
   const anyJudged = useMemo(() => rows.some((row) => row.triage), [rows])
 
   const visible = useMemo(() => {
-    const base = showDropped ? rows : kept
     if (!anyJudged) return base
     return base.filter((row) => visibleBuckets.has(row.triage?.bucket ?? null))
-  }, [rows, kept, showDropped, anyJudged, visibleBuckets])
+  }, [base, anyJudged, visibleBuckets])
 
   // Computed from the rendered value rather than inside a state updater: the
   // write to storage is a side effect, and updaters must stay pure.
@@ -122,13 +144,20 @@ export function SearchPage() {
     else next.add(key)
     setVisibleBuckets(next)
     setLimit(PAGE_SIZE)
-    saveFilters({ buckets: [...next], showDropped })
+    saveFilters({ buckets: [...next], showDropped, showInactive, showHidden })
   }
 
-  function toggleDropped() {
-    setShowDropped(!showDropped)
+  function toggleGroup(group: Exclude<Group, 'kept'>) {
+    const next = {
+      showDropped: group === 'dropped' ? !showDropped : showDropped,
+      showInactive: group === 'inactive' ? !showInactive : showInactive,
+      showHidden: group === 'hidden' ? !showHidden : showHidden,
+    }
+    setShowDropped(next.showDropped)
+    setShowInactive(next.showInactive)
+    setShowHidden(next.showHidden)
     setLimit(PAGE_SIZE)
-    saveFilters({ buckets: [...visibleBuckets], showDropped: !showDropped })
+    saveFilters({ buckets: [...visibleBuckets], ...next })
   }
 
   function scan() {
@@ -185,6 +214,15 @@ export function SearchPage() {
       const result = await clearFound()
       await mutate(STATE_KEY)
       toast.info(`Убрано ${result.deleted}. Избранное не тронуто.`)
+    } catch (e) {
+      toast.error(e)
+    }
+  }
+
+  async function toggleHidden(vacancy: FoundVacancy) {
+    try {
+      await setHidden(vacancy.id, !vacancy.hidden)
+      await mutate(STATE_KEY)
     } catch (e) {
       toast.error(e)
     }
@@ -327,7 +365,7 @@ export function SearchPage() {
             <h2>Найденные</h2>
             {rows.length ? (
               <span className="muted num">
-                {kept.length} · оценено {scored}
+                {counts.kept} · оценено {scored}
                 {data.spend.free_to_reopen
                   ? ` · ${data.spend.free_to_reopen} откроются бесплатно`
                   : ''}
@@ -335,7 +373,7 @@ export function SearchPage() {
             ) : null}
           </div>
           <div className="row">
-            {kept.length ? (
+            {counts.kept ? (
               <button
                 className="btn btn--ghost btn--small"
                 onClick={triage}
@@ -391,11 +429,33 @@ export function SearchPage() {
                 Список ещё не разобран — «Отсеять моделью» разложит его по вердиктам.
               </span>
             )}
-            {dropped.length ? (
-              <button className="linkish listbar__dropped" onClick={toggleDropped}>
-                {showDropped ? 'скрыть' : 'показать'} отсеянные ({dropped.length})
-              </button>
-            ) : null}
+            <div className="listbar__groups">
+              {counts.dropped ? (
+                <button
+                  className="linkish listbar__dropped"
+                  onClick={() => toggleGroup('dropped')}
+                >
+                  {showDropped ? 'убрать' : 'показать'} отсеянные ({counts.dropped})
+                </button>
+              ) : null}
+              {counts.inactive ? (
+                <button
+                  className="linkish listbar__dropped"
+                  onClick={() => toggleGroup('inactive')}
+                  title="Закрытые у источника и слишком старые там, где источник не отвечает"
+                >
+                  {showInactive ? 'убрать' : 'показать'} неактуальные ({counts.inactive})
+                </button>
+              ) : null}
+              {counts.hidden ? (
+                <button
+                  className="linkish listbar__dropped"
+                  onClick={() => toggleGroup('hidden')}
+                >
+                  {showHidden ? 'убрать' : 'показать'} скрытые ({counts.hidden})
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -408,7 +468,10 @@ export function SearchPage() {
         ) : visible.length === 0 ? (
           <div className="card">
             <Empty title="Под фильтр ничего не попало">
-              <p>Включите другие вердикты выше или покажите отсеянные.</p>
+              <p>
+                Включите другие вердикты выше или покажите отсеянные, неактуальные и
+                скрытые.
+              </p>
             </Empty>
           </div>
         ) : (
@@ -447,6 +510,17 @@ export function SearchPage() {
                       {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
                         <span className="btn__price">0.17 ₽</span>
                       ) : null}
+                    </button>
+                    <button
+                      className="btn btn--quiet btn--small"
+                      onClick={() => toggleHidden(vacancy)}
+                      title={
+                        vacancy.hidden
+                          ? 'Вернуть в список'
+                          : 'Не интересно: убрать из списка. Вернуть можно из «скрытых»'
+                      }
+                    >
+                      {vacancy.hidden ? 'Вернуть' : 'Скрыть'}
                     </button>
                     <button
                       className={

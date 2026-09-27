@@ -180,6 +180,11 @@ class Vacancy(Base, TimestampMixin):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_reason: Mapped[str | None] = mapped_column(String(255))
 
+    # "Not interested" from the user. A person's call, like `is_saved`, and
+    # like every drop it is reversible and visible: the list folds hidden rows
+    # under their own toggle instead of deleting them.
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # The user's own shortlist. Only a person moves a vacancy across this line —
     # no scan and no model does.
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

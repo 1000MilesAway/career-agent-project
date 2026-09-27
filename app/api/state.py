@@ -9,6 +9,7 @@ Free — nothing here calls the model.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter
@@ -19,7 +20,7 @@ from core.profiles import steps_as_list
 
 from ..core.deps import SessionDep, UserDep
 from ..models import Evaluation, Resume, Vacancy
-from ..services import revisions
+from ..services import liveness, revisions
 from ..services.spend import remaining_rub
 from ..services.tracker import STATUSES
 
@@ -73,6 +74,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
     )
     vacancies = list(vacancies_row.scalars())
 
+    now = datetime.now(UTC)
     found = []
     spent_total = 0.0
     scored = 0
@@ -135,6 +137,11 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                     if v.closed_at
                     else None
                 ),
+                # Old, from a source that cannot be asked. Not closed — the
+                # list folds it with the closed ones, and says why.
+                "stale": None if v.closed_at else liveness.stale_reason(v, now),
+                "hidden": v.hidden_at is not None,
+                "published": v.published.isoformat() if v.published else None,
             }
         )
 

@@ -47,6 +47,7 @@ class VacancyResponse(BaseModel):
     closed_at: datetime | None = None
     closed_reason: str | None = None
     checked_at: datetime | None = None
+    hidden_at: datetime | None = None
 
     @classmethod
     def of(cls, v: Vacancy) -> VacancyResponse:
@@ -72,6 +73,7 @@ class VacancyResponse(BaseModel):
             closed_at=v.closed_at,
             closed_reason=v.closed_reason,
             checked_at=v.checked_at,
+            hidden_at=v.hidden_at,
         )
 
 
@@ -283,6 +285,9 @@ async def triage(
             # A vacancy known to be closed is not worth a paid verdict. It
             # stays in the list, marked, and is left unjudged.
             Vacancy.closed_at.is_(None),
+            # Hidden by the user: "not interested" is already a verdict, and a
+            # paid one on top of it buys nothing.
+            Vacancy.hidden_at.is_(None),
         )
     )
     rows = list(result.scalars())
@@ -357,6 +362,32 @@ async def unsave(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> V
     if vacancy.is_saved:
         vacancy.is_saved = False
         vacancy.saved_at = None
+        await session.commit()
+        await session.refresh(vacancy)
+    return VacancyResponse.of(vacancy)
+
+
+@router.post("/{vacancy_id}/hide", response_model=VacancyResponse)
+async def hide(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> VacancyResponse:
+    """"Не интересно": fold the row out of the list. Nothing is deleted.
+
+    The row keeps whatever was bought for it and comes back with one click
+    from the "скрытые" toggle — a drop the user cannot see or undo is the
+    silent discard the pipeline forbids, even when the user made it.
+    """
+    vacancy = await _owned(session, user, vacancy_id)
+    if vacancy.hidden_at is None:
+        vacancy.hidden_at = datetime.now(UTC)
+        await session.commit()
+        await session.refresh(vacancy)
+    return VacancyResponse.of(vacancy)
+
+
+@router.delete("/{vacancy_id}/hide", response_model=VacancyResponse)
+async def unhide(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> VacancyResponse:
+    vacancy = await _owned(session, user, vacancy_id)
+    if vacancy.hidden_at is not None:
+        vacancy.hidden_at = None
         await session.commit()
         await session.refresh(vacancy)
     return VacancyResponse.of(vacancy)

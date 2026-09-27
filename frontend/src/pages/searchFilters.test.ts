@@ -18,12 +18,18 @@ describe('searchFilters', () => {
   })
 
   it('сохранённый выбор возвращается, включая «без вердикта»', () => {
-    saveFilters({ buckets: ['skip', null], showDropped: true })
-    expect(loadFilters()).toEqual({ buckets: ['skip', null], showDropped: true })
+    const chosen = {
+      buckets: ['skip', null],
+      showDropped: true,
+      showInactive: true,
+      showHidden: false,
+    } as const
+    saveFilters({ ...chosen, buckets: [...chosen.buckets] })
+    expect(loadFilters()).toEqual(chosen)
   })
 
   it('пустой выбор — тоже выбор, а не повод вернуть умолчания', () => {
-    saveFilters({ buckets: [], showDropped: false })
+    saveFilters({ ...DEFAULT_FILTERS, buckets: [] })
     expect(loadFilters().buckets).toEqual([])
   })
 
@@ -32,7 +38,8 @@ describe('searchFilters', () => {
     expect(loadFilters()).toEqual(DEFAULT_FILTERS)
 
     localStorage.setItem('search-filters', JSON.stringify({ buckets: ['worth', 'gone'] }))
-    expect(loadFilters()).toEqual({ buckets: ['worth'], showDropped: false })
+    // A value saved before the inactive/hidden toggles existed reads as off.
+    expect(loadFilters()).toEqual({ ...DEFAULT_FILTERS, buckets: ['worth'] })
   })
 
   it('закрытое хранилище не ломает страницу', () => {

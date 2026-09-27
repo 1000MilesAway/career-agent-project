@@ -3,7 +3,9 @@
     uv run python -m app.worker
 
 A separate process from the API, because an LLM call takes tens of seconds and
-must not occupy a request handler. Run one; two would need the claim below to
+must not occupy a request handler. Alongside the queue it runs the liveness
+sweep (services/liveness.py): free, HTTP only, and on its own task so a
+minute of page requests never delays a job the user is waiting for. Run one; two would need the claim below to
 be the only thing keeping them apart, and it is — but nothing else here has
 been tested under concurrency.
 """
@@ -24,12 +26,15 @@ from core.pipeline import cover_letter, evaluate, interview_prep, tailor_resume
 
 from .core.db import SessionLocal
 from .models import Artifact, Evaluation, Job, Resume, User, Vacancy
-from .services import scan
+from .services import liveness, scan
 from .services.spend import charge, ledger_totals, remaining_rub
 
 log = logging.getLogger("worker")
 
 POLL_SECONDS = 2.0
+# Pause between liveness passes. One pass is a bounded batch, oldest check
+# first; at this pace a few hundred live rows are revisited about twice a day.
+SWEEP_SECONDS = 300.0
 MAX_ATTEMPTS = 3
 
 
@@ -234,6 +239,32 @@ async def tick() -> bool:
         return True
 
 
+async def sweep_once() -> dict[str, int]:
+    async with SessionLocal() as session:
+        counts = await liveness.sweep(session)
+        await session.commit()
+        return counts
+
+
+async def sweep_loop(stopping: asyncio.Event) -> None:
+    """Recheck found vacancies in the background until the worker stops.
+
+    Failures are logged and the loop goes on: a board that is down now is the
+    usual case, not a reason to stop checking the others later.
+    """
+    while not stopping.is_set():
+        try:
+            counts = await sweep_once()
+            if counts["checked"]:
+                log.info("liveness sweep: %s", counts)
+        except Exception:
+            log.exception("liveness sweep error")
+        try:
+            await asyncio.wait_for(stopping.wait(), timeout=SWEEP_SECONDS)
+        except TimeoutError:
+            pass
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log.info("worker started, polling every %.1fs", POLL_SECONDS)
@@ -244,6 +275,8 @@ async def main() -> None:
         # Finish the job in flight instead of dying mid-call: the money is
         # already spent by then, and the result would be lost.
         loop.add_signal_handler(sig, stopping.set)
+
+    sweeper = asyncio.create_task(sweep_loop(stopping))
 
     while not stopping.is_set():
         try:
@@ -257,6 +290,7 @@ async def main() -> None:
             except TimeoutError:
                 pass
 
+    await sweeper
     log.info("worker stopped")
 
 

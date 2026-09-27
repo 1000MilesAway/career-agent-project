@@ -136,6 +136,12 @@
   font-size: 13px;
 }
 
+.listbar__groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
 .more {
   display: flex;
   align-items: center;

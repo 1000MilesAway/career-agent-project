@@ -217,3 +217,105 @@ class TestCompanyScan:
         assert rows["yandex/yandex/1"].raw_text == "полное описание yandex/yandex/1"
         assert rows["yandex/yandex/2"].stage == scan.SCREENED_OUT
         assert rows["yandex/yandex/2"].raw_text is None
+
+
+@requires_db
+class TestSweep:
+    """The worker's background pass: every user, no button, no model."""
+
+    async def test_live_rows_are_checked_and_dropped_hidden_telegram_are_not(
+        self, session, user, monkeypatch
+    ):
+        from datetime import UTC, datetime
+
+        from app.services import liveness as service
+
+        live = await _vacancy(session, user)
+        for ext, extra in (
+            ("2", {"stage": scan.SCREENED_OUT}),
+            ("3", {"hidden_at": datetime.now(UTC)}),
+        ):
+            posting = Posting(id=ext, url=f"https://career.habr.com/vacancies/{ext}",
+                              title=f"Python {ext}", company=f"Компания {ext}")
+            await scan.persist(session, user.id, "habr", kept=[(posting, "")], dropped=[])
+            await session.commit()
+            row = (await session.execute(
+                select(Vacancy).where(Vacancy.external_id == ext)
+            )).scalar_one()
+            for key, value in extra.items():
+                setattr(row, key, value)
+        tg = Posting(id="chan/1", url="https://t.me/chan/1", title="Python TG", company="ТГ")
+        await scan.persist(session, user.id, "telegram", kept=[(tg, "")], dropped=[])
+        await session.commit()
+
+        asked: list[str] = []
+
+        def fake_check(url, http=None):
+            asked.append(url)
+            return liveness.Liveness("closed", "архив")
+
+        monkeypatch.setattr(liveness, "check", fake_check)
+        counts = await service.sweep(session)
+        await session.commit()
+
+        assert asked == [HABR_URL]
+        assert counts == {"checked": 1, "open": 0, "closed": 1, "unknown": 0}
+        await session.refresh(live)
+        assert live.closed_at is not None
+
+        # A fresh check is not repeated on the next pass.
+        asked.clear()
+        assert (await service.sweep(session))["checked"] == 0
+        assert asked == []
+
+
+class TestStale:
+    def _row(self, url: str, days: int) -> Vacancy:
+        from datetime import UTC, datetime, timedelta
+
+        return Vacancy(url=url, published=datetime.now(UTC) - timedelta(days=days))
+
+    def test_an_old_telegram_post_is_stale(self):
+        from app.services.liveness import stale_reason
+
+        assert "дн. назад" in stale_reason(self._row("https://t.me/chan/1", 45))
+
+    def test_a_recent_post_is_not(self):
+        from app.services.liveness import stale_reason
+
+        assert stale_reason(self._row("https://t.me/chan/1", 5)) is None
+
+    def test_age_never_overrules_a_source_that_can_be_asked(self):
+        from app.services.liveness import stale_reason
+
+        assert stale_reason(self._row(HABR_URL, 90)) is None
+
+
+@requires_db
+class TestHide:
+    async def test_hidden_is_folded_not_deleted_and_comes_back(
+        self, client, auth_headers, session, user
+    ):
+        await _resume_for(session, user)
+        row = await _vacancy(session, user)
+
+        r = await client.post(f"/api/vacancies/{row.id}/hide", headers=auth_headers)
+        assert r.status_code == 200 and r.json()["hidden_at"]
+        [found] = (await client.get("/api/state", headers=auth_headers)).json()["found"]
+        assert found["hidden"] is True
+
+        r = await client.delete(f"/api/vacancies/{row.id}/hide", headers=auth_headers)
+        assert r.json()["hidden_at"] is None
+        [found] = (await client.get("/api/state", headers=auth_headers)).json()["found"]
+        assert found["hidden"] is False
+
+    async def test_triage_does_not_pay_for_a_hidden_row(
+        self, client, auth_headers, session, user
+    ):
+        await _resume_for(session, user)
+        row = await _vacancy(session, user)
+        await client.post(f"/api/vacancies/{row.id}/hide", headers=auth_headers)
+
+        r = await client.post("/api/vacancies/triage", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["judged"] == 0

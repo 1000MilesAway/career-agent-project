@@ -108,6 +108,11 @@ export interface FoundVacancy {
   duplicate_of?: string | null
   /** Set only on positive evidence (404/410, the page's archive banner). */
   closed?: { at: string; reason: string | null } | null
+  /** Too old to trust, from a source that cannot be asked. Not closed. */
+  stale?: string | null
+  /** Hidden by the user; folded, never deleted. */
+  hidden?: boolean
+  published?: string | null
 }
 
 export interface ResumeProfile {

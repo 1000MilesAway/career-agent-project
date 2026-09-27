@@ -43,7 +43,10 @@ function VacancyRowInner({
   footer?: ReactNode
 }) {
   const dropped = DROPPED_STAGES.has(vacancy.stage)
-  const dimmed = dropped || vacancy.triage?.bucket === 'skip' || Boolean(vacancy.closed)
+  const dimmed =
+    dropped ||
+    vacancy.triage?.bucket === 'skip' ||
+    Boolean(vacancy.closed || vacancy.stale || vacancy.hidden)
   const sourceLabel = SOURCE_LABELS[vacancy.source]
 
   const meta = [
@@ -108,6 +111,18 @@ function VacancyRowInner({
           <p className="vrow__note">
             <span className="chip chip--flag">закрыта</span>{' '}
             {vacancy.closed.reason || 'источник сообщил, что вакансия закрыта'}
+          </p>
+        ) : null}
+
+        {vacancy.stale ? (
+          <p className="vrow__note">
+            <span className="chip chip--flag">давно</span> {vacancy.stale}
+          </p>
+        ) : null}
+
+        {vacancy.hidden ? (
+          <p className="vrow__note">
+            <span className="chip chip--flag">скрыта</span> вы скрыли эту вакансию
           </p>
         ) : null}
 

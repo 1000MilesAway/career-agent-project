@@ -51,6 +51,12 @@ export interface ScanParams {
 export const scanVacancies = (params: ScanParams) =>
   api<ScanResult>('/api/vacancies/scan', { method: 'POST', json: params })
 
+/** «Скрыть» and back. Nothing is deleted: the row folds under its own toggle. */
+export const setHidden = (vacancyId: string, hidden: boolean) =>
+  api<unknown>(`/api/vacancies/${vacancyId}/hide`, {
+    method: hidden ? 'POST' : 'DELETE',
+  })
+
 /** Ask the sources whether saved and shortlisted vacancies are still open.
  * Free: one page request each, no model. */
 export const recheckVacancies = () =>
