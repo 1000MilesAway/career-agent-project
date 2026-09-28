@@ -214,6 +214,25 @@ export type SourceScan = Partial<ScanResult> & {
   error?: string
 }
 
+/** A queued step, as GET /api/jobs returns it. The worker runs it; the
+ *  cabinet polls the row. */
+export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
+
+export interface Job<R = unknown> {
+  id: string
+  kind: string
+  status: JobStatus
+  attempts: number
+  /** What the step returned — for a scan, the same shape the endpoint gave. */
+  result: R | null
+  /** Why it failed, readable as is. */
+  error: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export type ScanJob = Job<ScanResult>
+
 export interface RecheckResult {
   checked: number
   open: number

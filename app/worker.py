@@ -18,7 +18,8 @@ import signal
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.llm import LLM, Ledger
@@ -36,6 +37,8 @@ POLL_SECONDS = 2.0
 # first; at this pace a few hundred live rows are revisited about twice a day.
 SWEEP_SECONDS = 300.0
 MAX_ATTEMPTS = 3
+# Kinds that fail on the first error; see `tick`.
+NOT_RETRIED = frozenset({"scan"})
 
 
 class PaidFailure(Exception):
@@ -195,13 +198,49 @@ async def run_job(session: AsyncSession, job: Job) -> dict:
 async def _run_scan(
     session: AsyncSession, job: Job, user: User, resume: Resume
 ) -> dict:
-    """Collect and screen Habr, deriving the search profile if there is none.
+    """Collect and screen with the settings the scan form sent.
 
-    The derivation lives in the scan service, not here: the same gap exists in
-    POST /api/vacancies/scan, and two copies drift.
+    The same `scan.run_scan` as POST /api/vacancies/scan: the cabinet queues
+    the scan here so a minute of network does not hold the page, and two
+    copies of the dispatch would drift. The profile is derived first when the
+    CV has none (see `scan.ensure_search_profile`).
     """
-    search_profile = await scan.ensure_search_profile(session, user, resume)
-    return await scan.collect_habr(session, user.id, search_profile)
+    params = scan.ScanRequest.model_validate(job.payload)
+    return await scan.run_scan(session, user, resume, params)
+
+
+def _error_text(error: Exception) -> str:
+    """What the user reads under a failed job.
+
+    An HTTPException is the budget refusal shared with the API (402 from
+    `ensure_can_spend`); its detail is already a sentence for the user.
+    """
+    if isinstance(error, HTTPException):
+        return str(error.detail)[:2000]
+    return f"{type(error).__name__}: {error}"[:2000]
+
+
+async def reap_orphans() -> int:
+    """Fail the jobs a previous worker left `running`.
+
+    One worker runs, so at startup nothing can legitimately be running. A job
+    in that state was cut off by a kill or a crash, and without this it stays
+    "running" forever: the cabinet keeps showing a scan in progress and
+    refuses to queue another. Failed, not requeued — a paid step may already
+    have bought its tokens, and a rerun would buy them twice.
+    """
+    async with SessionLocal() as session:
+        result = await session.execute(
+            update(Job)
+            .where(Job.status == "running")
+            .values(
+                status="failed",
+                error="прервано перезапуском сервиса — запустите ещё раз",
+                finished_at=datetime.now(UTC),
+            )
+        )
+        await session.commit()
+        return result.rowcount or 0
 
 
 async def tick() -> bool:
@@ -210,20 +249,30 @@ async def tick() -> bool:
         job = await claim(session)
         if job is None:
             return False
+        # Read before the run: the rollback below expires `job`, and touching
+        # `job.id` afterwards is a lazy load outside the greenlet — it raised
+        # MissingGreenlet, the failure was never recorded, and the job sat in
+        # "running" for good.
+        job_id = job.id
 
         try:
             result = await run_job(session, job)
         except Exception as e:
             await session.rollback()
             # Re-fetch: the rollback detached whatever the failed run touched.
-            job = await session.get(Job, job.id)
+            job = await session.get(Job, job_id)
             if job is None:
                 return True
-            job.error = f"{type(e).__name__}: {e}"[:2000]
+            job.error = _error_text(e)
             # Retry only while attempts remain, and never when the model was
             # already billed: the rollback above undid the charge too, so a
             # retry would buy the same tokens again off the books.
-            retryable = not isinstance(e, PaidFailure)
+            #
+            # A scan is not retried either: it is free, but the user is
+            # watching it, and a second minute-long pass over the same boards
+            # after a deterministic failure (no profile, a changed parser)
+            # only delays the error they need to see.
+            retryable = not isinstance(e, PaidFailure) and job.kind not in NOT_RETRIED
             job.status = "queued" if retryable and job.attempts < MAX_ATTEMPTS else "failed"
             job.finished_at = datetime.now(UTC) if job.status == "failed" else None
             await session.commit()
@@ -275,6 +324,10 @@ async def main() -> None:
         # Finish the job in flight instead of dying mid-call: the money is
         # already spent by then, and the result would be lost.
         loop.add_signal_handler(sig, stopping.set)
+
+    reaped = await reap_orphans()
+    if reaped:
+        log.warning("failed %s job(s) left running by a previous worker", reaped)
 
     sweeper = asyncio.create_task(sweep_loop(stopping))
 

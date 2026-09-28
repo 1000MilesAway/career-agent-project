@@ -1,5 +1,8 @@
 /** Экран поиска: одна кнопка на все источники и отчёт по каждому.
  *
+ * Поиск — задача на сервере: кнопка ставит её в очередь и сразу отпускает
+ * страницу, а итог читается с задачи — его видно и после ухода со страницы.
+ *
  * «Страниц» на экране больше нет: страница значила разное в каждом источнике
  * и ничего не говорила пользователю. Упавший источник называется по имени,
  * а не растворяется в меньшей сумме.
@@ -7,12 +10,13 @@
 
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { FoundVacancy, ScanResult } from '../api/types'
+import type { FoundVacancy, ScanJob, ScanResult } from '../api/types'
 
 const mocks = vi.hoisted(() => ({
-  scanVacancies: vi.fn(),
+  startScan: vi.fn(),
   setHidden: vi.fn(),
   found: [] as unknown[],
+  scanJob: null as unknown,
 }))
 
 vi.mock('../api/hooks', () => ({
@@ -27,7 +31,11 @@ vi.mock('../api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
-  scanVacancies: mocks.scanVacancies,
+  SCAN_JOB_KEY: '/api/jobs?kind=scan&limit=1',
+  isActive: (job: { status?: string } | null) =>
+    job?.status === 'queued' || job?.status === 'running',
+  useScanJob: () => ({ job: mocks.scanJob }),
+  startScan: mocks.startScan,
   runTriage: vi.fn(),
   clearFound: vi.fn(),
   setSaved: vi.fn(),
@@ -128,8 +136,9 @@ describe('SearchPage', () => {
     mocks.found.length = 0
   })
 
-  it('одна кнопка ищет везде, поля «страниц» нет', async () => {
-    mocks.scanVacancies.mockResolvedValue(result)
+  it('одна кнопка ставит поиск по всем источникам, поля «страниц» нет', async () => {
+    mocks.scanJob = null
+    mocks.startScan.mockResolvedValue(job('queued'))
     render(<SearchPage />)
 
     expect(screen.queryByText(/страниц/)).toBeNull()
@@ -138,25 +147,55 @@ describe('SearchPage', () => {
       fireEvent.click(button)
     })
 
-    expect(mocks.scanVacancies).toHaveBeenCalledTimes(1)
-    expect(mocks.scanVacancies.mock.calls[0][0]).toMatchObject({
+    expect(mocks.startScan).toHaveBeenCalledTimes(1)
+    expect(mocks.startScan.mock.calls[0][0]).toMatchObject({
       source: 'all',
       include_global: false,
     })
-    expect(mocks.scanVacancies.mock.calls[0][0]).not.toHaveProperty('pages')
+    expect(mocks.startScan.mock.calls[0][0]).not.toHaveProperty('pages')
   })
 
-  it('итог показан по каждому источнику, упавший назван с причиной', async () => {
-    mocks.scanVacancies.mockResolvedValue(result)
+  it('пока поиск идёт, кнопка занята и сказано, что можно уйти', () => {
+    mocks.scanJob = job('running')
     render(<SearchPage />)
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Найти вакансии' }))
-    })
+
+    const button = screen.getByRole('button', { name: 'Ищу во всех источниках…' })
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/поиск продолжится/)).toBeTruthy()
+    mocks.scanJob = null
+  })
+
+  it('итог показан по каждому источнику, упавший назван с причиной', () => {
+    mocks.scanJob = job('done', { result })
+    render(<SearchPage />)
 
     expect(screen.getByText(/Хабр Карьера: собрано 100/)).toBeTruthy()
     expect(screen.getByText(/Сайты компаний: не прочитан — ConnectError/)).toBeTruthy()
     expect(
       screen.getByText(/Telegram-каналы: .*уже найдены в другом месте 5.*пропущено: 1/),
     ).toBeTruthy()
+    mocks.scanJob = null
+  })
+
+  it('упавший поиск назван с причиной, а не выглядит пустым', () => {
+    mocks.scanJob = job('failed', { error: 'профиль поиска пуст' })
+    render(<SearchPage />)
+
+    expect(screen.getByRole('alert').textContent).toContain('профиль поиска пуст')
+    mocks.scanJob = null
   })
 })
+
+function job(status: ScanJob['status'], extra: Partial<ScanJob> = {}): ScanJob {
+  return {
+    id: 'j1',
+    kind: 'scan',
+    status,
+    attempts: 1,
+    result: null,
+    error: null,
+    created_at: '2026-09-28T10:00:00Z',
+    finished_at: status === 'done' || status === 'failed' ? '2026-09-28T10:01:00Z' : null,
+    ...extra,
+  }
+}

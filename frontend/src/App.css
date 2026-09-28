@@ -123,6 +123,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A scan running on the server. It pulses rather than spins: there is no
+   progress to report, only that the work has not stopped. */
+.nav__busy {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: nav-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes nav-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav__busy {
+    animation: none;
+  }
+}
+
 /* Changes waiting for a yes or a no: the one count that asks for action. */
 .nav__count--hot {
   min-width: 20px;

@@ -113,7 +113,9 @@ class TestScanDerivesAMissingProfile:
             raise AssertionError("the stored profile was rebuilt")
 
         async def fake_collect(session_, user_id, search_profile, pages=1, **kw):
-            assert search_profile == DERIVED
+            # The form's threshold is laid over the stored profile (an empty
+            # form clears it); everything else is the stored profile as is.
+            assert {k: v for k, v in search_profile.items() if k != "salary_min"} == DERIVED
             return {"collected": 0, "new": 0, "kept": 0, "dropped": 0}
 
         monkeypatch.setattr(scan, "build_search_profile", fail_build)

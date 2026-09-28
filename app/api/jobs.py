@@ -11,16 +11,19 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Job
+from ..services.scan import ScanRequest
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 JobKind = Literal["evaluate", "tailor", "letter", "interview", "scan"]
+ACTIVE = ("queued", "running")
 
 
 class JobRequest(BaseModel):
@@ -69,11 +72,41 @@ async def enqueue(
     derives it from the stored CV first (see `_run_scan`). What must never
     happen is a scan on an EMPTY profile, which filters nothing — that is
     guarded in `collect_habr`.
+
+    A scan is what the cabinet's search button queues: it takes up to a
+    minute, and holding the request open for it held the whole page.
     """
+    payload = body.payload
+    if body.kind == "scan":
+        # Checked here, not in the worker: a bad form must answer 422 now,
+        # not a failed job a few seconds later. Stored normalised, so the
+        # worker reads exactly what was validated.
+        try:
+            payload = ScanRequest.model_validate(body.payload).model_dump()
+        except ValidationError as e:
+            raise RequestValidationError(e.errors()) from e
+
+        # One scan at a time. A second press (or a second tab) while one runs
+        # would walk the same boards again and write the same rows; the user
+        # gets the scan already under way instead.
+        active = await session.execute(
+            select(Job)
+            .where(
+                Job.user_id == user.id,
+                Job.kind == "scan",
+                Job.status.in_(ACTIVE),
+            )
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )
+        running = active.scalar_one_or_none()
+        if running is not None:
+            return JobResponse.of(running)
+
     job = Job(
         user_id=user.id,
         kind=body.kind,
-        payload={**body.payload, "resume_id": str(resume.id)},
+        payload={**payload, "resume_id": str(resume.id)},
     )
     session.add(job)
     await session.commit()
@@ -93,8 +126,16 @@ async def read(job_id: uuid.UUID, session: SessionDep, user: UserDep) -> JobResp
 
 
 @router.get("", response_model=list[JobResponse])
-async def listing(session: SessionDep, user: UserDep) -> list[JobResponse]:
-    result = await session.execute(
-        select(Job).where(Job.user_id == user.id).order_by(Job.created_at.desc()).limit(50)
-    )
+async def listing(
+    session: SessionDep,
+    user: UserDep,
+    kind: JobKind | None = Query(None),
+    limit: int = Query(50, ge=1, le=50),
+) -> list[JobResponse]:
+    """Newest first. `?kind=scan&limit=1` is what the cabinet polls while a
+    scan runs: one small row every couple of seconds, not the whole state."""
+    query = select(Job).where(Job.user_id == user.id)
+    if kind is not None:
+        query = query.where(Job.kind == kind)
+    result = await session.execute(query.order_by(Job.created_at.desc()).limit(limit))
     return [JobResponse.of(j) for j in result.scalars()]

@@ -24,9 +24,10 @@ import uuid
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -564,6 +565,96 @@ async def collect_all(
         "duplicates": sum(s["duplicates"] for s in ok),
         "new": sum(s["new"] for s in ok),
     }
+
+
+class ScanRequest(BaseModel):
+    # "all" is what the cabinet sends: one button, every source. The single
+    # sources stay for the API and for debugging one board.
+    source: Literal["all", "habr", "telegram", "geekjob", "company"] = "habr"
+    # Depth override for a single source. None = the source's own default
+    # (services/scan.py). Not shown in the cabinet: a "page" meant something
+    # different per source and told the user nothing.
+    pages: int | None = Field(default=None, ge=1, le=20)
+    # Employers abroad hiring Russian speakers (the "global" boards) — English
+    # postings, off by default.
+    include_global: bool = False
+    channels: list[str] | None = None
+    # "и смежные каналы" on the scan form. The checkbox existed but was read
+    # by nobody, so adjacent channels were unreachable from the product.
+    groups: list[str] = Field(default_factory=lambda: ["core"])
+
+    # Overrides for this run only; the stored search profile is not touched.
+    # `salary_min` of 0 means "no threshold", which is not the same as None:
+    # None leaves whatever the profile says, 0 clears it for this scan.
+    salary_min: int | None = Field(default=None, ge=0, le=100_000_000)
+    # Habr returns only postings WITH a stated range once a threshold is sent,
+    # so a threshold silently hides every vacancy that does not publish
+    # numbers. Keeping those is the default: the free filters judge them by
+    # title anyway, and a hidden vacancy cannot be judged at all.
+    any_salary: bool = True
+    remote_only: bool | None = None
+
+
+def with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[str, Any]:
+    """The stored profile plus this run's form settings.
+
+    A copy: the form is a per-scan choice, and writing it back would let a
+    stray click redefine the profile the user keeps.
+    """
+    merged = dict(search_profile)
+
+    # The form owns the threshold outright, including "cleared": leaving the
+    # stored value in place when the field is empty meant the user wiped the
+    # box and kept filtering by a number no screen ever showed them.
+    #
+    # `any_salary` does NOT clear it — that was the bug. It only decides
+    # whether Habr is asked for a floor (which hides every posting with no
+    # stated range); PreScreen keeps judging the ones that do state a range.
+    merged["salary_min"] = body.salary_min or None
+
+    if body.remote_only is not None:
+        merged["remote_only"] = body.remote_only
+    return merged
+
+
+async def run_scan(
+    session: AsyncSession, user: User, resume: Resume, body: ScanRequest
+) -> dict[str, Any]:
+    """One scan as the user asked for it: profile, this run's form, the sources.
+
+    Shared by POST /api/vacancies/scan and the jobs worker, so the button and
+    the API cannot drift on what a scan means. Does not commit — the caller
+    owns the transaction. Raises ValueError for an unusable profile and lets a
+    single board's network or markup failure through; a scan of everything
+    reports those per source instead.
+    """
+    search_profile = await ensure_search_profile(session, user, resume)
+    search_profile = with_overrides(search_profile, body)
+
+    company_groups = ("ru", "global") if body.include_global else ("ru",)
+
+    if body.source == "all":
+        return await collect_all(
+            session, user.id, search_profile,
+            ask_habr_for_salary=not body.any_salary,
+            company_groups=company_groups,
+        )
+    if body.source == "habr":
+        return await collect_habr(
+            session, user.id, search_profile, pages=body.pages or HABR_PAGES,
+            ask_habr_for_salary=not body.any_salary,
+        )
+    if body.source == "geekjob":
+        return await collect_geekjob(
+            session, user.id, search_profile, pages=body.pages or GEEKJOB_PAGES,
+        )
+    if body.source == "company":
+        return await collect_employers(session, user.id, search_profile, company_groups)
+    return await collect_telegram(
+        session, user.id, search_profile,
+        channels=body.channels, pages=body.pages or TELEGRAM_PAGES,
+        groups=tuple(body.groups),
+    )
 
 
 def _error_text(error: BaseException) -> str:

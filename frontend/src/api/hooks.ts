@@ -16,9 +16,10 @@ import type {
   ChatProposal,
   ChatResponse,
   EvaluationResponse,
+  Job,
   RecheckResult,
   ResumeResponse,
-  ScanResult,
+  ScanJob,
   SearchProfile,
   SearchProfileProposal,
   TriageResult,
@@ -48,8 +49,33 @@ export interface ScanParams {
   include_global?: boolean
 }
 
-export const scanVacancies = (params: ScanParams) =>
-  api<ScanResult>('/api/vacancies/scan', { method: 'POST', json: params })
+/** The latest scan, polled while it runs.
+ *
+ * A scan takes up to a minute, so it is a job on the server rather than a
+ * request the page holds open: awaiting it inside a transition kept every
+ * other transition — react-router's navigation among them — waiting too, and
+ * the result died with the page if the user left it. The row lives on the
+ * server, so the progress survives leaving the page and reloading the tab.
+ */
+export const SCAN_JOB_KEY = '/api/jobs?kind=scan&limit=1'
+
+const SCAN_POLL_MS = 2000
+
+export const isActive = (job: Pick<Job, 'status'> | null | undefined): boolean =>
+  job?.status === 'queued' || job?.status === 'running'
+
+export function useScanJob(enabled = true) {
+  const swr = useSWR<ScanJob[]>(enabled ? SCAN_JOB_KEY : null, fetcher, {
+    // Polled only while one runs: an idle cabinet asks nothing.
+    refreshInterval: (rows) => (isActive(rows?.[0]) ? SCAN_POLL_MS : 0),
+    dedupingInterval: 1000,
+  })
+  return { ...swr, job: swr.data?.[0] ?? null }
+}
+
+/** Queue a scan. A scan already running is returned instead of a second one. */
+export const startScan = (params: ScanParams) =>
+  api<ScanJob>('/api/jobs', { method: 'POST', json: { kind: 'scan', payload: params } })
 
 /** «Скрыть» and back. Nothing is deleted: the row folds under its own toggle. */
 export const setHidden = (vacancyId: string, hidden: boolean) =>

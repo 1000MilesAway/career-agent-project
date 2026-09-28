@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -77,117 +77,31 @@ class VacancyResponse(BaseModel):
         )
 
 
-class ScanRequest(BaseModel):
-    # "all" is what the cabinet sends: one button, every source. The single
-    # sources stay for the API and for debugging one board.
-    source: Literal["all", "habr", "telegram", "geekjob", "company"] = "habr"
-    # Depth override for a single source. None = the source's own default
-    # (services/scan.py). Not shown in the cabinet: a "page" meant something
-    # different per source and told the user nothing.
-    pages: int | None = Field(default=None, ge=1, le=20)
-    # Employers abroad hiring Russian speakers (the "global" boards) — English
-    # postings, off by default.
-    include_global: bool = False
-    channels: list[str] | None = None
-    # "и смежные каналы" on the scan form. The checkbox existed but was read
-    # by nobody, so adjacent channels were unreachable from the product.
-    groups: list[str] = Field(default_factory=lambda: ["core"])
-
-    # Overrides for this run only; the stored search profile is not touched.
-    # `salary_min` of 0 means "no threshold", which is not the same as None:
-    # None leaves whatever the profile says, 0 clears it for this scan.
-    salary_min: int | None = Field(default=None, ge=0, le=100_000_000)
-    # Habr returns only postings WITH a stated range once a threshold is sent,
-    # so a threshold silently hides every vacancy that does not publish
-    # numbers. Keeping those is the default: the free filters judge them by
-    # title anyway, and a hidden vacancy cannot be judged at all.
-    any_salary: bool = True
-    remote_only: bool | None = None
-
-
-def _with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[str, Any]:
-    """The stored profile plus this run's form settings.
-
-    A copy: the form is a per-scan choice, and writing it back would let a
-    stray click redefine the profile the user keeps.
-    """
-    merged = dict(search_profile)
-
-    # The form owns the threshold outright, including "cleared": leaving the
-    # stored value in place when the field is empty meant the user wiped the
-    # box and kept filtering by a number no screen ever showed them.
-    #
-    # `any_salary` does NOT clear it — that was the bug. It only decides
-    # whether Habr is asked for a floor (which hides every posting with no
-    # stated range); PreScreen keeps judging the ones that do state a range.
-    merged["salary_min"] = body.salary_min or None
-
-    if body.remote_only is not None:
-        merged["remote_only"] = body.remote_only
-    return merged
-
-
 @router.post("/scan")
 async def start_scan(
-    body: ScanRequest,
+    body: scan.ScanRequest,
     session: SessionDep,
     user: UserDep,
     resume: ResumeDep,
 ) -> dict[str, Any]:
-    """Collect and screen.
+    """Collect and screen, holding the request open until done.
 
-    Free, except for one case: a CV stored before the search profile was
-    derived on upload has none, and screening without one is what kept the
-    whole catalogue. The profile is derived here (one cheap call, stored, so
-    it happens once) rather than refused, which left the user with a 500 and
-    nothing to do about it.
+    The cabinet does not call this any more: a scan of everything takes up to
+    a minute, so it queues a `scan` job instead (POST /api/jobs) and the
+    worker runs the same `scan.run_scan`. Kept for the API and for debugging
+    one board, where waiting on the answer is the point.
     """
-    search_profile = await scan.ensure_search_profile(session, user, resume)
-    search_profile = _with_overrides(search_profile, body)
-
-    company_groups = ("ru", "global") if body.include_global else ("ru",)
-
-    if body.source == "all":
-        try:
-            result = await scan.collect_all(
-                session, user.id, search_profile,
-                ask_habr_for_salary=not body.any_salary,
-                company_groups=company_groups,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-    elif body.source == "habr":
-        result = await scan.collect_habr(
-            session, user.id, search_profile, pages=body.pages or scan.HABR_PAGES,
-            ask_habr_for_salary=not body.any_salary,
-        )
-    elif body.source == "geekjob":
-        try:
-            result = await scan.collect_geekjob(
-                session, user.id, search_profile, pages=body.pages or scan.GEEKJOB_PAGES,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-        except (geekjob.MarkupChanged, httpx.HTTPError) as e:
-            # Said out loud: an empty result here would read as "nothing new
-            # on geekjob today", which is exactly what a broken parser looks like.
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"geekjob не прочитан: {e}",
-            ) from e
-    elif body.source == "company":
-        try:
-            result = await scan.collect_employers(
-                session, user.id, search_profile, company_groups
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-    else:
-        result = await scan.collect_telegram(
-            session, user.id, search_profile,
-            channels=body.channels, pages=body.pages or scan.TELEGRAM_PAGES,
-            groups=tuple(body.groups),
-        )
+    try:
+        result = await scan.run_scan(session, user, resume, body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except (geekjob.MarkupChanged, httpx.HTTPError) as e:
+        # Said out loud: an empty result here would read as "nothing new
+        # on this board today", which is exactly what a broken parser looks like.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{body.source} не прочитан: {e}",
+        ) from e
     await session.commit()
     return result
 

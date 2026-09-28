@@ -8,15 +8,18 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
+  SCAN_JOB_KEY,
   STATE_KEY,
   clearFound,
+  isActive,
   runTriage,
-  scanVacancies,
   setHidden,
   setSaved,
+  startScan,
   useAppState,
+  useScanJob,
 } from '../api/hooks'
-import type { FoundVacancy, ScanResult, SourceScan } from '../api/types'
+import type { FoundVacancy, SourceScan } from '../api/types'
 import { SalaryInput } from '../components/SalaryInput'
 import { BUCKET_TITLES, DROPPED_STAGES, VacancyRow } from '../components/VacancyRow'
 import { StarIcon } from '../components/icons'
@@ -68,6 +71,17 @@ function sourceLine(name: string, s: SourceScan): string {
   return `${title}: собрано ${s.collected}, прошло фильтры ${s.kept ?? 0}${dups}, новых ${s.new}${problems}`
 }
 
+/** "28 сент., 14:05" — when the shown result was found. The result now
+ *  outlives the page, so without a time it could be mistaken for a fresh one. */
+function whenText(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function SearchPage() {
   const { data, isLoading, error } = useAppState()
   const { mutate } = useSWRConfig()
@@ -79,8 +93,14 @@ export function SearchPage() {
   const [remoteOnly, setRemoteOnly] = useState(true)
   const [includeGlobal, setIncludeGlobal] = useState(false)
 
-  const [scanNote, setScanNote] = useState<ScanResult | null>(null)
-  const [isScanning, startScan] = useTransition()
+  // The scan is a job on the server, not a request this page holds: the
+  // page can be left and come back to, and the result is read off the job.
+  const { job: scanJob } = useScanJob()
+  // Only the few hundred ms of queueing; the scan itself is `scanJob`.
+  const [isQueueing, setQueueing] = useState(false)
+  const isScanning = isQueueing || isActive(scanJob)
+  const scanNote = scanJob?.status === 'done' ? scanJob.result : null
+  const scanError = scanJob?.status === 'failed' ? scanJob.error : null
   const [isTriaging, startTriage] = useTransition()
   const [limit, setLimit] = useState(PAGE_SIZE)
 
@@ -160,23 +180,26 @@ export function SearchPage() {
     saveFilters({ buckets: [...visibleBuckets], ...next })
   }
 
-  function scan() {
-    setScanNote(null)
-    startScan(async () => {
-      try {
-        const result = await scanVacancies({
-          source: 'all',
-          salary_min: salary,
-          any_salary: anySalary,
-          remote_only: remoteOnly,
-          include_global: includeGlobal,
-        })
-        setScanNote(result)
-        await mutate(STATE_KEY)
-      } catch (e) {
-        toast.error(e)
-      }
-    })
+  // Not a transition: an async action keeps every transition pending until
+  // it settles, and navigation is one — a minute-long scan awaited here froze
+  // the sidebar. Queueing returns at once; the cabinet shell reports the end.
+  async function scan() {
+    setQueueing(true)
+    try {
+      const job = await startScan({
+        source: 'all',
+        salary_min: salary,
+        any_salary: anySalary,
+        remote_only: remoteOnly,
+        include_global: includeGlobal,
+      })
+      // Seeded with the queued row so polling starts without waiting a round.
+      await mutate(SCAN_JOB_KEY, [job])
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setQueueing(false)
+    }
   }
 
   function triage() {
@@ -333,14 +356,22 @@ export function SearchPage() {
         {isScanning ? (
           <div className="scan__progress" role="status">
             <span className="scan__bar" aria-hidden="true" />
-            Источники читаются параллельно, модель не вызывается.
+            Источники читаются параллельно, модель не вызывается. Можно уйти на другую
+            страницу — поиск продолжится, итог появится здесь.
           </div>
         ) : null}
 
-        {scanNote ? (
+        {scanError && !isScanning ? (
+          <div className="scan__result scan__source--err" role="alert">
+            Поиск не удался: {scanError}
+          </div>
+        ) : null}
+
+        {scanNote && !isScanning ? (
           <div className="scan__result" role="status">
             <p className="scan__total">
-              Найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
+              {scanJob?.finished_at ? `Поиск ${whenText(scanJob.finished_at)}: ` : ''}
+              найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
               <b className="num">{scanNote.kept ?? 0}</b>, новых{' '}
               <b className="num">{scanNote.new}</b>
               {scanNote.duplicates

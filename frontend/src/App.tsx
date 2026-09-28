@@ -12,12 +12,13 @@
 
 import { Suspense, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { useAppState, useProposals } from './api/hooks'
+import { isActive, useAppState, useProposals } from './api/hooks'
 import type { Spend } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { ChatIcon, LogoutIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Skeleton, rub } from './components/ui'
+import { useScanWatcher } from './components/useScanWatcher'
 import { lazyPage } from './lazyPage'
 import './App.css'
 
@@ -40,6 +41,9 @@ function Cabinet() {
   const { data: proposals } = useProposals()
   const savedCount = data?.found.filter((row) => row.saved).length ?? 0
   const pendingCount = proposals?.length ?? 0
+  // Here, not on the search page: a scan runs on the server and the user is
+  // free to leave the page while it does.
+  const scanning = isActive(useScanWatcher())
 
   // Without a CV the scan refuses to work, so that is where a new account
   // starts. Once one is loaded, search is the page people come back to.
@@ -54,7 +58,7 @@ function Cabinet() {
         </div>
 
         <nav className="side__nav" aria-label="Разделы">
-          <NavItem to="/search" icon={<SearchIcon />}>
+          <NavItem to="/search" icon={<SearchIcon />} busy={scanning}>
             Поиск
           </NavItem>
           <NavItem to="/saved" icon={<StarIcon />} count={savedCount}>
@@ -116,6 +120,7 @@ function NavItem({
   icon,
   count = 0,
   attention = false,
+  busy = false,
   children,
 }: {
   to: string
@@ -123,12 +128,17 @@ function NavItem({
   count?: number
   /** A count that asks for action, not one that merely tallies. */
   attention?: boolean
+  /** Something runs in the background for this page. */
+  busy?: boolean
   children: ReactNode
 }) {
   return (
     <NavLink to={to} className={({ isActive }) => (isActive ? 'nav nav--on' : 'nav')}>
       {icon}
       <span className="nav__label">{children}</span>
+      {busy ? (
+        <span className="nav__busy" role="img" title="Идёт поиск" aria-label="идёт поиск" />
+      ) : null}
       {count ? (
         <span className={attention ? 'nav__count nav__count--hot' : 'nav__count'}>
           {count}
