@@ -5,7 +5,8 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_FILTERS, loadFilters, saveFilters } from './searchFilters'
+import type { FoundVacancy } from '../api/types'
+import { DEFAULT_FILTERS, loadFilters, saveFilters, sortRows } from './searchFilters'
 
 afterEach(() => {
   localStorage.clear()
@@ -20,6 +21,8 @@ describe('searchFilters', () => {
   it('сохранённый выбор возвращается, включая «без вердикта»', () => {
     const chosen = {
       buckets: ['skip', null],
+      sort: 'score',
+      scoredOnly: true,
       showDropped: true,
       showInactive: true,
       showHidden: false,
@@ -38,7 +41,8 @@ describe('searchFilters', () => {
     expect(loadFilters()).toEqual(DEFAULT_FILTERS)
 
     localStorage.setItem('search-filters', JSON.stringify({ buckets: ['worth', 'gone'] }))
-    // A value saved before the inactive/hidden toggles existed reads as off.
+    // A value saved before the inactive/hidden toggles or the sort existed
+    // reads as the default.
     expect(loadFilters()).toEqual({ ...DEFAULT_FILTERS, buckets: ['worth'] })
   })
 
@@ -51,5 +55,29 @@ describe('searchFilters', () => {
     })
     expect(() => saveFilters(DEFAULT_FILTERS)).not.toThrow()
     expect(loadFilters()).toEqual(DEFAULT_FILTERS)
+  })
+})
+
+const row = (id: string, score: number | null, bucket?: 'worth' | 'maybe') =>
+  ({
+    id,
+    score,
+    triage: bucket ? { bucket, reason: '' } : null,
+  }) as unknown as FoundVacancy
+
+describe('sortRows', () => {
+  const rows = [
+    row('a', null, 'maybe'),
+    row('b', 3.1),
+    row('c', null, 'worth'),
+    row('d', 4.2),
+  ]
+
+  it('«свежие» — порядок сервера как есть', () => {
+    expect(sortRows(rows, 'fresh').map((r) => r.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('«по баллу» — оценённые сверху от лучшего, дальше «стоит посмотреть» раньше «может быть»', () => {
+    expect(sortRows(rows, 'score').map((r) => r.id)).toEqual(['d', 'b', 'c', 'a'])
   })
 })

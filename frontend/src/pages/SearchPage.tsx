@@ -26,7 +26,14 @@ import { StarIcon } from '../components/icons'
 import { useToast } from '../components/toast'
 import { Empty, ErrorNote, PageHead, Skeleton, rub } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
-import { type BucketKey, loadFilters, saveFilters } from './searchFilters'
+import {
+  type BucketKey,
+  type SearchFilters,
+  type SortKey,
+  loadFilters,
+  saveFilters,
+  sortRows,
+} from './searchFilters'
 import './search.css'
 
 /** A stable empty list, so a state payload that has not arrived yet does not
@@ -110,6 +117,8 @@ export function SearchPage() {
   const [visibleBuckets, setVisibleBuckets] = useState<ReadonlySet<BucketKey>>(
     () => new Set(initialFilters.buckets),
   )
+  const [sort, setSort] = useState<SortKey>(initialFilters.sort)
+  const [scoredOnly, setScoredOnly] = useState(initialFilters.scoredOnly)
   const [showDropped, setShowDropped] = useState(initialFilters.showDropped)
   const [showInactive, setShowInactive] = useState(initialFilters.showInactive)
   const [showHidden, setShowHidden] = useState(initialFilters.showHidden)
@@ -151,20 +160,53 @@ export function SearchPage() {
 
   const anyJudged = useMemo(() => rows.some((row) => row.triage), [rows])
 
-  const visible = useMemo(() => {
+  const bucketed = useMemo(() => {
     if (!anyJudged) return base
     return base.filter((row) => visibleBuckets.has(row.triage?.bucket ?? null))
   }, [base, anyJudged, visibleBuckets])
 
+  // Counted before «только оценённые» so the toggle's own number does not
+  // collapse to the list it already shows.
+  const scoredShown = useMemo(() => bucketed.filter((row) => row.score != null), [bucketed])
+
+  const visible = useMemo(
+    () => sortRows(scoredOnly ? scoredShown : bucketed, sort),
+    [bucketed, scoredShown, scoredOnly, sort],
+  )
+
   // Computed from the rendered value rather than inside a state updater: the
   // write to storage is a side effect, and updaters must stay pure.
+  function persist(change: Partial<SearchFilters>) {
+    saveFilters({
+      buckets: [...visibleBuckets],
+      sort,
+      scoredOnly,
+      showDropped,
+      showInactive,
+      showHidden,
+      ...change,
+    })
+  }
+
   function toggleBucket(key: BucketKey) {
     const next = new Set(visibleBuckets)
     if (next.has(key)) next.delete(key)
     else next.add(key)
     setVisibleBuckets(next)
     setLimit(PAGE_SIZE)
-    saveFilters({ buckets: [...next], showDropped, showInactive, showHidden })
+    persist({ buckets: [...next] })
+  }
+
+  function chooseSort(next: SortKey) {
+    setSort(next)
+    setLimit(PAGE_SIZE)
+    persist({ sort: next })
+  }
+
+  function toggleScoredOnly() {
+    setScoredOnly(!scoredOnly)
+    setLimit(PAGE_SIZE)
+    persist({ scoredOnly: !scoredOnly })
   }
 
   function toggleGroup(group: Exclude<Group, 'kept'>) {
@@ -177,7 +219,7 @@ export function SearchPage() {
     setShowInactive(next.showInactive)
     setShowHidden(next.showHidden)
     setLimit(PAGE_SIZE)
-    saveFilters({ buckets: [...visibleBuckets], ...next })
+    persist(next)
   }
 
   // Not a transition: an async action keeps every transition pending until
@@ -460,6 +502,35 @@ export function SearchPage() {
                 Список ещё не разобран — «Отсеять моделью» разложит его по вердиктам.
               </span>
             )}
+            <div className="listbar__view">
+              <div className="seg" role="group" aria-label="Порядок списка">
+                <button
+                  className="seg__item"
+                  aria-pressed={sort === 'fresh'}
+                  onClick={() => chooseSort('fresh')}
+                  title="В том порядке, в каком вакансии найдены: новые сверху"
+                >
+                  свежие
+                </button>
+                <button
+                  className="seg__item"
+                  aria-pressed={sort === 'score'}
+                  onClick={() => chooseSort('score')}
+                  title="Оценённые сверху, от лучшего балла; дальше — по вердикту отсева"
+                >
+                  по баллу
+                </button>
+              </div>
+              {scoredShown.length || scoredOnly ? (
+                <label
+                  className="toggle"
+                  title="Только вакансии с полной оценкой — без очереди на оценку"
+                >
+                  <input type="checkbox" checked={scoredOnly} onChange={toggleScoredOnly} />
+                  только оценённые <span className="num">{scoredShown.length}</span>
+                </label>
+              ) : null}
+            </div>
             <div className="listbar__groups">
               {counts.dropped ? (
                 <button
@@ -499,10 +570,14 @@ export function SearchPage() {
         ) : visible.length === 0 ? (
           <div className="card">
             <Empty title="Под фильтр ничего не попало">
-              <p>
-                Включите другие вердикты выше или покажите отсеянные, неактуальные и
-                скрытые.
-              </p>
+              {scoredOnly ? (
+                <p>Оценённых среди них нет — снимите «только оценённые».</p>
+              ) : (
+                <p>
+                  Включите другие вердикты выше или покажите отсеянные, неактуальные и
+                  скрытые.
+                </p>
+              )}
             </Empty>
           </div>
         ) : (

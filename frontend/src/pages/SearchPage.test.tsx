@@ -125,6 +125,29 @@ describe('SearchPage', () => {
     mocks.found.length = 0
   })
 
+  it('«только оценённые» оставляет оценённые, «по баллу» ставит лучший первым', () => {
+    localStorage.clear()
+    mocks.found.splice(
+      0,
+      mocks.found.length,
+      row('new'),
+      row('low', { score: 2.8 }),
+      row('high', { score: 4.2 }),
+    )
+    render(<SearchPage />)
+    const titles = () => screen.getAllByText(/^Вакансия /).map((node) => node.textContent)
+
+    expect(titles()).toEqual(['Вакансия new', 'Вакансия low', 'Вакансия high'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'по баллу' }))
+    expect(titles()).toEqual(['Вакансия high', 'Вакансия low', 'Вакансия new'])
+
+    fireEvent.click(screen.getByLabelText(/только оценённые/))
+    expect(titles()).toEqual(['Вакансия high', 'Вакансия low'])
+    mocks.found.length = 0
+    localStorage.clear()
+  })
+
   it('«Скрыть» зовёт API, ничего не удаляя', async () => {
     mocks.found.splice(0, mocks.found.length, row('live'))
     mocks.setHidden.mockResolvedValue({})
