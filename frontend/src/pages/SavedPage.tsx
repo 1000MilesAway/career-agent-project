@@ -118,7 +118,7 @@ export function SavedPage() {
               className="btn btn--ghost btn--small"
               onClick={recheck}
               disabled={isRechecking}
-              title="Спросить у Хабра и geekjob, не закрыты ли вакансии. Бесплатно, модель не вызывается. Telegram так проверить нельзя — у поста нет страницы."
+              title="Спросить у Хабра, geekjob и Telegram, не закрыты ли вакансии. Бесплатно, модель не вызывается. Вакансии с сайтов работодателей так проверить нельзя."
             >
               {isRechecking ? 'Проверяю…' : 'Проверить, открыты ли'}
             </button>

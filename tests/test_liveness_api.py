@@ -17,6 +17,7 @@ from core.sources.habr_api import Posting
 from tests.dbmark import requires_db
 
 HABR_URL = "https://career.habr.com/vacancies/1000168684"
+EMPLOYER_URL = "https://yandex.ru/jobs/vacancies/python-developer-1"
 
 
 async def _resume_for(session, user: User) -> Resume:
@@ -129,13 +130,27 @@ class TestRecheck:
         r = await client.post("/api/vacancies/recheck", headers=auth_headers)
         assert r.json()["checked"] == 0
 
-    async def test_telegram_rows_are_not_asked(
+    async def test_telegram_posts_are_asked_employer_boards_are_not(
         self, client, auth_headers, session, user, monkeypatch
     ):
         await _resume_for(session, user)
-        await _vacancy(session, user, url="https://t.me/chan/1", is_saved=True)
+        for source, url in (("telegram", "https://t.me/chan/1"), ("company", EMPLOYER_URL)):
+            posting = Posting(id=url, url=url, title="Python разработчик", company=source)
+            await scan.persist(session, user.id, source, kept=[(posting, "")], dropped=[])
+        await session.commit()
+        for row in (await session.execute(select(Vacancy))).scalars():
+            row.is_saved = True
+        await session.commit()
+        asked: list[str] = []
+
+        def fake_check(url, http=None):
+            asked.append(url)
+            return liveness.Liveness("closed", "пост удалён из канала")
+
+        monkeypatch.setattr(liveness, "check", fake_check)
         r = await client.post("/api/vacancies/recheck", headers=auth_headers)
-        assert r.json()["checked"] == 0
+        assert asked == ["https://t.me/chan/1"]
+        assert r.json()["closed"] == 1
 
 
 @requires_db
@@ -223,7 +238,7 @@ class TestCompanyScan:
 class TestSweep:
     """The worker's background pass: every user, no button, no model."""
 
-    async def test_live_rows_are_checked_and_dropped_hidden_telegram_are_not(
+    async def test_live_rows_are_checked_and_dropped_hidden_are_not(
         self, session, user, monkeypatch
     ):
         from datetime import UTC, datetime
@@ -244,8 +259,8 @@ class TestSweep:
             )).scalar_one()
             for key, value in extra.items():
                 setattr(row, key, value)
-        tg = Posting(id="chan/1", url="https://t.me/chan/1", title="Python TG", company="ТГ")
-        await scan.persist(session, user.id, "telegram", kept=[(tg, "")], dropped=[])
+        board = Posting(id="y1", url=EMPLOYER_URL, title="Python Y", company="Яндекс")
+        await scan.persist(session, user.id, "company", kept=[(board, "")], dropped=[])
         await session.commit()
 
         asked: list[str] = []
@@ -275,20 +290,21 @@ class TestStale:
 
         return Vacancy(url=url, published=datetime.now(UTC) - timedelta(days=days))
 
-    def test_an_old_telegram_post_is_stale(self):
+    def test_an_old_employer_posting_is_stale(self):
         from app.services.liveness import stale_reason
 
-        assert "дн. назад" in stale_reason(self._row("https://t.me/chan/1", 45))
+        assert "дн. назад" in stale_reason(self._row(EMPLOYER_URL, 45))
 
-    def test_a_recent_post_is_not(self):
+    def test_a_recent_posting_is_not(self):
         from app.services.liveness import stale_reason
 
-        assert stale_reason(self._row("https://t.me/chan/1", 5)) is None
+        assert stale_reason(self._row(EMPLOYER_URL, 5)) is None
 
     def test_age_never_overrules_a_source_that_can_be_asked(self):
         from app.services.liveness import stale_reason
 
         assert stale_reason(self._row(HABR_URL, 90)) is None
+        assert stale_reason(self._row("https://t.me/chan/1", 90)) is None
 
 
 @requires_db

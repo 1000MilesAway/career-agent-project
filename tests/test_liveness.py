@@ -14,6 +14,7 @@ from core import liveness
 FIXTURES = Path(__file__).parent / "fixtures"
 HABR = "https://career.habr.com/vacancies/1000168684"
 GEEKJOB = "https://geekjob.ru/vacancy/6ab2b32973abaf8df70aa37d"
+TG = "https://t.me/runello_rus_python/1803"
 
 
 def fixture(name: str) -> str:
@@ -50,12 +51,43 @@ class TestClassify:
     def test_an_unrecognised_page_is_not_closed(self):
         assert liveness.classify(GEEKJOB, 200, "<html>редизайн</html>").state == "unknown"
 
-    def test_telegram_cannot_be_asked(self):
-        assert liveness.check("https://t.me/pythonrabota/2340").state == "unknown"
+    def test_a_deleted_telegram_post_is_closed(self):
+        """t.me answers 200 for a deleted post; the widget's error is the signal."""
+        url = TG + "?embed=1&mode=tme"
+        verdict = liveness.classify(url, 200, fixture("telegram_post_deleted.html"))
+        assert verdict.closed
+        assert "удалён" in verdict.reason
+
+    def test_a_live_telegram_post_is_open(self):
+        url = "https://t.me/runello_rus_python/1818?embed=1&mode=tme"
+        assert liveness.classify(url, 200, fixture("telegram_post_open.html")).state == "open"
+
+    def test_a_missing_channel_is_not_a_deleted_post(self):
+        """A renamed channel says nothing about the post; closing it would be a guess."""
+        url = "https://t.me/nonexistent_chan_zzq123/5?embed=1&mode=tme"
+        verdict = liveness.classify(url, 200, fixture("telegram_post_no_channel.html"))
+        assert verdict.state == "unknown"
+
+    def test_only_a_single_post_is_checkable(self):
+        assert liveness.can_check(TG)
+        assert not liveness.can_check("https://t.me/s/runello_rus_python")
+        assert not liveness.can_check("https://t.me/runello_rus_python")
         assert liveness.check(None).state == "unknown"
 
 
 class TestCheck:
+    def test_a_telegram_post_is_asked_through_its_widget(self):
+        """The bare post URL is a stub that looks alike for live and deleted posts."""
+        seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return httpx.Response(200, text=fixture("telegram_post_deleted.html"))
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        assert liveness.check(TG, http=http).closed
+        assert seen == [TG + "?embed=1&mode=tme"]
+
     def test_network_failure_is_unknown_not_an_exception(self):
         def boom(request):
             raise httpx.ConnectError("нет сети")

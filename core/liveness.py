@@ -14,11 +14,18 @@ Verified 2026-09-23 on live pages:
     `.ui.warning.message` banner "Архивная вакансия" above the posting — and
     still serves the JobPosting JSON-LD, so the banner is the only signal.
 
-Telegram posts have no page to ask: their state is always unknown.
+Verified 2026-09-28 for Telegram: `t.me/<channel>/<id>?embed=1&mode=tme` is
+the post's widget page, readable without a login like `t.me/s/`. A deleted
+post answers 200 with `.tgme_widget_message_error` "Post not found" and no
+post; a live one carries `.tgme_widget_message[data-post]`. A vanished or
+renamed channel gives a different error, which is not evidence about the post
+and stays unknown. Channels delete a post when the job is filled, so a deleted
+post is the closest thing Telegram has to an archive banner.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -33,6 +40,9 @@ State = Literal["open", "closed", "unknown"]
 
 HABR_ARCHIVE_MARK = "Вакансия в архиве"
 GEEKJOB_ARCHIVE_MARK = "Архивная вакансия"
+TELEGRAM_DELETED_MARK = "Post not found"
+# A single post, not the `t.me/s/` feed and not the channel page.
+TELEGRAM_POST = re.compile(r"^https?://t\.me/(?!s/)[A-Za-z0-9_]{4,}/\d+(?:[/?#]|$)")
 
 
 @dataclass(frozen=True)
@@ -48,8 +58,25 @@ class Liveness:
 UNKNOWN_SOURCE = Liveness("unknown", "источник не умеет сообщать, открыта ли вакансия")
 
 
+def is_telegram_post(url: str) -> bool:
+    return bool(TELEGRAM_POST.match(url))
+
+
 def can_check(url: str | None) -> bool:
-    return bool(url) and (is_habr_url(url) or geekjob.is_geekjob_url(url))
+    return bool(url) and (
+        is_habr_url(url) or geekjob.is_geekjob_url(url) or is_telegram_post(url)
+    )
+
+
+def page_url(url: str) -> str:
+    """The page that answers for `url`: a Telegram post is asked via its widget.
+
+    The plain `t.me/<channel>/<id>` is a stub that looks the same whether the
+    post exists or not.
+    """
+    if is_telegram_post(url):
+        return url.split("?", 1)[0].split("#", 1)[0] + "?embed=1&mode=tme"
+    return url
 
 
 def classify(url: str, status: int, html: str) -> Liveness:
@@ -82,6 +109,16 @@ def classify(url: str, status: int, html: str) -> Liveness:
             return Liveness("closed", f"срок публикации истёк {posting.valid_through[:10]}")
         return Liveness("open")
 
+    if is_telegram_post(url):
+        tree = HTMLParser(html)
+        if tree.css_first(".tgme_widget_message[data-post]") is not None:
+            return Liveness("open")
+        error = tree.css_first(".tgme_widget_message_error")
+        if error is not None and error.text(strip=True) == TELEGRAM_DELETED_MARK:
+            return Liveness("closed", "пост удалён из канала")
+        # A missing channel, a rename, a changed widget: none says the post is gone.
+        return Liveness("unknown", "Telegram не показал пост")
+
     return UNKNOWN_SOURCE
 
 
@@ -101,7 +138,7 @@ def check(url: str | None, http: httpx.Client | None = None) -> Liveness:
     own = http is None
     http = http or client()
     try:
-        r = http.get(url)
+        r = http.get(page_url(url))
         # A redirect that lands off the source's host is not the vacancy.
         if not can_check(str(r.url)):
             return Liveness("unknown", "страница увела на другой сайт")

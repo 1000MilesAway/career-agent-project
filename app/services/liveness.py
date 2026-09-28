@@ -10,8 +10,7 @@ Three places ask:
     the search list stops showing postings that closed since the scan without
     anyone pressing a button.
 
-Sources with no page to ask (Telegram, employer boards) are never closed
-here. Their only signal is age, and age is not evidence of closing — see
+Sources with no page to ask (employer boards) are never closed here. Their only signal is age, and age is not evidence of closing — see
 `stale_reason`, which marks such a row old without closing it.
 
 A closed vacancy is marked, never deleted or hidden: it keeps its report and
@@ -47,7 +46,7 @@ MAX_PER_SWEEP = 40
 # Sources whose rows carry a page `core.liveness` can read. Filtered in SQL
 # so rows that can never be checked do not crowd the batch; "url" is a link
 # the user pasted, which may point at either board.
-CHECKABLE_SOURCES = ("habr", "geekjob", "url")
+CHECKABLE_SOURCES = ("habr", "geekjob", "telegram", "url")
 # A posting older than this, from a source that cannot be asked, is shown as
 # old. Not closed: nothing says it is, and closing is reserved for evidence.
 STALE_AFTER = timedelta(days=30)
