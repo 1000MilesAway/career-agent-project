@@ -149,6 +149,27 @@
   gap: 4px 16px;
 }
 
+/* Sticky: the rows that changed are usually far down the list, where the
+   user is working, not at its head. */
+.reorder {
+  position: sticky;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
 .more {
   display: flex;
   align-items: center;

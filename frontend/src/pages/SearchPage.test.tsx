@@ -148,6 +148,44 @@ describe('SearchPage', () => {
     localStorage.clear()
   })
 
+  it('оценённая строка остаётся на месте, пока не нажато «Пересортировать»', () => {
+    localStorage.clear()
+    mocks.found.splice(0, mocks.found.length, row('a', { score: 4 }), row('b'), row('c'))
+    const view = render(<SearchPage />)
+    const titles = () => screen.getAllByText(/^Вакансия /).map((node) => node.textContent)
+    fireEvent.click(screen.getByRole('button', { name: 'по баллу' }))
+    expect(titles()).toEqual(['Вакансия a', 'Вакансия b', 'Вакансия c'])
+    expect(screen.queryByRole('button', { name: 'Пересортировать' })).toBeNull()
+
+    // A fresh payload after the evaluation: «c» now outscores «a», but the
+    // list stays where the user left it. A new array, as SWR hands over:
+    // mutating the old one in place would not reach the memoised list.
+    mocks.found = [row('a', { score: 4 }), row('b'), row('c', { score: 4.5 })]
+    view.rerender(<SearchPage />)
+    expect(titles()).toEqual(['Вакансия a', 'Вакансия b', 'Вакансия c'])
+    expect(screen.getByRole('status').textContent).toMatch(/изменений: 1/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Пересортировать' }))
+    expect(titles()).toEqual(['Вакансия c', 'Вакансия a', 'Вакансия b'])
+    expect(screen.queryByRole('button', { name: 'Пересортировать' })).toBeNull()
+    mocks.found.length = 0
+    localStorage.clear()
+  })
+
+  it('скрытая строка не пропадает из-под руки, а бледнеет с кнопкой «Вернуть»', () => {
+    localStorage.clear()
+    mocks.found.splice(0, mocks.found.length, row('a'), row('b'))
+    const view = render(<SearchPage />)
+    mocks.found = [row('a', { hidden: true }), row('b')]
+    view.rerender(<SearchPage />)
+
+    expect(screen.getByText('Вакансия a')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Вернуть' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Пересортировать' }))
+    expect(screen.queryByText('Вакансия a')).toBeNull()
+    mocks.found.length = 0
+  })
+
   it('«Скрыть» зовёт API, ничего не удаляя', async () => {
     mocks.found.splice(0, mocks.found.length, row('live'))
     mocks.setHidden.mockResolvedValue({})

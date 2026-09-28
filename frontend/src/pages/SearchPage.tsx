@@ -34,6 +34,7 @@ import {
   saveFilters,
   sortRows,
 } from './searchFilters'
+import { type FrozenOrder, arrange, pendingChanges } from './frozenOrder'
 import './search.css'
 
 /** A stable empty list, so a state payload that has not arrived yet does not
@@ -110,6 +111,9 @@ export function SearchPage() {
   const scanError = scanJob?.status === 'failed' ? scanJob.error : null
   const [isTriaging, startTriage] = useTransition()
   const [limit, setLimit] = useState(PAGE_SIZE)
+  // Bumped to take the order anew: by «Пересортировать», and after a triage
+  // or a clear — actions that reshape the whole list on the user's request.
+  const [epoch, setEpoch] = useState(0)
 
   // Read once on mount; every change below writes it back, so a reload
   // shows the list the way the user left it.
@@ -172,6 +176,46 @@ export function SearchPage() {
   const visible = useMemo(
     () => sortRows(scoredOnly ? scoredShown : bucketed, sort),
     [bucketed, scoredShown, scoredOnly, sort],
+  )
+
+  // The order is held until the view changes, the user asks, or a scan
+  // brings rows the order has never seen — see frozenOrder.ts. The key has
+  // every input the user chooses; a changed score or verdict is not one.
+  const viewKey = [
+    sort,
+    scoredOnly,
+    [...visibleBuckets].map(String).sort().join(','),
+    showDropped,
+    showInactive,
+    showHidden,
+    epoch,
+  ].join('|')
+  // The job turns "done" a moment before its rows arrive, so a new scan
+  // retakes the order only once the rows it found are actually here.
+  const scanMark = scanJob?.status === 'done' ? scanJob.finished_at : null
+  const [frozen, setFrozen] = useState<FrozenOrder | null>(null)
+  const liveIds = useMemo(() => visible.map((row) => row.id), [visible])
+  const heldIds = useMemo(() => new Set(frozen?.ids), [frozen])
+  const retake =
+    data !== undefined &&
+    (frozen === null ||
+      frozen.key !== viewKey ||
+      (frozen.scanMark !== scanMark && liveIds.some((id) => !heldIds.has(id))))
+  // Adjusting state while rendering, the way React documents for state that
+  // follows other state: an effect would paint the unfrozen list first.
+  if (retake) setFrozen({ key: viewKey, scanMark, ids: liveIds })
+
+  const ordered = useMemo(
+    () => (frozen && !retake ? arrange(frozen.ids, rows, visible) : visible),
+    [frozen, retake, rows, visible],
+  )
+  const changes = useMemo(
+    () =>
+      pendingChanges(
+        ordered.map((row) => row.id),
+        liveIds,
+      ),
+    [ordered, liveIds],
   )
 
   // Computed from the rendered value rather than inside a state updater: the
@@ -249,6 +293,7 @@ export function SearchPage() {
       try {
         const result = await runTriage()
         await mutate(STATE_KEY)
+        setEpoch((current) => current + 1)
 
         if (result.note) {
           toast.info(result.note)
@@ -278,6 +323,7 @@ export function SearchPage() {
     try {
       const result = await clearFound()
       await mutate(STATE_KEY)
+      setEpoch((current) => current + 1)
       toast.info(`Убрано ${result.deleted}. Избранное не тронуто.`)
     } catch (e) {
       toast.error(e)
@@ -331,7 +377,7 @@ export function SearchPage() {
     )
   }
 
-  const shown = visible.slice(0, limit)
+  const shown = ordered.slice(0, limit)
 
   return (
     <div className="page">
@@ -567,7 +613,7 @@ export function SearchPage() {
               <p>Задайте зарплату и условия выше и запустите поиск — это бесплатно.</p>
             </Empty>
           </div>
-        ) : visible.length === 0 ? (
+        ) : ordered.length === 0 ? (
           <div className="card">
             <Empty title="Под фильтр ничего не попало">
               {scoredOnly ? (
@@ -581,87 +627,103 @@ export function SearchPage() {
             </Empty>
           </div>
         ) : (
-          <div className="vlist">
-            {shown.map((vacancy) => (
-              <VacancyRow
-                key={vacancy.id}
-                vacancy={vacancy}
-                actions={
-                  <>
-                    {vacancy.outdated ? (
+          <>
+            {changes ? (
+              <div className="reorder" role="status">
+                <span>
+                  Порядок устарел, изменений: <b className="num">{changes}</b>. Сам список
+                  не перестраивается, чтобы строки не уезжали из-под курсора.
+                </span>
+                <button
+                  className="btn btn--ghost btn--small"
+                  onClick={() => setEpoch((current) => current + 1)}
+                >
+                  Пересортировать
+                </button>
+              </div>
+            ) : null}
+            <div className="vlist">
+              {shown.map((vacancy) => (
+                <VacancyRow
+                  key={vacancy.id}
+                  vacancy={vacancy}
+                  actions={
+                    <>
+                      {vacancy.outdated ? (
+                        <button
+                          className="btn btn--quiet btn--small"
+                          onClick={() => openReport(vacancy, true)}
+                          disabled={isBusy(`${vacancy.id}:report`)}
+                          title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                        >
+                          Переоценить
+                        </button>
+                      ) : null}
+                      <button
+                        className="btn btn--ghost btn--small"
+                        onClick={() => openReport(vacancy)}
+                        disabled={isBusy(`${vacancy.id}:report`)}
+                        title={
+                          vacancy.score != null
+                            ? 'Отчёт уже куплен — показ бесплатный'
+                            : 'Полная оценка — около 0.17 ₽'
+                        }
+                      >
+                        {isBusy(`${vacancy.id}:report`)
+                          ? 'Считаю…'
+                          : vacancy.score != null
+                            ? 'Отчёт'
+                            : 'Оценить'}
+                        {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
+                          <span className="btn__price">0.17 ₽</span>
+                        ) : null}
+                      </button>
                       <button
                         className="btn btn--quiet btn--small"
-                        onClick={() => openReport(vacancy, true)}
-                        disabled={isBusy(`${vacancy.id}:report`)}
-                        title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                        onClick={() => toggleHidden(vacancy)}
+                        title={
+                          vacancy.hidden
+                            ? 'Вернуть в список'
+                            : 'Не интересно: убрать из списка. Вернуть можно из «скрытых»'
+                        }
                       >
-                        Переоценить
+                        {vacancy.hidden ? 'Вернуть' : 'Скрыть'}
                       </button>
-                    ) : null}
-                    <button
-                      className="btn btn--ghost btn--small"
-                      onClick={() => openReport(vacancy)}
-                      disabled={isBusy(`${vacancy.id}:report`)}
-                      title={
-                        vacancy.score != null
-                          ? 'Отчёт уже куплен — показ бесплатный'
-                          : 'Полная оценка — около 0.17 ₽'
-                      }
-                    >
-                      {isBusy(`${vacancy.id}:report`)
-                        ? 'Считаю…'
-                        : vacancy.score != null
-                          ? 'Отчёт'
-                          : 'Оценить'}
-                      {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
-                        <span className="btn__price">0.17 ₽</span>
-                      ) : null}
-                    </button>
-                    <button
-                      className="btn btn--quiet btn--small"
-                      onClick={() => toggleHidden(vacancy)}
-                      title={
-                        vacancy.hidden
-                          ? 'Вернуть в список'
-                          : 'Не интересно: убрать из списка. Вернуть можно из «скрытых»'
-                      }
-                    >
-                      {vacancy.hidden ? 'Вернуть' : 'Скрыть'}
-                    </button>
-                    <button
-                      className={
-                        vacancy.saved
-                          ? 'btn btn--quiet btn--small btn--icon star star--on'
-                          : 'btn btn--quiet btn--small btn--icon star'
-                      }
-                      onClick={() => toggleSave(vacancy)}
-                      aria-pressed={vacancy.saved}
-                      aria-label={vacancy.saved ? 'В избранном' : 'В избранное'}
-                      title={
-                        vacancy.saved
-                          ? 'Уже в избранном — нажмите, чтобы убрать'
-                          : 'Отложить: материалы и статусы готовятся там'
-                      }
-                    >
-                      <StarIcon filled={vacancy.saved} />
-                    </button>
-                  </>
-                }
-              />
-            ))}
-          </div>
+                      <button
+                        className={
+                          vacancy.saved
+                            ? 'btn btn--quiet btn--small btn--icon star star--on'
+                            : 'btn btn--quiet btn--small btn--icon star'
+                        }
+                        onClick={() => toggleSave(vacancy)}
+                        aria-pressed={vacancy.saved}
+                        aria-label={vacancy.saved ? 'В избранном' : 'В избранное'}
+                        title={
+                          vacancy.saved
+                            ? 'Уже в избранном — нажмите, чтобы убрать'
+                            : 'Отложить: материалы и статусы готовятся там'
+                        }
+                      >
+                        <StarIcon filled={vacancy.saved} />
+                      </button>
+                    </>
+                  }
+                />
+              ))}
+            </div>
+          </>
         )}
 
-        {visible.length > shown.length ? (
+        {ordered.length > shown.length ? (
           <div className="more">
             <button
               className="btn btn--ghost"
               onClick={() => setLimit((current) => current + PAGE_SIZE)}
             >
-              Показать ещё {Math.min(PAGE_SIZE, visible.length - shown.length)}
+              Показать ещё {Math.min(PAGE_SIZE, ordered.length - shown.length)}
             </button>
             <span className="muted num">
-              показано {shown.length} из {visible.length}
+              показано {shown.length} из {ordered.length}
             </span>
           </div>
         ) : null}
