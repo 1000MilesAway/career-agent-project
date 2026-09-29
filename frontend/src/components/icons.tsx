@@ -85,3 +85,11 @@ export const ExternalIcon = () => (
     <path d="M8 4H4v12h12v-4M11 3h6v6M17 3l-8 8" />
   </svg>
 )
+
+/** A paper plane, for the Telegram buttons — the glyph people recognise it by. */
+export const TelegramIcon = () => (
+  <Icon>
+    <path d="M17.5 3 2.5 9.2l5.3 1.9L15 5.5l-5.3 6.6 5.8 4.4z" />
+    <path d="M7.8 11.1v5.4l2.5-2.9" />
+  </Icon>
+)

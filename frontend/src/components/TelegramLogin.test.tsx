@@ -1,46 +1,79 @@
-/** Виджет Telegram зовёт страницу по имени глобальной функции из data-onauth.
+/** Кнопка входа через Telegram: что уходит в Telegram и что возвращается.
  *
- * Если имя и функция разойдутся, кнопка нажимается, Telegram подтверждает
- * вход — и ничего не происходит. Проверяется ровно эта связка.
+ * Если client_id или nonce не дойдут до Telegram, попап откажет или сервер
+ * отвергнет токен — а пользователь увидит лишь «ничего не произошло».
+ * Закрытый попап — это передумал, а не ошибка, и тост на него не нужен.
  */
 
-import { cleanup, render } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TelegramButton } from './TelegramLogin'
 
-function widgetScript(container: HTMLElement): HTMLScriptElement {
-  const script = container.querySelector('script')
-  if (!script) throw new Error('скрипт виджета не вставлен')
-  return script
+const config = { client_id: 8606493609, nonce: 'n-1' }
+
+type Callback = (result: { id_token?: string; error?: string }) => void
+
+function fakeTelegram(result: { id_token?: string; error?: string }) {
+  const auth = vi.fn((_options: unknown, callback: Callback) => callback(result))
+  window.Telegram = { Login: { auth } }
+  return auth
 }
 
+function renderButton(onToken = vi.fn(), onError = vi.fn()) {
+  render(
+    <TelegramButton config={config} onToken={onToken} onError={onError}>
+      Войти через Telegram
+    </TelegramButton>,
+  )
+  fireEvent.click(screen.getByRole('button', { name: /Войти через Telegram/ }))
+  return { onToken, onError }
+}
+
+afterEach(() => {
+  delete window.Telegram
+})
+
 describe('TelegramButton', () => {
-  it('рисует виджет для нужного бота', () => {
-    const { container } = render(
-      <TelegramButton bot="career_helper_bot" onAuth={vi.fn()} />,
+  it('просит Telegram о входе для нашего бота и с нашим nonce', () => {
+    const auth = fakeTelegram({ id_token: 't' })
+    renderButton()
+
+    expect(auth).toHaveBeenCalledWith(
+      { client_id: 8606493609, nonce: 'n-1', lang: 'ru' },
+      expect.any(Function),
     )
-    const script = widgetScript(container)
-
-    expect(script.src).toContain('telegram.org/js/telegram-widget.js')
-    expect(script.dataset.telegramLogin).toBe('career_helper_bot')
   })
 
-  it('ответ Telegram доходит до обработчика целиком', () => {
-    const onAuth = vi.fn()
-    const { container } = render(<TelegramButton bot="b" onAuth={onAuth} />)
-    const name = widgetScript(container).dataset.onauth!.replace('(user)', '')
+  it('id_token уходит обработчику как есть', () => {
+    fakeTelegram({ id_token: 'eyJ.token' })
+    const { onToken, onError } = renderButton()
 
-    const answer = { id: 42, auth_date: 1, hash: 'x' }
-    ;(window as unknown as Record<string, (d: unknown) => void>)[name](answer)
-
-    expect(onAuth).toHaveBeenCalledWith(answer)
+    expect(onToken).toHaveBeenCalledWith('eyJ.token')
+    expect(onError).not.toHaveBeenCalled()
   })
 
-  it('после ухода со страницы глобальный обработчик убран', () => {
-    const { container } = render(<TelegramButton bot="b" onAuth={vi.fn()} />)
-    const name = widgetScript(container).dataset.onauth!.replace('(user)', '')
-    cleanup()
+  it('закрытый попап — не ошибка', () => {
+    fakeTelegram({ error: 'popup_closed' })
+    const { onToken, onError } = renderButton()
 
-    expect(name in window).toBe(false)
+    expect(onToken).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('отказ Telegram показывается, а не глотается', () => {
+    fakeTelegram({ error: 'access_denied' })
+    const { onError } = renderButton()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('access_denied') }),
+    )
+  })
+
+  it('пока скрипт не загрузился, клик объясняет, что ждать', () => {
+    const { onError } = renderButton()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('загружается') }),
+    )
   })
 })

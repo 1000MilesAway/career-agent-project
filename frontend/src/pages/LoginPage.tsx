@@ -2,17 +2,13 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { useAuth } from '../auth'
-import {
-  TelegramButton,
-  useTelegramBot,
-  type TelegramAuthData,
-} from '../components/TelegramLogin'
+import { TelegramButton, useTelegramConfig } from '../components/TelegramLogin'
 import { ErrorNote } from '../components/ui'
 import './login.css'
 
 export function LoginPage() {
   const { login, loginTelegram } = useAuth()
-  const bot = useTelegramBot()
+  const telegram = useTelegramConfig()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<unknown>(null)
@@ -30,11 +26,11 @@ export function LoginPage() {
     })
   }
 
-  function onTelegram(data: TelegramAuthData) {
+  function onTelegram(idToken: string) {
     setError(null)
     startTransition(async () => {
       try {
-        await loginTelegram(data)
+        await loginTelegram(idToken)
       } catch (e) {
         setError(e)
       }
@@ -111,10 +107,17 @@ export function LoginPage() {
 
         {/* Only for an account that has linked Telegram in the cabinet: an
             unknown Telegram account is refused, not registered. */}
-        {bot ? (
+        {telegram ? (
           <div className="login__telegram">
             <span className="login__or">или</span>
-            <TelegramButton bot={bot} onAuth={onTelegram} />
+            <TelegramButton
+              config={telegram}
+              onToken={onTelegram}
+              onError={setError}
+              disabled={isPending}
+            >
+              Войти через Telegram
+            </TelegramButton>
           </div>
         ) : null}
 

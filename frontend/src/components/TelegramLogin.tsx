@@ -1,83 +1,140 @@
-/** Telegram Login Widget: the button, and linking Telegram to the account.
+/** Telegram Login (OpenID Connect): the button, and linking Telegram to the account.
  *
- * The widget is Telegram's own iframe, drawn by a script from telegram.org —
- * there is no other way to get a signed "this is Telegram user N" without
- * running a bot. The signature is checked on the server; nothing the widget
- * hands the page is trusted here.
+ * Telegram's telegram-login.js opens its own popup and hands back an
+ * id_token; the API checks its signature, audience and nonce, so nothing the
+ * popup returns is trusted here. The button is ours rather than Telegram's
+ * drawn one, to sit in the cabinet's own style.
  *
- * It only renders on the domain set for the bot in @BotFather (/setdomain).
- * On localhost or the bare IP the iframe says "Bot domain invalid" — expected,
- * not a bug.
+ * The popup only works for the URLs listed in the bot's Allowed URLs
+ * (@BotFather -> bot -> Login Widget). On localhost or the bare IP Telegram
+ * refuses — expected, not a bug.
  */
 
-import { useEffect, useEffectEvent, useRef, useTransition } from 'react'
+import { useEffect, useTransition } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { api, fetcher } from '../api/client'
 import { STATE_KEY } from '../api/hooks'
+import { TelegramIcon } from './icons'
 import { useToast } from './toast'
 
-/** What the widget hands back: id, names, auth_date, hash and whatever else
- *  Telegram signs. Passed to the server as is — the signature covers every
- *  field, so dropping one would break it. */
-export type TelegramAuthData = Record<string, string | number>
-
-const CONFIG_KEY = '/api/auth/telegram'
-
-/** Which bot the widget is for; null while loading or when it is switched off. */
-export function useTelegramBot(): string | null {
-  const { data } = useSWR<{ bot_username: string | null }>(CONFIG_KEY, fetcher, {
-    revalidateOnFocus: false,
-  })
-  return data?.bot_username ?? null
+interface TelegramConfig {
+  client_id: number | null
+  nonce: string | null
 }
 
-// The widget calls back into a global by name. A counter rather than useId:
-// useId yields ":r1:", which is not a valid identifier inside data-onauth.
-let widgetSeq = 0
+interface TelegramLoginResult {
+  id_token?: string
+  error?: string
+}
+
+interface TelegramLoginApi {
+  auth(
+    options: { client_id: number; nonce?: string; lang?: string },
+    callback: (result: TelegramLoginResult) => void,
+  ): void
+}
+
+declare global {
+  interface Window {
+    Telegram?: { Login?: TelegramLoginApi }
+  }
+}
+
+const CONFIG_KEY = '/api/auth/telegram'
+const SCRIPT_SRC = 'https://oauth.telegram.org/js/telegram-login.js?6'
+
+/** Client id and a fresh nonce; null while loading or when Telegram login is off.
+ *
+ * The server's nonce lives an hour, so a page left open refetches it every
+ * half hour — otherwise the first click after lunch fails for no visible reason.
+ */
+export function useTelegramConfig(): { client_id: number; nonce: string } | null {
+  const { data } = useSWR<TelegramConfig>(CONFIG_KEY, fetcher, {
+    revalidateOnFocus: false,
+    refreshInterval: 30 * 60 * 1000,
+  })
+  if (!data?.client_id || !data.nonce) return null
+  return { client_id: data.client_id, nonce: data.nonce }
+}
+
+// One script per page, however many buttons: it registers a global and a
+// document-wide click listener, and a second copy would double both.
+let scriptLoading: Promise<void> | null = null
+
+function loadScript(): Promise<void> {
+  if (window.Telegram?.Login) return Promise.resolve()
+  scriptLoading ??= new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = SCRIPT_SRC
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => {
+      // Let the next click try again rather than caching the failure.
+      scriptLoading = null
+      script.remove()
+      reject(new Error('Не удалось загрузить вход через Telegram'))
+    }
+    document.head.appendChild(script)
+  })
+  return scriptLoading
+}
 
 export function TelegramButton({
-  bot,
-  onAuth,
-  size = 'large',
+  config,
+  onToken,
+  onError,
+  disabled = false,
+  small = false,
+  children,
 }: {
-  bot: string
-  onAuth: (data: TelegramAuthData) => void
-  size?: 'large' | 'medium' | 'small'
+  config: { client_id: number; nonce: string }
+  onToken: (idToken: string) => void
+  onError: (error: Error) => void
+  disabled?: boolean
+  small?: boolean
+  children: string
 }) {
-  const host = useRef<HTMLDivElement>(null)
-  // The latest handler without re-injecting the iframe on every render.
-  const handleAuth = useEffectEvent((data: TelegramAuthData) => onAuth(data))
-
+  // Loaded ahead of the click: the popup has to open inside the click itself,
+  // or the browser's popup blocker takes it for an unprompted window.
   useEffect(() => {
-    const el = host.current
-    if (!el) return
-    const name = `__careerTelegramAuth${++widgetSeq}`
-    const w = window as unknown as Record<string, unknown>
-    w[name] = (data: TelegramAuthData) => handleAuth(data)
+    loadScript().catch(() => {})
+  }, [])
 
-    const script = document.createElement('script')
-    script.async = true
-    script.src = 'https://telegram.org/js/telegram-widget.js?22'
-    script.dataset.telegramLogin = bot
-    script.dataset.size = size
-    script.dataset.radius = '8'
-    script.dataset.userpic = 'false'
-    script.dataset.lang = 'ru'
-    script.dataset.onauth = `${name}(user)`
-    el.appendChild(script)
-
-    return () => {
-      delete w[name]
-      el.replaceChildren()
+  function onClick() {
+    const login = window.Telegram?.Login
+    if (!login) {
+      loadScript().catch(onError)
+      onError(new Error('Вход через Telegram ещё загружается — нажмите через секунду'))
+      return
     }
-  }, [bot, size])
+    login.auth(
+      { client_id: config.client_id, nonce: config.nonce, lang: 'ru' },
+      (result) => {
+        if (result.id_token) onToken(result.id_token)
+        // Closing the popup is the user changing their mind, not an error.
+        else if (result.error && result.error !== 'popup_closed') {
+          onError(new Error(`Telegram не подтвердил вход: ${result.error}`))
+        }
+      },
+    )
+  }
 
-  return <div ref={host} className="tg-button" />
+  return (
+    <button
+      type="button"
+      className={small ? 'btn btn--quiet btn--small tg-login' : 'btn btn--quiet tg-login'}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <TelegramIcon />
+      {children}
+    </button>
+  )
 }
 
 /** Sidebar block: link Telegram for login, or show what is linked. */
 export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
-  const bot = useTelegramBot()
+  const config = useTelegramConfig()
   const toast = useToast()
   const { mutate } = useSWRConfig()
   const [isPending, startTransition] = useTransition()
@@ -116,20 +173,27 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
     )
   }
 
-  if (!bot) return null
+  if (!config) return null
   return (
-    <div className="side__telegram side__telegram--offer">
-      <span className="side__telegram-name">Входить через Telegram:</span>
+    <div className="side__telegram">
       <TelegramButton
-        bot={bot}
-        size="small"
-        onAuth={(data) =>
+        config={config}
+        small
+        disabled={isPending}
+        onError={toast.error}
+        onToken={(idToken) =>
           run(
-            () => api('/api/auth/telegram/link', { method: 'POST', json: data }),
+            () =>
+              api('/api/auth/telegram/link', {
+                method: 'POST',
+                json: { id_token: idToken },
+              }),
             'Telegram привязан — теперь можно входить через него.',
           )
         }
-      />
+      >
+        Привязать Telegram
+      </TelegramButton>
     </div>
   )
 }

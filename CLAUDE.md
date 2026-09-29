@@ -301,7 +301,7 @@ api, чтобы браузер оставался на одном origin.
 из файла и health будет вечно показывать чужую ревизию.
 
 Без авторизации открыты только `/api/health`, `/openapi.json`, `/api/auth/telegram`
-(имя бота для виджета; вход через Telegram — `POST` туда же),
+(client_id и nonce для кнопки; вход через Telegram — `POST` туда же),
 `/api/artifacts/kinds`, `/api/vacancies/statuses`. Остальное — под JWT:
 `POST /api/auth/login` с email и паролем заведённой учётки.
 

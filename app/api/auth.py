@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 
-from ..core.config import get_settings
+from ..core import telegram_login
 from ..core.deps import SessionDep, UserDep
-from ..core.security import create_access_token, verify_password, verify_telegram_login
+from ..core.security import create_access_token, verify_password
 from ..models import User
 from ..services.spend import remaining_rub
 
@@ -92,48 +92,62 @@ async def give_consent(user: UserDep, session: SessionDep) -> UserResponse:
 
 
 class TelegramConfig(BaseModel):
-    # Null when the bot is not configured: the cabinet then shows no button.
-    bot_username: str | None
+    # Null when Telegram login is off: the cabinet then shows no button.
+    client_id: int | None
+    # Goes into the id_token Telegram signs; see core/telegram_login.py.
+    nonce: str | None
 
 
-def _telegram_identity(data: dict[str, Any]) -> tuple[int, str]:
-    """Verify a Login Widget answer; the Telegram id and a display name.
+class TelegramToken(BaseModel):
+    id_token: str
 
-    A bad or stale signature is one 401 whatever the reason, as with the
-    password: the widget produces a fresh answer on the next click anyway.
+
+async def _telegram_identity(body: TelegramToken) -> telegram_login.TelegramIdentity:
+    """Verify an id_token from Telegram's popup.
+
+    A bad, stale or foreign token is one 401 whatever the reason, as with the
+    password: the popup produces a fresh token on the next click anyway.
     """
-    settings = get_settings()
-    if not (settings.telegram_bot_token and settings.telegram_bot_username):
+    client_id = telegram_login.client_id()
+    if client_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Вход через Telegram не настроен")
-    telegram_id = verify_telegram_login(data, settings.telegram_bot_token)
-    if telegram_id is None:
+    try:
+        # Off the event loop: fetching Telegram's keys is blocking urllib.
+        identity = await asyncio.to_thread(
+            telegram_login.verify_id_token, body.id_token, client_id
+        )
+    except telegram_login.TelegramUnavailable:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Telegram сейчас не отвечает — попробуйте через минуту или войдите по email",
+        ) from None
+    if identity is None:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             "Telegram не подтвердил вход — попробуйте ещё раз",
         )
-    username = data.get("username")
-    name = f"@{username}" if username else str(data.get("first_name") or telegram_id)
-    return telegram_id, name[:128]
+    return identity
 
 
 @router.get("/telegram", response_model=TelegramConfig)
 async def telegram_config() -> TelegramConfig:
-    """Which bot the login widget is drawn for. Public: the login page needs it."""
-    settings = get_settings()
-    enabled = bool(settings.telegram_bot_token and settings.telegram_bot_username)
-    return TelegramConfig(bot_username=settings.telegram_bot_username if enabled else None)
+    """What the login button needs. Public: the login page asks before anyone logs in."""
+    client_id = telegram_login.client_id()
+    if client_id is None:
+        return TelegramConfig(client_id=None, nonce=None)
+    return TelegramConfig(client_id=client_id, nonce=telegram_login.issue_nonce())
 
 
 @router.post("/telegram", response_model=TokenResponse)
-async def telegram_login(data: dict[str, Any], session: SessionDep) -> TokenResponse:
+async def telegram_login_endpoint(body: TelegramToken, session: SessionDep) -> TokenResponse:
     """Log in with a Telegram account linked to a user beforehand.
 
     An unknown Telegram account is refused, not registered: accounts are
     still created by the admin. Saying "not linked" leaks nothing — only the
-    owner of that Telegram account can produce a signed answer for it.
+    owner of that Telegram account can get a signed token for it.
     """
-    telegram_id, name = _telegram_identity(data)
-    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    identity = await _telegram_identity(body)
+    result = await session.execute(select(User).where(User.telegram_id == identity.id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(
@@ -142,30 +156,30 @@ async def telegram_login(data: dict[str, Any], session: SessionDep) -> TokenResp
             "в кабинете.",
         )
     # The handle can change in Telegram; keep the displayed one current.
-    if user.telegram_name != name:
-        user.telegram_name = name
+    if user.telegram_name != identity.name:
+        user.telegram_name = identity.name
         await session.commit()
     return TokenResponse(access_token=create_access_token(user.id))
 
 
 @router.post("/telegram/link", response_model=UserResponse)
-async def telegram_link(data: dict[str, Any], user: UserDep, session: SessionDep) -> UserResponse:
-    """Link the Telegram account the widget vouched for to the current user.
+async def telegram_link(body: TelegramToken, user: UserDep, session: SessionDep) -> UserResponse:
+    """Link the Telegram account the token vouches for to the current user.
 
-    The user's own click in the widget is the confirmation — nothing is linked
-    without it. One Telegram account belongs to one user: taking it over from
-    another would hand that user's login to whoever clicked.
+    The user's own confirmation in Telegram's popup is the "yes" — nothing is
+    linked without it. One Telegram account belongs to one user: taking it
+    over from another would hand that user's login to whoever clicked.
     """
-    telegram_id, name = _telegram_identity(data)
-    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    identity = await _telegram_identity(body)
+    result = await session.execute(select(User).where(User.telegram_id == identity.id))
     owner = result.scalar_one_or_none()
     if owner is not None and owner.id != user.id:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Этот Telegram уже привязан к другой учётке — сначала отвяжите его там",
         )
-    user.telegram_id = telegram_id
-    user.telegram_name = name
+    user.telegram_id = identity.id
+    user.telegram_name = identity.name
     await session.commit()
     return UserResponse.of(user)
 
