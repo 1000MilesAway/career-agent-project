@@ -18,7 +18,9 @@ from io import BytesIO
 
 import pytest
 
+from core.contacts import extract_contacts
 from core.export import (
+    Block,
     Document,
     ascii_filename,
     filename,
@@ -185,7 +187,7 @@ class TestMarkdown:
         md = to_markdown(profile_document(PROFILE)).decode("utf-8")
         assert md.startswith("# Иванов Иван\n")
         assert "\n## Опыт работы\n" in md
-        assert "\n### Тимлид — ООО «Ромашка»\n" in md
+        assert "\n### Тимлид, ООО «Ромашка»\n" in md
         assert "\n- Сократил время сборки на 40%\n" in md
 
     def test_bullets_stay_one_list(self):
@@ -286,7 +288,7 @@ class TestStyles:
 
     def test_a_job_title_is_kept_with_its_dates(self):
         html = to_html(profile_document(PROFILE))
-        assert '<div class="job"><h3>Тимлид — ООО «Ромашка»</h3><p class="meta">2021–2025</p></div>' in html
+        assert '<div class="job"><h3>Тимлид, ООО «Ромашка»</h3><p class="meta">2021–2025</p></div>' in html
 
     def test_a_job_without_dates_still_renders(self):
         doc = Document(title="x")
@@ -330,3 +332,82 @@ class TestStyles:
     def test_html_is_rendered_as_the_preview(self):
         page = render(profile_document(PROFILE), "html", "compact").decode()
         assert page == to_html(profile_document(PROFILE), "compact")
+
+
+class TestContactsAndSections:
+    CONTACTS = extract_contacts("ivan@mail.ru t.me/ivan_dev github.com/ivandev")
+    FULL = {
+        **PROFILE,
+        "summary": "Инженер с 8 годами опыта.",
+        "education": ["НГТУ, прикладная математика, 2016 — 2020"],
+        "experience": [
+            {
+                "role": "Тимлид",
+                "company": "ООО «Ромашка»",
+                "period": "2021–2025",
+                "location": "Новосибирск",
+                "description": "Финтех: платежи для малого бизнеса.",
+                "achievements": ["Сократил время сборки на 40%"],
+            }
+        ],
+    }
+
+    def test_contacts_sit_in_the_header_on_one_line(self):
+        html = to_html(profile_document(PROFILE, contacts=self.CONTACTS))
+        header = html[html.index("<header") : html.index("</header>")]
+        assert header.count('<p class="contacts">') == 1
+        assert 'href="mailto:ivan@mail.ru"' in header
+        assert 'class="contact contact--telegram" href="https://t.me/ivan_dev"' in header
+
+    def test_contacts_read_as_separate_words_in_the_text_layer(self):
+        """The separator is text: without it an ATS reads "ivan@mail.ru@ivan_dev"."""
+        html = to_html(profile_document(PROFILE, contacts=self.CONTACTS))
+        assert '</a><span class="sep"> · </span><a' in html
+
+    def test_an_unsafe_href_is_not_a_link(self):
+        doc = Document(title="x")
+        doc.add("h1", "x")
+        doc.blocks.append(
+            Block(kind="contact", text="клик", href="javascript:alert(1)", icon="email")
+        )
+        html = to_html(doc)
+        assert "javascript:" not in html
+        assert '<span class="contact contact--email">клик</span>' in html
+
+    def test_no_svg_in_the_markup(self):
+        """WeasyPrint draws inline SVG black whatever the CSS says; icons are CSS."""
+        html = to_html(profile_document(PROFILE, contacts=self.CONTACTS), "graphite")
+        assert "<svg" not in html[html.index("<body>") :]
+
+    def test_summary_education_description_and_place(self):
+        md = to_markdown(profile_document(self.FULL)).decode()
+        assert "\n## О себе\n\nИнженер с 8 годами опыта.\n" in md
+        assert "\n*2021–2025 · Новосибирск*\n\nФинтех: платежи для малого бизнеса.\n" in md
+        assert "\n## Образование\n\nНГТУ, прикладная математика, 2016 — 2020\n" in md
+
+    def test_old_profiles_without_new_fields_render_as_before(self):
+        md = to_markdown(profile_document(PROFILE)).decode()
+        assert "О себе" not in md
+        assert "*2021–2025*" in md
+
+    def test_markdown_contacts_on_one_line(self):
+        md = to_markdown(profile_document(PROFILE, contacts=self.CONTACTS)).decode()
+        assert "\nivan@mail.ru · @ivan\\_dev · github.com/ivandev\n" in md
+
+    def test_docx_contacts_on_one_line(self):
+        import docx
+
+        data = to_docx(profile_document(PROFILE, contacts=self.CONTACTS), "graphite")
+        paragraphs = [p.text for p in docx.Document(BytesIO(data)).paragraphs]
+        assert "ivan@mail.ru · @ivan_dev · github.com/ivandev" in paragraphs
+
+    def test_tailored_resume_carries_contacts_and_education(self):
+        doc = tailored_resume_document(TAILORED, profile=self.FULL, contacts=self.CONTACTS)
+        assert [b.kind for b in doc.blocks].count("contact") == 3
+        assert "Образование" in texts(doc)
+
+    def test_graphite_draws_icons_in_its_colours(self):
+        css = get_style("graphite").stylesheet()
+        assert ".contact--telegram::before" in css
+        assert "%2329a8e0" in css  # "#29a8e0", url-encoded inside the data URI
+        assert "IBM Plex Sans" in css

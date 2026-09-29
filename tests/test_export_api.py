@@ -177,6 +177,19 @@ class TestProfileExport:
         assert r.status_code == 200
         assert docx.Document(BytesIO(r.content)).styles["Normal"].font.name == "Segoe UI"
 
+    async def test_contacts_come_from_the_uploaded_text(
+        self, client, session, user, auth_headers
+    ):
+        """Read from `raw_text`, not the profile: works for resumes parsed earlier."""
+        resume = await _resume(session, user)
+        resume.raw_text = "Иванов Иван\nivan@mail.ru · Telegram @ivan_dev\n"
+        await session.commit()
+
+        r = await client.get("/api/export/resume.html?style=graphite", headers=auth_headers)
+
+        assert 'href="mailto:ivan@mail.ru"' in r.text
+        assert 'href="https://t.me/ivan_dev"' in r.text
+
     async def test_an_unknown_style_is_rejected(self, client, session, user, auth_headers):
         await _resume(session, user)
         r = await client.get("/api/export/resume.docx?style=neon", headers=auth_headers)

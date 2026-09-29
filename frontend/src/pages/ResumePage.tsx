@@ -240,6 +240,15 @@ function ProfileCard({ profile }: { profile: ResumeProfile }) {
         </div>
       </dl>
 
+      {/* What goes into the downloaded file must be visible here first:
+          summary, description and education reach the employer. */}
+      {profile.summary ? (
+        <div className="profile__group">
+          <h3 className="eyebrow">О себе</h3>
+          <p className="profile__summary">{profile.summary}</p>
+        </div>
+      ) : null}
+
       {profile.directions?.length ? (
         <div className="profile__group">
           <h3 className="eyebrow">Направления</h3>
@@ -270,7 +279,12 @@ function ProfileCard({ profile }: { profile: ResumeProfile }) {
                     item.company
                   )}
                 </p>
-                <p className="timeline__period">{item.period}</p>
+                <p className="timeline__period">
+                  {[item.period, item.location].filter(Boolean).join(' · ')}
+                </p>
+                {item.description ? (
+                  <p className="timeline__description">{item.description}</p>
+                ) : null}
                 {item.achievements?.length ? (
                   <ul className="timeline__list">
                     {item.achievements.map((achievement, i) => (
@@ -281,6 +295,17 @@ function ProfileCard({ profile }: { profile: ResumeProfile }) {
               </li>
             ))}
           </ol>
+        </div>
+      ) : null}
+
+      {profile.education?.length ? (
+        <div className="profile__group">
+          <h3 className="eyebrow">Образование</h3>
+          <ul className="profile__list">
+            {profile.education.map((entry, i) => (
+              <li key={i}>{entry}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
 

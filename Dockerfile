@@ -34,6 +34,12 @@ ENV PYTHONUNBUFFERED=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+# IBM Plex Sans is the face of the "Тёмная шапка" resume style. Debian 13 has
+# no package for it, so the OFL font file is vendored in fonts/; without it
+# that style falls back to DejaVu and its line breaks drift from the design.
+# fontconfig scans /usr/local/share/fonts on its own, no cache step needed.
+COPY fonts/ /usr/local/share/fonts/ibm-plex/
+
 COPY core/ ./core/
 # JSON only. The cabinet is a React build with its own image — see frontend/.
 COPY app/ ./app/

@@ -23,6 +23,7 @@ from html import escape
 from io import BytesIO
 from typing import Any, Literal
 
+from core.contacts import Contact
 from core.resume_styles import DEFAULT_STYLE, DocxTheme, get_style
 
 Format = Literal["pdf", "docx", "md", "html"]
@@ -39,10 +40,16 @@ MEDIA_TYPES: dict[str, str] = {
 
 @dataclass
 class Block:
-    """One piece of the document. `kind` decides how each backend draws it."""
+    """One piece of the document. `kind` decides how each backend draws it.
 
-    kind: Literal["h1", "subtitle", "h2", "h3", "meta", "para", "bullet"]
+    `href` and `icon` are used by "contact" only: the address a contact links
+    to and which glyph a style may draw next to it.
+    """
+
+    kind: Literal["h1", "subtitle", "contact", "h2", "h3", "meta", "para", "bullet"]
     text: str
+    href: str | None = None
+    icon: str | None = None
 
 
 @dataclass
@@ -51,6 +58,10 @@ class Document:
 
     title: str
     blocks: list[Block] = field(default_factory=list)
+
+    def add_contacts(self, contacts: list[Contact]) -> None:
+        for c in contacts:
+            self.blocks.append(Block(kind="contact", text=c.label, href=c.href, icon=c.kind))
 
     def add(self, kind: str, text: Any) -> None:
         """Append a block, skipping anything empty.
@@ -86,31 +97,69 @@ def _items(value: Any) -> list[dict[str, Any]]:
 # --- документы ------------------------------------------------------------
 
 
-def profile_document(profile: dict[str, Any]) -> Document:
+def _str(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _add_experience(doc: Document, items: list[dict[str, Any]], bullets_key: str) -> None:
+    """One job: title, "period · place", what the company does, then bullets."""
+    for item in items:
+        role = _str(item.get("role"))
+        company = _str(item.get("company"))
+        doc.add("h3", ", ".join(p for p in (role, company) if p))
+        doc.add("meta", " · ".join(p for p in (_str(item.get("period")),
+                                                _str(item.get("location"))) if p))
+        doc.add("para", item.get("description"))
+        for bullet in item.get(bullets_key) or []:
+            doc.add("bullet", bullet)
+
+
+def _add_list_section(doc: Document, title: str, value: Any) -> None:
+    """A heading over one paragraph per entry, skipped when there are none."""
+    entries = [_str(v) for v in value] if isinstance(value, list) else []
+    entries = [e for e in entries if e]
+    if entries:
+        doc.add("h2", title)
+        for entry in entries:
+            doc.add("para", entry)
+
+
+def profile_document(
+    profile: dict[str, Any], *, contacts: list[Contact] | None = None
+) -> Document:
     """The parsed CV as a resume: what `resumes.profile` holds.
 
     This is the CV the user uploaded, read back through the model. It is not
     the original file — the original is what they already have on disk, and
     handing it back would be a download button that returns its own input.
+
+    `contacts` come from the raw text (`core.contacts`), not from the profile:
+    the model is never asked for them.
     """
     profile = profile or {}
-    name = str(profile.get("name") or "").strip() or "Резюме"
+    name = _str(profile.get("name")) or "Резюме"
     doc = Document(title=name)
 
     doc.add("h1", name)
     doc.add("subtitle", profile.get("target_role"))
+    doc.add_contacts(contacts or [])
 
     meta: list[str] = []
-    seniority = str(profile.get("seniority") or "").strip()
+    seniority = _str(profile.get("seniority"))
     if seniority:
         meta.append(f"Уровень: {seniority}")
     years = profile.get("years_experience")
     if isinstance(years, int | float) and years > 0:
         meta.append(f"Опыт: {years:g} лет")
-    field_name = str(profile.get("field") or "").strip()
+    field_name = _str(profile.get("field"))
     if field_name:
         meta.append(f"Сфера: {field_name}")
     doc.add("meta", " · ".join(meta))
+
+    summary = _str(profile.get("summary"))
+    if summary:
+        doc.add("h2", "О себе")
+        doc.add("para", summary)
 
     directions = _join(profile.get("directions"))
     if directions:
@@ -125,13 +174,14 @@ def profile_document(profile: dict[str, Any]) -> Document:
     experience = _items(profile.get("experience"))
     if experience:
         doc.add("h2", "Опыт работы")
-        for item in experience:
-            role = str(item.get("role") or "").strip()
-            company = str(item.get("company") or "").strip()
-            doc.add("h3", " — ".join(p for p in (role, company) if p))
-            doc.add("meta", item.get("period"))
-            for achievement in item.get("achievements") or []:
-                doc.add("bullet", achievement)
+        _add_experience(doc, experience, "achievements")
+
+    _add_list_section(doc, "Образование", profile.get("education"))
+
+    languages = _join(profile.get("languages"))
+    if languages:
+        doc.add("h2", "Языки")
+        doc.add("para", languages)
 
     return doc
 
@@ -141,10 +191,11 @@ def tailored_resume_document(
     *,
     profile: dict[str, Any] | None = None,
     vacancy_title: str | None = None,
+    contacts: list[Contact] | None = None,
 ) -> Document:
     """The tailored CV: `artifacts.content` for kind `tailor`.
 
-    The name and the contact line come from the stored profile, because the
+    The name, contacts and education come from the stored profile, because the
     tailoring prompt returns the repackaged content and not the identity — a
     CV that arrives at an employer with no name on it is not a CV.
 
@@ -155,15 +206,16 @@ def tailored_resume_document(
     content = content or {}
     profile = profile or {}
 
-    name = str(profile.get("name") or "").strip() or "Резюме"
+    name = _str(profile.get("name")) or "Резюме"
     doc = Document(title=name)
 
     doc.add("h1", name)
     doc.add("subtitle", profile.get("target_role"))
+    doc.add_contacts(contacts or [])
     if vacancy_title:
         doc.add("meta", f"Под вакансию: {vacancy_title}")
 
-    summary = str(content.get("summary") or "").strip()
+    summary = _str(content.get("summary"))
     if summary:
         doc.add("h2", "О себе")
         doc.add("para", summary)
@@ -171,13 +223,7 @@ def tailored_resume_document(
     experience = _items(content.get("experience"))
     if experience:
         doc.add("h2", "Опыт работы")
-        for item in experience:
-            role = str(item.get("role") or "").strip()
-            company = str(item.get("company") or "").strip()
-            doc.add("h3", " — ".join(p for p in (role, company) if p))
-            doc.add("meta", item.get("period"))
-            for bullet in item.get("bullets") or []:
-                doc.add("bullet", bullet)
+        _add_experience(doc, experience, "bullets")
 
     skills = _join(content.get("skills"))
     if skills:
@@ -190,6 +236,8 @@ def tailored_resume_document(
         # that detects keyword stuffing rejects the candidate outright.
         doc.add("h2", "Ключевые слова")
         doc.add("para", keywords)
+
+    _add_list_section(doc, "Образование", profile.get("education"))
 
     return doc
 
@@ -262,7 +310,23 @@ def ascii_filename(name: str) -> str:
 #
 # One column, no tables in any case: see the module docstring.
 
-_HEADER_KINDS = {"h1", "subtitle", "meta"}
+_HEADER_KINDS = {"h1", "subtitle", "contact", "meta"}
+
+# Only these schemes become links. The href comes from `core.contacts`, which
+# builds it from a fixed prefix, but a `javascript:` URL in a file that goes
+# to an employer is not a risk worth one missed check.
+_SAFE_HREF = ("mailto:", "tel:", "https://", "http://")
+
+
+def _contact_html(block: Block) -> str:
+    """One contact. Its icon, if any, is the style's business: see
+    `contact_icons` in core/resume_styles.py for why it is not an <svg> here."""
+    cls = f"contact contact--{escape(block.icon or 'link')}"
+    label = escape(block.text)
+    href = block.href or ""
+    if href.startswith(_SAFE_HREF):
+        return f'<a class="{cls}" href="{escape(href)}">{label}</a>'
+    return f'<span class="{cls}">{label}</span>'
 
 
 def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
@@ -294,7 +358,21 @@ def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
 
     if header_end:
         parts.append('<header class="resume-header">')
-        parts.extend(draw(b) for b in blocks[:header_end])
+        header = blocks[:header_end]
+        contacts = [b for b in header if b.kind == "contact"]
+        placed = False
+        for b in header:
+            if b.kind != "contact":
+                parts.append(draw(b))
+            elif not placed:
+                # One line, in the order found. The separator is real text,
+                # so the extracted stream reads "a · b", not "ab"; a style
+                # that draws icons hides it.
+                sep = '<span class="sep"> · </span>'
+                parts.append(
+                    '<p class="contacts">' + sep.join(_contact_html(c) for c in contacts) + "</p>"
+                )
+                placed = True
         parts.append("</header>")
 
     i = header_end
@@ -398,8 +476,18 @@ def to_docx(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
     document.core_properties.title = doc.title
     _apply_docx_theme(document, theme)
 
+    contacts = " · ".join(b.text for b in doc.blocks if b.kind == "contact")
     for block in doc.blocks:
-        if block.kind == "h1":
+        if block.kind == "contact":
+            # All contacts on one line, where the first one stood. The labels
+            # are the addresses themselves, so no hyperlink is needed for the
+            # reader — python-docx has no API for one short of raw XML.
+            if contacts:
+                run = document.add_paragraph().add_run(contacts)
+                run.font.size = Pt(theme.body_pt - 0.5)
+                run.font.color.rgb = RGBColor.from_string(theme.muted_color)
+                contacts = ""
+        elif block.kind == "h1":
             document.add_heading(block.text, level=0)
         elif block.kind == "h2":
             document.add_heading(block.text, level=1)
@@ -453,6 +541,10 @@ def to_markdown(doc: Document) -> bytes:
 
     for block in doc.blocks:
         text = _md_line(block.text)
+        if block.kind == "contact" and previous == "contact":
+            # Contacts join the line the first one opened.
+            lines[-1] += f" · {text}"
+            continue
         if lines and not (block.kind == "bullet" and previous == "bullet"):
             lines.append("")
         if block.kind == "h1":

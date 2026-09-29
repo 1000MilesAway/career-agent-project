@@ -22,6 +22,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy import select
 
+from core.contacts import extract_contacts
 from core.export import (
     MEDIA_TYPES,
     Document,
@@ -107,7 +108,9 @@ async def export_profile(
     fmt: Format, resume: ResumeDep, style: StyleId = StyleQuery
 ) -> Response:
     """The CV the user uploaded, as parsed into a profile."""
-    doc = profile_document(resume.profile)
+    # Contacts are read from the uploaded text, not asked of the model: see
+    # core/contacts.py. Free, and it covers resumes parsed before they existed.
+    doc = profile_document(resume.profile, contacts=extract_contacts(resume.raw_text))
     return await _render(doc, fmt, doc.title, style)
 
 
@@ -149,6 +152,7 @@ async def export_tailored(
         artifact.content,
         profile=resume.profile,
         vacancy_title=vacancy.title,
+        contacts=extract_contacts(resume.raw_text),
     )
     # The company in the file name is what the user sees in their downloads
     # folder three days later, when "resume.pdf" tells them nothing.

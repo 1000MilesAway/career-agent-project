@@ -124,12 +124,19 @@ export interface ResumeProfile {
   field?: string
   directions?: string[]
   skills?: string[]
+  /** The CV's own "О себе" paragraph, near-verbatim; null when it has none. */
+  summary?: string | null
   experience?: {
     role: string
     company: string
     period: string
+    location?: string | null
+    /** One line on what the company or project does. */
+    description?: string | null
     achievements?: string[]
   }[]
+  education?: string[]
+  languages?: string[]
 }
 
 export interface SearchProfile {

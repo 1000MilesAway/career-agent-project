@@ -208,6 +208,26 @@
   color: var(--muted);
 }
 
+.timeline__description {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.profile__summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.profile__list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
 .timeline__list {
   margin: 8px 0 0;
   padding-left: 18px;

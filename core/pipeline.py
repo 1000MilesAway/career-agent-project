@@ -12,6 +12,23 @@ from .sources import geekjob
 from .sources.habr import fetch_vacancy, is_habr_url
 
 
+def _with_links(text: str, uris: list[str]) -> str:
+    """Append the link targets the text layer does not show.
+
+    A CV writes "@handle" or "GitHub" and puts the address in the link; the
+    extracted text keeps only the visible words, and the contact is lost —
+    to the model and to `core.contacts` alike. Listed once each, in order.
+    """
+    seen: list[str] = []
+    for uri in uris:
+        uri = (uri or "").strip()
+        if uri.lower().startswith(("http://", "https://", "mailto:", "tel:")) and uri not in seen:
+            seen.append(uri)
+    if not seen:
+        return text
+    return text + "\n\nСсылки:\n" + "\n".join(seen)
+
+
 def read_document(path: Path) -> str:
     """PDF/DOCX/DOC/RTF/TXT -> plain text."""
     suffix = path.suffix.lower()
@@ -19,11 +36,21 @@ def read_document(path: Path) -> str:
         import pymupdf
 
         with pymupdf.open(path) as doc:
-            return "\n".join(page.get_text() for page in doc).strip()
+            text = "\n".join(page.get_text() for page in doc).strip()
+            uris = [link.get("uri", "") for page in doc for link in page.get_links()]
+        return _with_links(text, uris)
     if suffix == ".docx":
         import docx
+        from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
-        return "\n".join(p.text for p in docx.Document(str(path)).paragraphs).strip()
+        document = docx.Document(str(path))
+        text = "\n".join(p.text for p in document.paragraphs).strip()
+        uris = [
+            rel.target_ref
+            for rel in document.part.rels.values()
+            if rel.reltype == RT.HYPERLINK and rel.is_external
+        ]
+        return _with_links(text, uris)
     if suffix == ".doc":
         from .msdoc import read_doc
 
