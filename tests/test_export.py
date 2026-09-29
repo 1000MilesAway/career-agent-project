@@ -27,6 +27,7 @@ from core.export import (
     tailored_resume_document,
     to_docx,
     to_html,
+    to_markdown,
 )
 
 PROFILE = {
@@ -176,6 +177,43 @@ class TestDocx:
     def test_unknown_format_is_refused(self):
         with pytest.raises(ValueError):
             render(profile_document(PROFILE), "rtf")  # type: ignore[arg-type]
+
+
+class TestMarkdown:
+    def test_structure_is_markdown(self):
+        md = to_markdown(profile_document(PROFILE)).decode("utf-8")
+        assert md.startswith("# Иванов Иван\n")
+        assert "\n## Опыт работы\n" in md
+        assert "\n### Тимлид — ООО «Ромашка»\n" in md
+        assert "\n- Сократил время сборки на 40%\n" in md
+
+    def test_bullets_stay_one_list(self):
+        doc = Document(title="x")
+        doc.add("bullet", "раз")
+        doc.add("bullet", "два")
+        assert to_markdown(doc) == "- раз\n- два\n".encode()
+
+    def test_text_cannot_forge_structure(self):
+        """A bullet from the model that starts with "#" must not become a heading."""
+        doc = Document(title="x")
+        doc.add("para", "# не заголовок")
+        doc.add("para", "1. не список")
+        doc.add("para", "C# и *звёздочки*\nс переносом")
+        md = to_markdown(doc).decode()
+        assert md.splitlines() == [
+            r"\# не заголовок",
+            "",
+            r"\1. не список",
+            "",
+            r"C# и \*звёздочки\* с переносом",
+        ]
+
+    def test_changes_never_reach_the_file(self):
+        md = to_markdown(tailored_resume_document(TAILORED, profile=PROFILE)).decode()
+        assert "Переставил акценты" not in md
+
+    def test_render_dispatches(self):
+        assert render(profile_document(PROFILE), "md").startswith(b"# ")
 
 
 class TestFilename:

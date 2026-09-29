@@ -130,7 +130,7 @@ export const acceptSearchProfile = (profile: SearchProfile) =>
 
 /** Downloads. Free — they render JSON that was already paid for. */
 
-export type ExportFormat = 'pdf' | 'docx'
+export type ExportFormat = 'pdf' | 'docx' | 'md'
 
 export const downloadProfile = (fmt: ExportFormat) =>
   download(`/api/export/resume.${fmt}`, `resume.${fmt}`)

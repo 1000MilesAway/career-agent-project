@@ -1,4 +1,4 @@
-"""Downloading a resume as PDF or DOCX.
+"""Downloading a resume as PDF, DOCX or Markdown.
 
 Free: every download renders JSON that was already paid for — the parsed
 profile on `resumes.profile`, or the tailored CV on `artifacts.content`. No
@@ -37,7 +37,7 @@ from ..models import Artifact, Evaluation, Vacancy
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
-Format = Literal["pdf", "docx"]
+Format = Literal["pdf", "docx", "md"]
 
 
 def _file_response(doc: Document, fmt: Format, stem: str) -> Response:

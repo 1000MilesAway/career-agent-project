@@ -1,4 +1,4 @@
-/** "Скачать PDF / DOCX" — one pair of buttons, used on both screens.
+/** "Скачать PDF / DOCX / MD" — one set of buttons, used on both screens.
  *
  * Shared so the two places cannot disagree on what a download costs. Nothing
  * here is paid: the server renders JSON that already exists, which is why no
@@ -9,7 +9,7 @@ import { useState } from 'react'
 import type { ExportFormat } from '../api/hooks'
 import { useToast } from './toast'
 
-const LABELS: Record<ExportFormat, string> = { pdf: 'PDF', docx: 'DOCX' }
+const LABELS: Record<ExportFormat, string> = { pdf: 'PDF', docx: 'DOCX', md: 'MD' }
 
 export function DownloadButtons({
   onDownload,
@@ -40,7 +40,7 @@ export function DownloadButtons({
 
   return (
     <>
-      {(['pdf', 'docx'] as const).map((fmt) => (
+      {(['pdf', 'docx', 'md'] as const).map((fmt) => (
         <button
           key={fmt}
           className={className}

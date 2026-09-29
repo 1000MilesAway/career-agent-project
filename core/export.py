@@ -1,6 +1,6 @@
 """Rendering a resume into a file the user can send to an employer.
 
-Two formats out of one document model. The model (`Document`) is a flat list
+Three formats out of one document model. The model (`Document`) is a flat list
 of blocks, not HTML and not a .docx tree: an HTML template that DOCX has to
 re-parse, or a .docx built by walking the same dict a second time, is how the
 two formats drift until only one of them is correct.
@@ -23,11 +23,14 @@ from html import escape
 from io import BytesIO
 from typing import Any, Literal
 
-Format = Literal["pdf", "docx"]
+Format = Literal["pdf", "docx", "md"]
 
 MEDIA_TYPES: dict[str, str] = {
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    # The charset is stated: without it a browser opening the file may guess
+    # a legacy encoding and show a Cyrillic CV as mojibake.
+    "md": "text/markdown; charset=utf-8",
 }
 
 
@@ -358,7 +361,58 @@ def to_docx(doc: Document) -> bytes:
     return buffer.getvalue()
 
 
+# --- Markdown -------------------------------------------------------------
+
+# A line that starts like a block marker — "# ", "- ", "1. ", "> " — would be
+# re-read as a heading or a list item. Only the start of the line and the few
+# inline markers are escaped: backslashes before every dot and dash make the
+# raw file, which is what most people will actually read, look broken.
+_MD_BLOCK_START = re.compile(r"^([#>+\-*=|]|\d+[.)])")
+_MD_INLINE = re.compile(r"([\\`*_\[\]<])")
+
+
+def _md_line(text: str) -> str:
+    """One block's text as a single Markdown line, structure-safe."""
+    line = " ".join(text.split())  # a stray newline would split the block
+    line = _MD_INLINE.sub(r"\\\1", line)
+    return _MD_BLOCK_START.sub(r"\\\1", line)
+
+
+def to_markdown(doc: Document) -> bytes:
+    """Render to Markdown: plain text that pastes into a job-board form.
+
+    A blank line between blocks, except inside a run of bullets, so a list
+    stays one list instead of a sequence of one-item lists.
+    """
+    lines: list[str] = []
+    previous: str | None = None
+
+    for block in doc.blocks:
+        text = _md_line(block.text)
+        if lines and not (block.kind == "bullet" and previous == "bullet"):
+            lines.append("")
+        if block.kind == "h1":
+            lines.append(f"# {text}")
+        elif block.kind == "h2":
+            lines.append(f"## {text}")
+        elif block.kind == "h3":
+            lines.append(f"### {text}")
+        elif block.kind == "bullet":
+            lines.append(f"- {text}")
+        elif block.kind == "subtitle":
+            lines.append(f"**{text}**")
+        elif block.kind == "meta":
+            lines.append(f"*{text}*")
+        else:
+            lines.append(text)
+        previous = block.kind
+
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def render(doc: Document, fmt: Format) -> bytes:
+    if fmt == "md":
+        return to_markdown(doc)
     if fmt == "pdf":
         return to_pdf(doc)
     if fmt == "docx":

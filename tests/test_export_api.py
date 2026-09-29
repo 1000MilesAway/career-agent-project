@@ -112,6 +112,16 @@ class TestProfileExport:
         assert r.headers["content-type"] == DOCX_TYPE
         assert "Иванов Иван" in _text_of(r.content)
 
+    async def test_downloads_the_cv_as_markdown(self, client, session, user, auth_headers):
+        await _resume(session, user)
+
+        r = await client.get("/api/export/resume.md", headers=auth_headers)
+
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "text/markdown; charset=utf-8"
+        assert r.content.decode("utf-8").startswith("# Иванов Иван")
+        assert ".md" in r.headers["content-disposition"]
+
     async def test_the_filename_carries_the_name_in_utf8(self, client, session, user, auth_headers):
         """Without `filename*` the save dialog shows mojibake for a Cyrillic name."""
         await _resume(session, user)
