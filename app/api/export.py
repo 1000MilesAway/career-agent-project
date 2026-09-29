@@ -1,4 +1,4 @@
-"""Downloading a resume as PDF, DOCX or Markdown.
+"""Downloading a resume as PDF, DOCX or Markdown, and previewing it as HTML.
 
 Free: every download renders JSON that was already paid for — the parsed
 profile on `resumes.profile`, or the tailored CV on `artifacts.content`. No
@@ -17,7 +17,7 @@ import uuid
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy import select
@@ -31,16 +31,24 @@ from core.export import (
     render,
     tailored_resume_document,
 )
+from core.resume_styles import DEFAULT_STYLE, STYLES
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Artifact, Evaluation, Vacancy
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
-Format = Literal["pdf", "docx", "md"]
+# "html" is the preview: the exact page WeasyPrint turns into the PDF, so the
+# cabinet cannot show one look and hand over another.
+Format = Literal["pdf", "docx", "md", "html"]
+
+# Validated here so an unknown id is a 422 naming the allowed values, not a
+# KeyError deep in the renderer.
+StyleId = Literal[tuple(STYLES)]  # type: ignore[valid-type]
+StyleQuery = Query(DEFAULT_STYLE, description="Оформление: id из /api/export/styles")
 
 
-def _file_response(doc: Document, fmt: Format, stem: str) -> Response:
+def _file_response(doc: Document, fmt: Format, stem: str, style: str) -> Response:
     """Send the bytes as an attachment.
 
     Both `filename` and `filename*` are set: the plain one is ASCII for old
@@ -48,10 +56,15 @@ def _file_response(doc: Document, fmt: Format, stem: str) -> Response:
     RFC 5987. Sending only the plain one turns "Иванов.pdf" into mojibake in
     the save dialog.
     """
+    content = render(doc, fmt, style)
+    if fmt == "html":
+        # Shown in the cabinet, not saved: no attachment header. The cabinet
+        # puts it into a sandboxed iframe, and all user text is escaped.
+        return Response(content=content, media_type=MEDIA_TYPES[fmt])
     name = filename(stem, fmt)
     ascii_name = ascii_filename(name)
     return Response(
-        content=render(doc, fmt),
+        content=content,
         media_type=MEDIA_TYPES[fmt],
         headers={
             "Content-Disposition": (
@@ -62,14 +75,14 @@ def _file_response(doc: Document, fmt: Format, stem: str) -> Response:
     )
 
 
-async def _render(doc: Document, fmt: Format, stem: str) -> Response:
+async def _render(doc: Document, fmt: Format, stem: str, style: str) -> Response:
     """Render off the event loop.
 
     WeasyPrint is synchronous and CPU-bound for a second or so on a long CV;
     run inline it would block every other request on the worker for that time.
     """
     try:
-        return await run_in_threadpool(_file_response, doc, fmt, stem)
+        return await run_in_threadpool(_file_response, doc, fmt, stem, style)
     except (ImportError, OSError) as exc:
         # WeasyPrint loads Pango/Cairo through cffi and raises OSError — NOT
         # ImportError — when the system libraries are absent; the import
@@ -82,11 +95,20 @@ async def _render(doc: Document, fmt: Format, stem: str) -> Response:
         ) from exc
 
 
+@router.get("/styles")
+async def list_styles(_user: UserDep) -> list[dict[str, str]]:
+    """The presets the constructor offers, default first."""
+    ordered = [STYLES[DEFAULT_STYLE]] + [s for s in STYLES.values() if s.id != DEFAULT_STYLE]
+    return [{"id": s.id, "name": s.name, "description": s.description} for s in ordered]
+
+
 @router.get("/resume.{fmt}")
-async def export_profile(fmt: Format, resume: ResumeDep) -> Response:
+async def export_profile(
+    fmt: Format, resume: ResumeDep, style: StyleId = StyleQuery
+) -> Response:
     """The CV the user uploaded, as parsed into a profile."""
     doc = profile_document(resume.profile)
-    return await _render(doc, fmt, doc.title)
+    return await _render(doc, fmt, doc.title, style)
 
 
 @router.get("/vacancy/{vacancy_id}/tailor.{fmt}")
@@ -96,6 +118,7 @@ async def export_tailored(
     session: SessionDep,
     user: UserDep,
     resume: ResumeDep,
+    style: StyleId = StyleQuery,
 ) -> Response:
     """The tailored CV bought for one vacancy.
 
@@ -130,4 +153,4 @@ async def export_tailored(
     # The company in the file name is what the user sees in their downloads
     # folder three days later, when "resume.pdf" tells them nothing.
     stem = " — ".join(p for p in (doc.title, vacancy.company or vacancy.title) if p)
-    return await _render(doc, fmt, stem)
+    return await _render(doc, fmt, stem, style)

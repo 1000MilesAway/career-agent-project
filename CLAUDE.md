@@ -74,6 +74,8 @@
 | `core/sources/` | `habr_api.py` (каталог), `habr.py` (одна вакансия), `telegram.py` (`t.me/s/`) |
 | `core/sources/apply_link.py` | где пользователь **откликается**: выбор ссылки из поста |
 | `core/sources/description_link.py` | где вакансия **описана**: белый список хостов для тизеров |
+| `core/export.py` | резюме в PDF / DOCX / MD / HTML-превью из одного `Document` |
+| `core/resume_styles.py` | пресеты оформления: CSS для PDF и превью + значения для DOCX |
 | `core/msdoc.py` | резюме в `.doc` (Word 97–2003) → текст, на stdlib |
 | `core/rtf.py` | резюме в RTF → текст, в том числе RTF под именем `.doc` |
 | `core/tg_scan.py` | сбор + бесплатный отсев Telegram |

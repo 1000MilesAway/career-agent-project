@@ -146,6 +146,34 @@ export async function download(path: string, fallbackName: string): Promise<void
   }
 }
 
+/** A text body with the token: the resume preview is HTML, not JSON.
+ *
+ * An <iframe src> cannot carry the Authorization header either, so the page
+ * is fetched here and handed to the iframe as `srcdoc`.
+ */
+export async function fetchText(path: string): Promise<string> {
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const response = await fetch(path, { headers })
+
+  if (response.status === 401) {
+    setToken(null)
+    throw new ApiError('Нужно войти заново', 401)
+  }
+  const text = await response.text()
+  if (!response.ok) {
+    let data: unknown = null
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = null
+    }
+    throw new ApiError(errorMessage(data, response.status), response.status)
+  }
+  return text
+}
+
 /** The name out of Content-Disposition, preferring RFC 5987 `filename*`. */
 function filenameFrom(header: string | null): string | null {
   if (!header) return null

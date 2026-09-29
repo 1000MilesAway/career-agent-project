@@ -29,6 +29,7 @@ from core.export import (
     to_html,
     to_markdown,
 )
+from core.resume_styles import DEFAULT_STYLE, STYLES, get_style
 
 PROFILE = {
     "name": "Иванов Иван",
@@ -133,7 +134,7 @@ class TestHtml:
         """`outside` markers extract AFTER the text and read as stray dots.
 
         Verified by extracting both variants from a rendered PDF; see the
-        comment on PDF_CSS.
+        comment on _BASE_CSS in core/resume_styles.py.
         """
         assert "list-style-position: inside" in to_html(profile_document(PROFILE))
 
@@ -252,3 +253,80 @@ class TestAsciiFallback:
     def test_unmappable_name_still_yields_a_filename(self):
         """A CV in a script with no table here must not produce an empty header."""
         assert ascii_filename("日本語") == "resume"
+
+
+class TestStyles:
+    """A style changes the look, never the text an ATS extracts."""
+
+    @pytest.mark.parametrize("style", sorted(STYLES))
+    def test_every_style_keeps_the_ats_rules(self, style):
+        html = to_html(profile_document(PROFILE), style)
+        assert "list-style-position: inside" in html
+        assert "<table" not in html
+        assert "column-count" not in html
+        assert "<script" not in html
+
+    def test_the_markup_is_the_same_whatever_the_style(self):
+        """Only <style> may differ: the body is what gets parsed."""
+
+        def body(style: str) -> str:
+            html = to_html(profile_document(PROFILE), style)
+            return html[html.index("<body>") :]
+
+        bodies = {body(s) for s in STYLES}
+        assert len(bodies) == 1
+
+    def test_the_header_is_in_the_markup_not_built_by_script(self):
+        """WeasyPrint runs no JS: the band behind the name must exist in HTML."""
+        html = to_html(profile_document(PROFILE), "accent")
+        header = html[html.index('<header class="resume-header">') : html.index("</header>")]
+        assert "Иванов Иван" in header
+        assert "Ведущий backend-инженер" in header
+        assert "Опыт работы" not in header
+
+    def test_a_job_title_is_kept_with_its_dates(self):
+        html = to_html(profile_document(PROFILE))
+        assert '<div class="job"><h3>Тимлид — ООО «Ромашка»</h3><p class="meta">2021–2025</p></div>' in html
+
+    def test_a_job_without_dates_still_renders(self):
+        doc = Document(title="x")
+        doc.add("h3", "Тимлид")
+        doc.add("bullet", "Сделал")
+        assert '<div class="job"><h3>Тимлид</h3></div><ul><li>Сделал</li></ul>' in to_html(doc)
+
+    def test_styles_look_different(self):
+        sheets = {get_style(s).stylesheet() for s in STYLES}
+        assert len(sheets) == len(STYLES)
+
+    def test_unknown_style_is_refused_not_silently_defaulted(self):
+        with pytest.raises(KeyError):
+            to_html(profile_document(PROFILE), "neon")
+
+    def test_default_is_classic(self):
+        assert DEFAULT_STYLE == "classic"
+        assert get_style(None).id == "classic"
+
+    def test_docx_carries_the_font_and_the_accent(self):
+        import docx
+
+        parsed = docx.Document(BytesIO(to_docx(profile_document(PROFILE), "accent")))
+        assert parsed.styles["Normal"].font.name == "Inter"
+        subtitle = next(p for p in parsed.paragraphs if p.text == "Ведущий backend-инженер")
+        assert str(subtitle.runs[0].font.color.rgb) == "E2611E"
+
+    @pytest.mark.parametrize("style", sorted(STYLES))
+    def test_docx_keeps_builtin_styles_in_every_style(self, style):
+        import docx
+
+        parsed = docx.Document(BytesIO(to_docx(profile_document(PROFILE), style)))
+        names = {p.style.name for p in parsed.paragraphs if p.text.strip()}
+        assert "List Bullet" in names
+        assert "Heading 1" in names
+
+    def test_markdown_ignores_the_style(self):
+        doc = profile_document(PROFILE)
+        assert render(doc, "md", "accent") == render(doc, "md", "classic")
+
+    def test_html_is_rendered_as_the_preview(self):
+        page = render(profile_document(PROFILE), "html", "compact").decode()
+        assert page == to_html(profile_document(PROFILE), "compact")

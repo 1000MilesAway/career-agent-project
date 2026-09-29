@@ -153,6 +153,44 @@ class TestProfileExport:
         await _resume(session, user)
         assert (await client.get("/api/export/resume.docx")).status_code == 401
 
+    async def test_the_preview_is_the_html_of_the_chosen_style(
+        self, client, session, user, auth_headers
+    ):
+        await _resume(session, user)
+
+        r = await client.get("/api/export/resume.html?style=accent", headers=auth_headers)
+
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "text/html; charset=utf-8"
+        # Shown in the cabinet, not saved.
+        assert "content-disposition" not in r.headers
+        assert "#e2611e" in r.text
+        assert "Иванов Иван" in r.text
+
+    async def test_the_style_reaches_the_docx(self, client, session, user, auth_headers):
+        import docx
+
+        await _resume(session, user)
+
+        r = await client.get("/api/export/resume.docx?style=compact", headers=auth_headers)
+
+        assert r.status_code == 200
+        assert docx.Document(BytesIO(r.content)).styles["Normal"].font.name == "Segoe UI"
+
+    async def test_an_unknown_style_is_rejected(self, client, session, user, auth_headers):
+        await _resume(session, user)
+        r = await client.get("/api/export/resume.docx?style=neon", headers=auth_headers)
+        assert r.status_code == 422
+
+    async def test_lists_the_styles_default_first(self, client, user, auth_headers):
+        r = await client.get("/api/export/styles", headers=auth_headers)
+
+        assert r.status_code == 200
+        ids = [s["id"] for s in r.json()]
+        assert ids[0] == "classic"
+        assert {"accent", "compact"} <= set(ids)
+        assert all(s["name"] and s["description"] for s in r.json())
+
     async def test_an_unknown_format_is_rejected(self, client, session, user, auth_headers):
         await _resume(session, user)
         r = await client.get("/api/export/resume.rtf", headers=auth_headers)
@@ -169,7 +207,7 @@ class TestProfileExport:
         """
         import core.export
 
-        def no_pango(doc):
+        def no_pango(doc, style):
             raise OSError(
                 "cannot load library 'libpangoft2-1.0-0': "
                 "libpangoft2-1.0-0: cannot open shared object file"
@@ -189,7 +227,7 @@ class TestProfileExport:
         """The other half: no wheel at all, so the import itself fails."""
         import core.export
 
-        def no_weasyprint(doc):
+        def no_weasyprint(doc, style):
             raise ImportError("No module named 'weasyprint'")
 
         monkeypatch.setattr(core.export, "to_pdf", no_weasyprint)

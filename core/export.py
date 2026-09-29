@@ -23,7 +23,9 @@ from html import escape
 from io import BytesIO
 from typing import Any, Literal
 
-Format = Literal["pdf", "docx", "md"]
+from core.resume_styles import DEFAULT_STYLE, DocxTheme, get_style
+
+Format = Literal["pdf", "docx", "md", "html"]
 
 MEDIA_TYPES: dict[str, str] = {
     "pdf": "application/pdf",
@@ -31,6 +33,7 @@ MEDIA_TYPES: dict[str, str] = {
     # The charset is stated: without it a browser opening the file may guess
     # a legacy encoding and show a Cyrillic CV as mojibake.
     "md": "text/markdown; charset=utf-8",
+    "html": "text/html; charset=utf-8",
 }
 
 
@@ -245,72 +248,91 @@ def ascii_filename(name: str) -> str:
     return clean or "resume"
 
 
-# --- PDF ------------------------------------------------------------------
+# --- HTML / PDF ---------------------------------------------------------
 
-# One column, no tables, generous line height. The font stack stays on the
-# system serif/sans rather than an embedded family: the container has DejaVu,
-# which covers Cyrillic, and an embedded font would add megabytes to the image
-# for a layout nobody is judging on typography.
-PDF_CSS = """
-@page { size: A4; margin: 18mm 16mm; }
-body { font-family: "DejaVu Sans", sans-serif; font-size: 10.5pt; line-height: 1.45; color: #111; }
-h1 { font-size: 20pt; margin: 0 0 2pt; }
-.subtitle { font-size: 12pt; color: #333; margin: 0 0 6pt; }
-h2 { font-size: 12pt; margin: 14pt 0 4pt; border-bottom: 0.6pt solid #999; padding-bottom: 2pt; }
-h3 { font-size: 11pt; margin: 9pt 0 1pt; }
-.meta { color: #555; font-size: 9.5pt; margin: 0 0 3pt; }
-p { margin: 0 0 4pt; }
-ul { margin: 2pt 0 6pt; padding-left: 4pt; }
-/* `inside` puts the bullet into the same text run as the line it belongs to.
-   With the default `outside` the markers are drawn separately and land at the
-   END of the extracted text stream — the PDF looks right and an ATS reads a
-   block of bullet-less lines followed by a row of stray dots. Verified by
-   extracting both variants. */
-li { margin: 0 0 2pt; list-style-position: inside; }
-"""
+# The look lives in `core/resume_styles.py`; this function only decides the
+# markup every style shares. Two wrappers are added over the flat block list,
+# and they are the reason a style can be more than a font change:
+#
+# - `.resume-header` holds the leading name / role / meta, so a style can draw
+#   a band behind them. The template this came from built that band with JS
+#   after load; WeasyPrint runs no JS, so it has to exist in the markup.
+# - `.job` holds a job title with the date line under it, so a page break
+#   cannot separate the two.
+#
+# One column, no tables in any case: see the module docstring.
+
+_HEADER_KINDS = {"h1", "subtitle", "meta"}
 
 
-def to_html(doc: Document) -> str:
-    """The document as a standalone HTML page. Also what WeasyPrint renders."""
+def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
+    """The document as a standalone HTML page: the PDF source and the preview."""
+    theme = get_style(style)
     parts: list[str] = []
     in_list = False
+    blocks = doc.blocks
 
-    for block in doc.blocks:
+    header_end = 0
+    if blocks and blocks[0].kind == "h1":
+        header_end = 1
+        while header_end < len(blocks) and blocks[header_end].kind in _HEADER_KINDS - {"h1"}:
+            header_end += 1
+
+    def draw(block: Block) -> str:
+        text = escape(block.text)
+        if block.kind == "h1":
+            return f"<h1>{text}</h1>"
+        if block.kind == "subtitle":
+            return f'<p class="subtitle">{text}</p>'
+        if block.kind == "h2":
+            return f"<h2>{text}</h2>"
+        if block.kind == "h3":
+            return f"<h3>{text}</h3>"
+        if block.kind == "meta":
+            return f'<p class="meta">{text}</p>'
+        return f"<p>{text}</p>"
+
+    if header_end:
+        parts.append('<header class="resume-header">')
+        parts.extend(draw(b) for b in blocks[:header_end])
+        parts.append("</header>")
+
+    i = header_end
+    while i < len(blocks):
+        block = blocks[i]
         if block.kind == "bullet":
             if not in_list:
                 parts.append("<ul>")
                 in_list = True
             parts.append(f"<li>{escape(block.text)}</li>")
+            i += 1
             continue
         if in_list:
             parts.append("</ul>")
             in_list = False
 
-        text = escape(block.text)
-        if block.kind == "h1":
-            parts.append(f"<h1>{text}</h1>")
-        elif block.kind == "subtitle":
-            parts.append(f'<p class="subtitle">{text}</p>')
-        elif block.kind == "h2":
-            parts.append(f"<h2>{text}</h2>")
-        elif block.kind == "h3":
-            parts.append(f"<h3>{text}</h3>")
-        elif block.kind == "meta":
-            parts.append(f'<p class="meta">{text}</p>')
+        if block.kind == "h3":
+            parts.append('<div class="job">')
+            parts.append(draw(block))
+            if i + 1 < len(blocks) and blocks[i + 1].kind == "meta":
+                i += 1
+                parts.append(draw(blocks[i]))
+            parts.append("</div>")
         else:
-            parts.append(f"<p>{text}</p>")
+            parts.append(draw(block))
+        i += 1
 
     if in_list:
         parts.append("</ul>")
 
     return (
         '<!doctype html><html lang="ru"><head><meta charset="utf-8">'
-        f"<title>{escape(doc.title)}</title><style>{PDF_CSS}</style></head>"
+        f"<title>{escape(doc.title)}</title><style>{theme.stylesheet()}</style></head>"
         f"<body>{''.join(parts)}</body></html>"
     )
 
 
-def to_pdf(doc: Document) -> bytes:
+def to_pdf(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
     """Render to PDF.
 
     WeasyPrint is imported here, not at module scope, for two reasons: it pulls
@@ -320,24 +342,61 @@ def to_pdf(doc: Document) -> bytes:
     """
     from weasyprint import HTML  # noqa: PLC0415
 
-    return HTML(string=to_html(doc)).write_pdf()
+    return HTML(string=to_html(doc, style)).write_pdf()
 
 
 # --- DOCX -----------------------------------------------------------------
 
 
-def to_docx(doc: Document) -> bytes:
-    """Render to DOCX using the built-in styles.
+def _apply_docx_theme(document: Any, theme: DocxTheme) -> None:
+    """Carry a style into Word through the built-in styles, not per-run formatting.
+
+    Changing "Normal" and "Heading N" keeps the structure an ATS reads and
+    lets the user restyle the file in Word afterwards; formatting each run by
+    hand would freeze the look into hundreds of overrides.
+    """
+    from docx.oxml.ns import qn  # noqa: PLC0415
+    from docx.shared import Pt, RGBColor  # noqa: PLC0415
+
+    def font(style_name: str, size: float, color: str, bold: bool | None = None) -> None:
+        style = document.styles[style_name]
+        style.font.name = theme.font
+        # Word picks the Cyrillic face from the east-Asian/complex slots of
+        # rFonts, not from `name`; without these a Russian CV stays in the
+        # theme font whatever the style says.
+        rpr = style.element.get_or_add_rPr()
+        rfonts = rpr.find(qn("w:rFonts"))
+        if rfonts is None:
+            rfonts = rpr.makeelement(qn("w:rFonts"), {})
+            rpr.append(rfonts)
+        for slot in ("w:ascii", "w:hAnsi", "w:cs", "w:eastAsia"):
+            rfonts.set(qn(slot), theme.font)
+        style.font.size = Pt(size)
+        style.font.color.rgb = RGBColor.from_string(color)
+        if bold is not None:
+            style.font.bold = bold
+
+    font("Normal", theme.body_pt, "222222")
+    font("Title", theme.name_pt, theme.heading_color, bold=True)
+    font("Heading 1", theme.h2_pt, theme.heading_color, bold=True)
+    font("Heading 2", theme.h3_pt, theme.heading_color, bold=True)
+    font("List Bullet", theme.body_pt, "222222")
+
+
+def to_docx(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
+    """Render to DOCX using the built-in styles, tinted by the chosen style.
 
     Built-in style names ("Heading 1", "List Bullet") rather than hand-rolled
     formatting: Word maps them to its own outline, and an ATS reading the
     document sees a heading where a heading is meant, not 14pt bold text.
     """
     import docx  # noqa: PLC0415
-    from docx.shared import Pt  # noqa: PLC0415
+    from docx.shared import Pt, RGBColor  # noqa: PLC0415
 
+    theme = get_style(style).docx
     document = docx.Document()
     document.core_properties.title = doc.title
+    _apply_docx_theme(document, theme)
 
     for block in doc.blocks:
         if block.kind == "h1":
@@ -348,11 +407,16 @@ def to_docx(doc: Document) -> bytes:
             document.add_heading(block.text, level=2)
         elif block.kind == "bullet":
             document.add_paragraph(block.text, style="List Bullet")
-        elif block.kind in ("subtitle", "meta"):
-            paragraph = document.add_paragraph()
-            run = paragraph.add_run(block.text)
+        elif block.kind == "subtitle":
+            run = document.add_paragraph().add_run(block.text)
+            run.bold = True
+            run.font.size = Pt(theme.body_pt + 1.5)
+            run.font.color.rgb = RGBColor.from_string(theme.accent_color)
+        elif block.kind == "meta":
+            run = document.add_paragraph().add_run(block.text)
             run.italic = True
-            run.font.size = Pt(10) if block.kind == "meta" else Pt(12)
+            run.font.size = Pt(theme.body_pt - 0.5)
+            run.font.color.rgb = RGBColor.from_string(theme.muted_color)
         else:
             document.add_paragraph(block.text)
 
@@ -410,11 +474,14 @@ def to_markdown(doc: Document) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def render(doc: Document, fmt: Format) -> bytes:
+def render(doc: Document, fmt: Format, style: str = DEFAULT_STYLE) -> bytes:
+    """The file in `fmt`. Markdown ignores `style`: it is plain text by design."""
     if fmt == "md":
         return to_markdown(doc)
     if fmt == "pdf":
-        return to_pdf(doc)
+        return to_pdf(doc, style)
     if fmt == "docx":
-        return to_docx(doc)
+        return to_docx(doc, style)
+    if fmt == "html":
+        return to_html(doc, style).encode("utf-8")
     raise ValueError(f"unknown format: {fmt}")

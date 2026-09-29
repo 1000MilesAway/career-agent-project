@@ -7,7 +7,7 @@
  */
 
 import useSWR from 'swr'
-import { api, download, fetcher } from './client'
+import { api, download, fetcher, fetchText } from './client'
 import type {
   ApplyStepName,
   AppState,
@@ -132,11 +132,42 @@ export const acceptSearchProfile = (profile: SearchProfile) =>
 
 export type ExportFormat = 'pdf' | 'docx' | 'md'
 
-export const downloadProfile = (fmt: ExportFormat) =>
-  download(`/api/export/resume.${fmt}`, `resume.${fmt}`)
+export interface ResumeStyle {
+  id: string
+  name: string
+  description: string
+}
 
-export const downloadTailored = (vacancyId: string, fmt: ExportFormat) =>
-  download(`/api/export/vacancy/${vacancyId}/tailor.${fmt}`, `resume.${fmt}`)
+export const STYLES_KEY = '/api/export/styles'
+
+/** The presets never change while the app is open: fetch once. */
+export function useResumeStyles(enabled = true) {
+  return useSWR<ResumeStyle[]>(enabled ? STYLES_KEY : null, fetcher, {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+  })
+}
+
+/** Where a document is exported from, without the format: one of
+ *  `/api/export/resume` or `/api/export/vacancy/{id}/tailor`. */
+export const profileExportBase = '/api/export/resume'
+export const tailoredExportBase = (vacancyId: string) =>
+  `/api/export/vacancy/${vacancyId}/tailor`
+
+const exportPath = (base: string, fmt: ExportFormat | 'html', style: string) =>
+  `${base}.${fmt}?style=${encodeURIComponent(style)}`
+
+export const downloadExport = (base: string, fmt: ExportFormat, style: string) =>
+  download(exportPath(base, fmt, style), `resume.${fmt}`)
+
+/** The preview is the very HTML the PDF is made from, keyed by style so
+ *  flipping back to a seen preset is instant. */
+export function useResumePreview(base: string | null, style: string) {
+  return useSWR<string>(base ? exportPath(base, 'html', style) : null, fetchText, {
+    revalidateOnFocus: false,
+    keepPreviousData: true,
+  })
+}
 
 /** The chat.
  *

@@ -11,7 +11,7 @@ import {
   CHAT_KEY,
   STATE_KEY,
   acceptSearchProfile,
-  downloadProfile,
+  profileExportBase,
   proposeSearchProfile,
   restoreResume,
   uploadResume,
@@ -157,7 +157,7 @@ export function ResumePage() {
         title="Моё резюме"
         lede="Так модель прочитала ваше резюме. Каждая оценка строится на этом — если что-то не так, поправьте через помощника."
         actions={
-          <DownloadButtons onDownload={downloadProfile} small label="Скачать резюме" />
+          <DownloadButtons exportBase={profileExportBase} small label="Скачать резюме" />
         }
       />
 

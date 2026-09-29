@@ -1,0 +1,181 @@
+.designer {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  height: min(900px, calc(100dvh - 32px));
+  max-height: none;
+  box-shadow: var(--shadow-pop);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.designer::backdrop {
+  background: rgb(20 19 15 / 32%);
+  backdrop-filter: blur(1px);
+}
+
+/* `display` only when open: a bare `display: flex` would override the user
+   agent's `display: none` on a closed <dialog> — see drawer.css. */
+.designer[open] {
+  display: flex;
+}
+
+.designer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 14px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.designer__title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.designer__body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.designer__side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 20px 24px 24px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.designer__styles {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.designer__legend {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.designer__style {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.designer__style:hover {
+  border-color: var(--ink-2);
+}
+
+.designer__style--on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.designer__style input {
+  grid-row: span 2;
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+
+.designer__style-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.designer__style-desc {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.designer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.designer__note {
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.designer__pane {
+  overflow: auto;
+  padding: 24px;
+  background: var(--sunken);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* The wrapper takes the scaled size; the iframe inside keeps its A4 layout
+   width and is shrunk with a transform, which does not affect layout. */
+.designer__sheet {
+  flex: none;
+  overflow: hidden;
+  box-shadow: 0 4px 28px rgb(0 0 0 / 12%);
+  background: #fff;
+}
+
+.designer__frame {
+  display: block;
+  border: 0;
+  background: #fff;
+  transform-origin: 0 0;
+  transition: opacity 0.15s;
+}
+
+.designer__frame.is-loading {
+  opacity: 0.6;
+}
+
+.designer__error {
+  color: var(--bad);
+}
+
+@media (max-width: 760px) {
+  .designer {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+  .designer__body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+  }
+  .designer__side {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 16px;
+  }
+  .designer__pane {
+    padding: 12px;
+    overflow: visible;
+  }
+}

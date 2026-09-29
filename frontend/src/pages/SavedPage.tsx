@@ -14,7 +14,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
   STATE_KEY,
-  downloadTailored,
+  tailoredExportBase,
   recheckVacancies,
   setSaved,
   setStatus,
@@ -254,7 +254,8 @@ export function SavedPage() {
                           <DownloadButtons
                             small
                             label={`Скачать резюме под «${vacancy.title}»`}
-                            onDownload={(fmt) => downloadTailored(vacancy.id, fmt)}
+                            exportBase={tailoredExportBase(vacancy.id)}
+                            designerTitle={`Резюме под «${vacancy.title}»`}
                           />
                         </span>
                       </>
