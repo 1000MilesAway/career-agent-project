@@ -283,9 +283,13 @@ ssh max@82.25.161.103 'docker ps --format "{{.Names}}\t{{.Status}}"'
 
 Что где на хосте: `~/career-agent` — репозиторий (туда распаковывается bundle),
 `~/deploy.sh` — скрипт выкатки **вне git**, `~/career-agent/.env` — секреты,
-контейнеры `career-agent-{api,worker,web,db}-1`.
+контейнеры `career-agent-{api,worker,web,edge,db}-1`.
 
-**Кабинет — порт 80, API — порт 8000.** `http://82.25.161.103/` отдаёт SPA,
+**Домен — `https://career-helper.site`** (с 2026-09-29). HTTPS держит контейнер
+`edge` (Caddy, `Caddyfile` в корне), сертификат Let's Encrypt продлевается сам;
+запись в Cloudflare — только «DNS only», см. `docs/decisions.md`.
+
+**Кабинет — порты 80/443 через `edge`, API — порт 8000.** `http://82.25.161.103/` отдаёт SPA,
 `http://82.25.161.103:8000/api/health` остаётся для проверки выкатки снаружи.
 Через кабинет API доступен и по `/api/` — nginx проксирует его на контейнер
 api, чтобы браузер оставался на одном origin.

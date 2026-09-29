@@ -1,0 +1,27 @@
+# TLS edge for the production stack: terminates HTTPS and hands everything to
+# the cabinet's nginx (web:80), which serves the SPA and proxies /api itself.
+#
+# Caddy rather than certbot on the host: the deploy user has no sudo, and a
+# certificate that renews inside the stack survives a rebuilt host with no
+# cron to remember. Certificates live in the caddy_data volume — losing it
+# means re-issuing, and Let's Encrypt rate-limits repeated issuance.
+#
+# DNS for the domain must point straight at the host (Cloudflare "DNS only",
+# grey cloud): Cloudflare's proxy is throttled for Russian users, and in
+# "Flexible" mode it also loops on the HTTP->HTTPS redirect below.
+
+{$SITE_DOMAIN:career-helper.site} {
+	reverse_proxy web:80
+}
+
+www.{$SITE_DOMAIN:career-helper.site} {
+	redir https://{$SITE_DOMAIN:career-helper.site}{uri} permanent
+}
+
+# Plain HTTP by the bare IP keeps working, as it did before the domain: there
+# is no certificate for an IP, and the deploy is still checked by address.
+# Requests naming the domain never reach this block — Caddy's automatic
+# HTTP->HTTPS redirect for the named sites takes precedence.
+:80 {
+	reverse_proxy web:80
+}

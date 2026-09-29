@@ -46,9 +46,9 @@ services:
       # hand, which is the truth and must not be mistaken for a sha.
       GIT_SHA: ${GIT_SHA:-unknown}
     ports:
-      # Bound to the host's public interface deliberately: this deployment is
-      # tested by IP, with no domain and therefore no TLS terminator in front.
-      # Everything on this port travels in clear text — see docs/decisions.md.
+      # Bound to the host's public interface deliberately: deploy.sh and the
+      # revision check read /api/health here. Users go through the domain and
+      # the edge; this port is clear text — see docs/decisions.md.
       - "8000:8000"
     depends_on:
       db:
@@ -63,13 +63,27 @@ services:
     # to change a stylesheet would be a Python rebuild for a CSS change.
     build: ./frontend
     restart: unless-stopped
-    ports:
-      # Port 80, so the cabinet is just the host's address. The API stays on
-      # 8000 as well: /api/health is checked from outside by deploy.sh, and
-      # taking that away would break the deploy's only proof it worked.
-      - "80:80"
+    # No ports: the edge below is the only way in, on 80 and 443. The API
+    # stays published on 8000 as well: /api/health is checked from outside by
+    # deploy.sh, and taking that away would break the deploy's only proof.
     depends_on:
       - api
+
+  edge:
+    # TLS terminator for the domain; see Caddyfile for why Caddy and why the
+    # DNS record must not go through Cloudflare's proxy.
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
 
   worker:
     build: .
@@ -87,3 +101,7 @@ services:
 
 volumes:
   pgdata:
+  # Issued certificates and the ACME account. Must outlive rebuilds: losing
+  # it re-issues, and Let's Encrypt caps issuance per domain per week.
+  caddy_data:
+  caddy_config:
