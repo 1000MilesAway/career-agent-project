@@ -56,7 +56,7 @@ export function setToken(value: string | null): void {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   json?: unknown
   form?: FormData
   signal?: AbortSignal

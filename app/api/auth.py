@@ -6,7 +6,7 @@ import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 
 from ..core import telegram_login
@@ -30,6 +30,8 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     email: EmailStr
+    # Null until the user sets one; the cabinet shows the email instead.
+    name: str | None
     is_admin: bool
     consent_at: datetime | None
     spent_rub: float
@@ -44,6 +46,7 @@ class UserResponse(BaseModel):
     def of(cls, user: User) -> UserResponse:
         return cls(
             email=user.email,
+            name=user.name,
             is_admin=user.is_admin,
             consent_at=user.consent_at,
             spent_rub=float(user.spent_rub),
@@ -74,6 +77,21 @@ async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: UserDep) -> UserResponse:
+    return UserResponse.of(user)
+
+
+class ProfileUpdate(BaseModel):
+    # Blank clears it. The cap is the column's; a longer name is refused
+    # rather than cut, so the user sees exactly what was saved.
+    name: str | None = Field(default=None, max_length=80)
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(body: ProfileUpdate, user: UserDep, session: SessionDep) -> UserResponse:
+    """Change what the user typed in their profile. Only fields sent are touched."""
+    if "name" in body.model_fields_set:
+        user.name = (body.name or "").strip() or None
+    await session.commit()
     return UserResponse.of(user)
 
 

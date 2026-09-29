@@ -132,7 +132,7 @@ export function TelegramButton({
   )
 }
 
-/** Sidebar block: link Telegram for login, or show what is linked. */
+/** Profile row: link Telegram for login, or show what is linked. */
 export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
   const config = useTelegramConfig()
   const toast = useToast()
@@ -153,9 +153,9 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
 
   if (linkedAs) {
     return (
-      <div className="side__telegram">
-        <span className="side__telegram-name" title="Вход через Telegram включён">
-          Telegram: {linkedAs}
+      <div className="profile__line">
+        <span className="profile__value" title="Вход через Telegram включён">
+          {linkedAs}
         </span>
         <button
           className="btn btn--quiet btn--small"
@@ -173,9 +173,12 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
     )
   }
 
-  if (!config) return null
+  // Said rather than hidden: an empty section reads as a broken one.
+  if (!config)
+    return <p className="muted">Вход через Telegram на этом сервере не настроен.</p>
   return (
-    <div className="side__telegram">
+    <div className="profile__line">
+      <span className="profile__value muted">Не привязан</span>
       <TelegramButton
         config={config}
         small
@@ -192,7 +195,7 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
           )
         }
       >
-        Привязать Telegram
+        Привязать
       </TelegramButton>
     </div>
   )

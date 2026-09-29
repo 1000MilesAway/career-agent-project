@@ -216,36 +216,44 @@
   line-height: 1.4;
 }
 
+/* The whole row is the button: a name is a small target, and the row reads
+   as "me" from the avatar to the edge. Bleeds into the footer's padding so
+   the hover fill lines up with the nav items above. */
 .side__user {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-top: 12px;
+  gap: 10px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.side__user::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 8px;
+  right: 8px;
   border-top: 1px solid var(--line);
 }
 
-.side__telegram {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--ink-2);
+.side__user:hover {
+  background: var(--sunken);
 }
 
-.side__telegram-name {
+.side__name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side__email {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -278,8 +286,8 @@
   .brand__name,
   .side__promise,
   .meter,
-  .side__telegram,
-  .side__email {
+  .side__name,
+  .side__user::before {
     display: none;
   }
 
@@ -306,9 +314,12 @@
     padding: 0;
   }
 
+  /* On a phone the avatar alone is the way into the account. */
   .side__user {
-    border: none;
-    padding: 0;
+    width: auto;
+    margin: 0;
+    padding: 3px;
+    border-radius: 50%;
   }
 }
 

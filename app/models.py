@@ -54,6 +54,11 @@ class User(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # What the cabinet calls the user instead of the login email. Optional:
+    # accounts are created by the admin with an email only, and the cabinet
+    # falls back to the email until the user names themselves.
+    name: Mapped[str | None] = mapped_column(String(80))
+
     # Consent to process personal data. A resume IS personal data, so the
     # timestamp is evidence, not a UI flag: it records that this specific
     # account agreed, and when.

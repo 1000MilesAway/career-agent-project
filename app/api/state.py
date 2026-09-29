@@ -166,6 +166,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         },
         "user": {
             "email": user.email,
+            "name": user.name,
             "consent_at": user.consent_at,
             "telegram_name": user.telegram_name if user.telegram_id is not None else None,
         },

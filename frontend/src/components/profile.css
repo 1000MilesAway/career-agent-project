@@ -1,0 +1,106 @@
+.profile {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  box-shadow: var(--shadow-pop);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.profile::backdrop {
+  background: rgb(20 19 15 / 32%);
+  backdrop-filter: blur(1px);
+}
+
+/* `display` only when open: a bare `display: flex` would override the user
+   agent's `display: none` on a closed <dialog> — see drawer.css. */
+.profile[open] {
+  display: flex;
+}
+
+.profile__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+}
+
+.profile__section .eyebrow {
+  display: block;
+}
+
+.profile__section .muted {
+  margin: 0;
+}
+
+.profile__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile__value {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile__foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* The initial stands in for a photo; the cabinet has none to show. */
+.avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .profile__head {
+    padding: 12px 12px 12px 16px;
+  }
+  .profile__body {
+    padding: 16px;
+  }
+}

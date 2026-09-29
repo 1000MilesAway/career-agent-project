@@ -10,14 +10,14 @@
  * changes waiting for a decision) should stay in view while they work.
  */
 
-import { Suspense, type ReactNode } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { isActive, useAppState, useProposals } from './api/hooks'
 import type { Spend } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
-import { ChatIcon, LogoutIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
-import { TelegramLink } from './components/TelegramLogin'
+import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
+import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
 import { Skeleton, rub } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
 import { lazyPage } from './lazyPage'
@@ -37,8 +37,8 @@ export function App() {
 }
 
 function Cabinet() {
-  const { logout } = useAuth()
   const { data } = useAppState()
+  const [profileOpen, setProfileOpen] = useState(false)
   const { data: proposals } = useProposals()
   const savedCount = data?.found.filter((row) => row.saved).length ?? 0
   const pendingCount = proposals?.length ?? 0
@@ -79,20 +79,28 @@ function Cabinet() {
         <div className="side__foot">
           {data ? <SpendMeter spend={data.spend} /> : null}
           <p className="side__promise">Отклик всегда отправляете вы сами.</p>
-          {data ? <TelegramLink linkedAs={data.user.telegram_name ?? null} /> : null}
-          <div className="side__user">
-            <span className="side__email" title={data?.user.email}>
-              {data?.user.email}
-            </span>
-            <button
-              className="btn btn--quiet btn--small btn--icon"
-              onClick={logout}
-              title="Выйти"
-              aria-label="Выйти"
-            >
-              <LogoutIcon />
-            </button>
-          </div>
+          {data ? (
+            <>
+              {/* The name opens the account: settings, Telegram, logout —
+                  all rarely used, so none of it sits in the sidebar itself. */}
+              <button
+                type="button"
+                className="side__user"
+                onClick={() => setProfileOpen(true)}
+                title="Профиль и настройки"
+                aria-label={`Профиль: ${displayName(data.user)}`}
+                aria-haspopup="dialog"
+              >
+                <Avatar user={data.user} />
+                <span className="side__name">{displayName(data.user)}</span>
+              </button>
+              <ProfileDialog
+                open={profileOpen}
+                user={data.user}
+                onClose={() => setProfileOpen(false)}
+              />
+            </>
+          ) : null}
         </div>
       </aside>
 

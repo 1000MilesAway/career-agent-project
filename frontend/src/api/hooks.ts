@@ -111,6 +111,10 @@ export const setStatus = (vacancyId: string, status: string) =>
     json: { status },
   })
 
+/** Blank clears the name; the server trims it. */
+export const updateProfile = (fields: { name: string }) =>
+  api<unknown>('/api/auth/me', { method: 'PATCH', json: fields })
+
 export function uploadResume(file: File): Promise<ResumeResponse> {
   const form = new FormData()
   form.append('file', file)

@@ -128,3 +128,36 @@ class TestConsent:
 
         again = await client.post("/api/auth/consent", headers=auth_headers)
         assert again.json()["consent_at"] == stamp
+
+
+@requires_db
+class TestProfileName:
+    async def test_a_new_account_has_no_name(self, client, auth_headers):
+        """The cabinet falls back to the email; a made-up name would be wrong."""
+        me = await client.get("/api/auth/me", headers=auth_headers)
+        assert me.json()["name"] is None
+
+    async def test_the_name_is_saved_trimmed_and_shown_in_state(self, client, auth_headers):
+        r = await client.patch("/api/auth/me", headers=auth_headers, json={"name": "  Макс  "})
+        assert r.status_code == 200
+        assert r.json()["name"] == "Макс"
+        state = await client.get("/api/state", headers=auth_headers)
+        assert state.json()["user"]["name"] == "Макс"
+
+    async def test_a_blank_name_clears_it(self, client, auth_headers):
+        await client.patch("/api/auth/me", headers=auth_headers, json={"name": "Макс"})
+        r = await client.patch("/api/auth/me", headers=auth_headers, json={"name": "   "})
+        assert r.json()["name"] is None
+
+    async def test_a_field_not_sent_is_not_touched(self, client, auth_headers):
+        await client.patch("/api/auth/me", headers=auth_headers, json={"name": "Макс"})
+        r = await client.patch("/api/auth/me", headers=auth_headers, json={})
+        assert r.json()["name"] == "Макс"
+
+    async def test_a_name_longer_than_the_column_is_refused_not_cut(self, client, auth_headers):
+        r = await client.patch("/api/auth/me", headers=auth_headers, json={"name": "я" * 81})
+        assert r.status_code == 422
+
+    async def test_without_a_token_nothing_changes(self, client):
+        r = await client.patch("/api/auth/me", json={"name": "Макс"})
+        assert r.status_code == 401
