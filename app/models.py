@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -63,6 +64,14 @@ class User(Base, TimestampMixin):
     # limit can ever be switched on, and it answers "what did this account
     # cost me" while testing.
     spent_rub: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
+
+    # A Telegram account linked from the cabinet, which then logs in by itself.
+    # Linking only — an unknown Telegram account never creates a user, since
+    # accounts are still the admin's to create. The name is for display
+    # ("@handle" or the first name when there is no handle) and is refreshed on
+    # every Telegram login; the id is what identifies.
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    telegram_name: Mapped[str | None] = mapped_column(String(128))
 
     resumes: Mapped[list[Resume]] = relationship(back_populates="user", cascade="all, delete-orphan")
     vacancies: Mapped[list[Vacancy]] = relationship(

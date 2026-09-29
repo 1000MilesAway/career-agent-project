@@ -17,6 +17,7 @@ import type { Spend } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { ChatIcon, LogoutIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
+import { TelegramLink } from './components/TelegramLogin'
 import { Skeleton, rub } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
 import { lazyPage } from './lazyPage'
@@ -78,6 +79,7 @@ function Cabinet() {
         <div className="side__foot">
           {data ? <SpendMeter spend={data.spend} /> : null}
           <p className="side__promise">Отклик всегда отправляете вы сами.</p>
+          {data ? <TelegramLink linkedAs={data.user.telegram_name ?? null} /> : null}
           <div className="side__user">
             <span className="side__email" title={data?.user.email}>
               {data?.user.email}

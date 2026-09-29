@@ -7,10 +7,12 @@
 
 import { createContext, use, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api, getToken, onTokenChange, setToken } from './api/client'
+import type { TelegramAuthData } from './components/TelegramLogin'
 
 interface AuthValue {
   token: string | null
   login: (email: string, password: string) => Promise<void>
+  loginTelegram: (data: TelegramAuthData) => Promise<void>
   logout: () => void
 }
 
@@ -29,9 +31,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.access_token)
   }, [])
 
+  const loginTelegram = useCallback(async (data: TelegramAuthData) => {
+    const response = await api<{ access_token: string }>('/api/auth/telegram', {
+      method: 'POST',
+      json: data,
+    })
+    setToken(response.access_token)
+  }, [])
+
   const logout = useCallback(() => setToken(null), [])
 
-  return <AuthContext value={{ token, login, logout }}>{children}</AuthContext>
+  return (
+    <AuthContext value={{ token, login, loginTelegram, logout }}>{children}</AuthContext>
+  )
 }
 
 export function useAuth(): AuthValue {

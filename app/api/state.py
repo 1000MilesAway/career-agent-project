@@ -164,5 +164,9 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
             "limit_rub": remaining_rub(user),
             "spent_total_rub": float(user.spent_rub),
         },
-        "user": {"email": user.email, "consent_at": user.consent_at},
+        "user": {
+            "email": user.email,
+            "consent_at": user.consent_at,
+            "telegram_name": user.telegram_name if user.telegram_id is not None else None,
+        },
     }

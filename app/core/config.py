@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # fast under a held F5.
     spend_limit_rub: float = 0.0
 
+    # Telegram Login Widget. Both empty = login and linking by Telegram are off
+    # and the cabinet does not show the button. The username is what the
+    # widget is drawn for; the token is what signs its answer, so it never
+    # leaves the server. The bot's domain must be set in @BotFather
+    # (/setdomain), or the widget refuses to render on the site.
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+
     debug: bool = False
 
     # Which revision is actually running, reported by /api/health. Set by the

@@ -188,7 +188,8 @@ export interface AppState {
   statuses: Record<string, TrackerStatus>
   apply_steps: ApplyStep[]
   spend: Spend
-  user: { email: string; consent_at: string | null }
+  /** telegram_name: "@handle" of the linked Telegram account; null = not linked. */
+  user: { email: string; consent_at: string | null; telegram_name?: string | null }
 }
 
 export interface ScanResult {
