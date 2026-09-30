@@ -101,3 +101,44 @@
   background: var(--line);
   margin: 0 4px;
 }
+
+/* Drag a row onto a stage. The stages light up only while something is
+   carried, so the funnel does not look like a drop zone the rest of the time. */
+.funnel__hint {
+  margin: -8px 0 12px;
+  font-size: 12.5px;
+}
+
+.funnel__step--target {
+  border-style: dashed;
+  border-color: var(--line-strong);
+}
+
+.funnel__step--target:disabled {
+  background: var(--surface);
+}
+
+.funnel__step--over {
+  border-style: solid;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.drag {
+  cursor: grab;
+}
+
+.drag:active {
+  cursor: grabbing;
+}
+
+.drag--active {
+  opacity: 0.45;
+}
+
+/* Controls keep their own cursor: the row is draggable, its buttons are not
+   a handle. */
+.drag :is(a, button, select, label) {
+  cursor: pointer;
+}
