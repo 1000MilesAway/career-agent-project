@@ -661,3 +661,100 @@ class TestResumeRollback:
             headers=auth_headers,
         )
         assert (await client.get("/api/chat", headers=auth_headers)).json() == []
+
+
+@requires_db
+class TestManualEdit:
+    """The user corrects the parsed CV by hand. Free, and a new revision."""
+
+    async def test_an_edit_is_saved_as_the_next_revision(
+        self, client, auth_headers, session, user
+    ):
+        first = await _resume(
+            session,
+            user,
+            {
+                "target_role": "Backend",
+                "skills": ["Python"],
+                "preferences": {"city": "Москва"},
+                "experience": [{"company": "Ромашка", "role": "Dev", "extra": "x"}],
+            },
+        )
+        first.search_profile = {"queries": ["python"]}
+        await session.commit()
+
+        response = await client.put(
+            "/api/resumes/active/profile",
+            json={
+                "target_role": "  Backend-разработчик ",
+                "skills": ["Python", " Go ", "", "python"],
+                "experience": [
+                    {"company": "Ромашка", "role": "Senior Dev", "extra": "x", "location": ""},
+                    {"company": "", "role": "", "achievements": [""]},
+                ],
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+
+        active = await _active(session, user)
+        assert active.id != first.id
+        assert active.revision == 2 and active.parent_id == first.id
+        assert active.profile["target_role"] == "Backend-разработчик"
+        assert active.profile["skills"] == ["Python", "Go"]
+        # A cleared block is a removed job; a cleared field is left out, and a
+        # key the form does not know about survives.
+        assert active.profile["experience"] == [
+            {"company": "Ромашка", "role": "Senior Dev", "extra": "x"}
+        ]
+        # Keys the request left out keep their value.
+        assert active.profile["preferences"] == {"city": "Москва"}
+        assert active.search_profile == {"queries": ["python"]}
+
+    async def test_an_unchanged_save_makes_no_revision(
+        self, client, auth_headers, session, user
+    ):
+        """A revision without a change would mark every bought report as made
+        against «прежнее резюме» for nothing."""
+        first = await _resume(session, user)
+        response = await client.put(
+            "/api/resumes/active/profile",
+            json={"target_role": "Backend", "skills": ["Python"]},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert (await _active(session, user)).id == first.id
+
+    async def test_an_unknown_level_is_refused(self, client, auth_headers, session, user):
+        await _resume(session, user)
+        response = await client.put(
+            "/api/resumes/active/profile",
+            json={"seniority": "guru"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_history_and_chat_say_what_was_edited(
+        self, client, auth_headers, session, user
+    ):
+        await _resume(session, user)
+        await client.put(
+            "/api/resumes/active/profile",
+            json={"summary": "Пишу бэкенд", "languages": ["Английский B2"]},
+            headers=auth_headers,
+        )
+
+        history = (await client.get("/api/state", headers=auth_headers)).json()[
+            "resume_history"
+        ]
+        assert history[0]["changes"] == ["+ язык: Английский B2", "изменён абзац «О себе»"]
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert shown[-1]["role"] == "event"
+        assert "вручную" in shown[-1]["text"]
+
+    async def test_without_a_cv_there_is_nothing_to_edit(self, client, auth_headers):
+        response = await client.put(
+            "/api/resumes/active/profile", json={"name": "Макс"}, headers=auth_headers
+        )
+        assert response.status_code == 404

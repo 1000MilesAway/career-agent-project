@@ -98,6 +98,13 @@
   padding: 28px 30px;
 }
 
+.profile__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .profile__name {
   font-family: var(--font-serif);
   font-weight: 400;
@@ -265,5 +272,88 @@
   }
   .sprofile__col + .sprofile__col .eyebrow:first-child {
     margin-top: 18px;
+  }
+}
+
+/* ── Hand edit ───────────────────────────────────────────────────────── */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.editor__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editor__field > .eyebrow {
+  margin: 0;
+}
+
+.editor__hint {
+  font-weight: 400;
+}
+
+.editor__area {
+  height: auto;
+  padding: 10px 12px;
+  line-height: 1.45;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.editor__jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.editor__jobs > legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.editor__job {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.editor__jobs > .btn {
+  align-self: flex-start;
+}
+
+.editor__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.editor__actions p {
+  margin: 0;
+  font-size: 13px;
+}
+
+@media (max-width: 520px) {
+  .editor__grid {
+    grid-template-columns: 1fr;
   }
 }

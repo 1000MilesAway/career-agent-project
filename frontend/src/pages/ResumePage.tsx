@@ -21,6 +21,7 @@ import type { ResumeProfile, ResumeVersion, SearchProfile } from '../api/types'
 import { useToast } from '../components/toast'
 import { Card, Chips, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
+import { ProfileEditor } from '../components/ProfileEditor'
 import { setTourStep } from '../components/tour'
 import { SearchProfileDiff } from '../components/SearchProfileDiff'
 import './resume.css'
@@ -38,6 +39,7 @@ export function ResumePage() {
     proposed: SearchProfile
   } | null>(null)
   const [isProposing, startProposing] = useTransition()
+  const [editing, setEditing] = useState(false)
 
   function upload() {
     if (!file) return
@@ -138,9 +140,7 @@ export function ResumePage() {
           </button>
         </div>
       ) : null}
-      <p className="muted upload__note">
-        PDF, DOC, DOCX, RTF, TXT или MD до 10 МБ.
-      </p>
+      <p className="muted upload__note">PDF, DOC, DOCX, RTF, TXT или MD до 10 МБ.</p>
     </div>
   )
 
@@ -160,7 +160,7 @@ export function ResumePage() {
     <div className="page">
       <PageHead
         title="Моё резюме"
-        lede="Так модель прочитала ваше резюме. Каждая оценка строится на этом — если что-то не так, поправьте через помощника."
+        lede="Так модель прочитала ваше резюме. Каждая оценка строится на этом — если что-то не так, поправьте вручную или через помощника."
         actions={
           <DownloadButtons exportBase={profileExportBase} small label="Скачать резюме" />
         }
@@ -168,7 +168,11 @@ export function ResumePage() {
 
       <div className="resume">
         <div className="resume__main">
-          <ProfileCard profile={data.profile} />
+          {editing ? (
+            <ProfileEditor profile={data.profile} onClose={() => setEditing(false)} />
+          ) : (
+            <ProfileCard profile={data.profile} onEdit={() => setEditing(true)} />
+          )}
         </div>
 
         <aside className="resume__side">
@@ -219,12 +223,23 @@ export function ResumePage() {
   )
 }
 
-function ProfileCard({ profile }: { profile: ResumeProfile }) {
+function ProfileCard({ profile, onEdit }: { profile: ResumeProfile; onEdit: () => void }) {
   return (
     <section className="card profile">
       <header className="profile__head">
-        <h2 className="profile__name">{profile.name || 'Имя не найдено'}</h2>
-        <p className="profile__role">{profile.target_role || 'Целевая роль не найдена'}</p>
+        <div>
+          <h2 className="profile__name">{profile.name || 'Имя не найдено'}</h2>
+          <p className="profile__role">
+            {profile.target_role || 'Целевая роль не найдена'}
+          </p>
+        </div>
+        <button
+          className="btn btn--ghost btn--small"
+          onClick={onEdit}
+          title="Сохранится новой версией — прежнюю можно вернуть"
+        >
+          Редактировать
+        </button>
       </header>
 
       <dl className="facts">

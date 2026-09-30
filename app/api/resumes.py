@@ -6,11 +6,11 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 
 from core.defaults import starter_profile
@@ -152,6 +152,138 @@ async def upload(
 @router.get("/active", response_model=ResumeResponse)
 async def active(resume: ResumeDep) -> ResumeResponse:
     return _as_response(resume)
+
+
+def _clean_text(value: str | None) -> str | None:
+    value = (value or "").strip()
+    return value or None
+
+
+def _clean_list(items: list[str] | None) -> list[str]:
+    """Trimmed, without blanks and repeats: a textarea line per item leaves both."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items or []:
+        item = item.strip()
+        if item and item.casefold() not in seen:
+            seen.add(item.casefold())
+            out.append(item)
+    return out
+
+
+# Generous caps: they exist so a request cannot store megabytes, not to
+# second-guess a long CV.
+_Line = Field(default=None, max_length=5000)
+_Items = Field(default=None, max_length=300)
+
+
+class ExperienceEdit(BaseModel):
+    # Extra keys pass through: the parser may add one this form does not know,
+    # and a manual edit must not strip it.
+    model_config = ConfigDict(extra="allow")
+
+    company: str | None = _Line
+    role: str | None = _Line
+    period: str | None = _Line
+    location: str | None = _Line
+    description: str | None = _Line
+    achievements: list[str] | None = _Items
+
+    @field_validator("company", "role", "period", "location", "description")
+    @classmethod
+    def _text(cls, value: str | None) -> str | None:
+        return _clean_text(value)
+
+    @field_validator("achievements")
+    @classmethod
+    def _list(cls, value: list[str] | None) -> list[str]:
+        return _clean_list(value)
+
+
+class ProfileEdit(BaseModel):
+    """The parsed profile as the user corrected it by hand.
+
+    Keys left out of the request keep their stored value: the form edits what
+    it shows, and `preferences` or anything else it does not show survives.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = _Line
+    target_role: str | None = _Line
+    seniority: Literal["intern", "junior", "middle", "senior", "lead"] | None = None
+    years_experience: float | None = Field(default=None, ge=0, le=70)
+    field: str | None = _Line
+    summary: str | None = Field(default=None, max_length=20000)
+    directions: list[str] | None = _Items
+    skills: list[str] | None = _Items
+    education: list[str] | None = _Items
+    languages: list[str] | None = _Items
+    experience: list[ExperienceEdit] | None = _Items
+
+    @field_validator("name", "target_role", "field", "summary")
+    @classmethod
+    def _text(cls, value: str | None) -> str | None:
+        return _clean_text(value)
+
+    @field_validator("directions", "skills", "education", "languages")
+    @classmethod
+    def _list(cls, value: list[str] | None) -> list[str]:
+        return _clean_list(value)
+
+    @field_validator("experience")
+    @classmethod
+    def _jobs(cls, value: list[ExperienceEdit] | None) -> list[ExperienceEdit]:
+        # A block the user cleared entirely is a removed job, not an empty one:
+        # an empty entry would reach the exported file as a stray heading.
+        return [
+            job
+            for job in value or []
+            if any(v for v in job.model_dump(exclude_none=True).values())
+        ]
+
+
+@router.put("/active/profile", response_model=ResumeResponse)
+async def edit_profile(
+    body: ProfileEdit,
+    session: SessionDep,
+    user: UserDep,
+    resume: ResumeDep,
+) -> ResumeResponse:
+    """Save the profile the user edited by hand. Free — no model call.
+
+    The user typed the change, so the save is the confirmation, as with a
+    rollback. It lands as a new revision rather than an edit in place: reports
+    bought against the old profile must keep matching what they read, and a new
+    resume_id is what lets a vacancy be scored again (docs/decisions.md,
+    2026-09-22, variant B).
+    """
+    edited = body.model_dump(mode="json", exclude_unset=True)
+    for job in edited.get("experience") or []:
+        # exclude_unset keeps extras but also any explicit nulls; drop the
+        # nulls so a cleared field reads the same as one the parser left out.
+        for key in [k for k, v in job.items() if v is None]:
+            del job[key]
+    years = edited.get("years_experience")
+    if isinstance(years, float) and years.is_integer():
+        edited["years_experience"] = int(years)
+
+    profile = {**(resume.profile or {}), **edited}
+    if profile == resume.profile:
+        # Nothing changed: a revision here would only push the reports bought
+        # against this version into "прежнее резюме" for no reason.
+        return _as_response(resume)
+
+    revision = await revisions.new_revision(session, resume, profile=profile)
+    await chat_service.note_resume_changed(
+        session,
+        user.id,
+        f"Резюме отредактировано вручную (версия {resume.revision + 1}). "
+        "Актуальное содержимое — в профиле, а не в репликах выше.",
+    )
+    await session.commit()
+    await session.refresh(revision)
+    return _as_response(revision)
 
 
 class SearchProfileProposal(BaseModel):

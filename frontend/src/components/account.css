@@ -101,10 +101,10 @@
 }
 
 @media (max-width: 520px) {
-  .profile__head {
+  .account__head {
     padding: 12px 12px 12px 16px;
   }
-  .profile__body {
+  .account__body {
     padding: 16px;
   }
 }

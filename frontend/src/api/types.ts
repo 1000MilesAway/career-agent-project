@@ -290,6 +290,10 @@ export interface ResumeResponse {
   profile: ResumeProfile
   search_profile: SearchProfile | null
   archetypes: Record<string, unknown> | null
+  revision: number
+  parent_id: string | null
+  is_active: boolean
+  created_at: string
 }
 
 export interface SearchProfileProposal {

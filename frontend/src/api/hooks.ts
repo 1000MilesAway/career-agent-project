@@ -19,6 +19,7 @@ import type {
   FoundVacancy,
   Job,
   RecheckResult,
+  ResumeProfile,
   ResumeResponse,
   ScanJob,
   SearchProfile,
@@ -163,6 +164,11 @@ export function uploadResume(file: File): Promise<ResumeResponse> {
 /** Free: copies an earlier version forward as the newest one. */
 export const restoreResume = (resumeId: string) =>
   api<ResumeResponse>(`/api/resumes/${resumeId}/restore`, { method: 'POST' })
+
+/** Free: the user's own correction of the parsed CV, saved as a new version.
+ * Keys left out keep their stored value. */
+export const editResumeProfile = (profile: ResumeProfile) =>
+  api<ResumeResponse>('/api/resumes/active/profile', { method: 'PUT', json: profile })
 
 export const proposeSearchProfile = () =>
   api<SearchProfileProposal>('/api/resumes/search-profile/propose', { method: 'POST' })
