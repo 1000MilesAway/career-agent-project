@@ -15,7 +15,9 @@
 
 .onboarding__list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* Two columns, not as many as fit: four items in three columns left the
+     last one alone on its row. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 14px 20px;
   margin: 0 0 14px;
   padding: 0;
