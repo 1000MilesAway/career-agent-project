@@ -6,6 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FoundVacancy } from '../api/types'
+import { bucketOf } from '../components/VacancyRow'
 import { DEFAULT_FILTERS, loadFilters, saveFilters, sortRows } from './searchFilters'
 
 afterEach(() => {
@@ -80,5 +81,26 @@ describe('sortRows', () => {
 
   it('«по баллу» — оценённые сверху от лучшего, дальше «стоит посмотреть» раньше «может быть»', () => {
     expect(sortRows(rows, 'score').map((r) => r.id)).toEqual(['d', 'b', 'c', 'a'])
+  })
+})
+
+describe('bucketOf', () => {
+  const vacancy = (patch: Partial<FoundVacancy>) =>
+    ({ triage: null, verdict: null, ...patch }) as FoundVacancy
+
+  it('оценённая вакансия без triage не попадает в «без вердикта»', () => {
+    expect(bucketOf(vacancy({ verdict: 'apply' }))).toBe('worth')
+    expect(bucketOf(vacancy({ verdict: 'apply_with_caveats' }))).toBe('maybe')
+    expect(bucketOf(vacancy({ verdict: 'skip' }))).toBe('skip')
+  })
+
+  it('полная оценка перевешивает дешёвый отсев', () => {
+    const row = vacancy({ verdict: 'apply', triage: { bucket: 'skip', reason: '' } })
+    expect(bucketOf(row)).toBe('worth')
+  })
+
+  it('без оценки — вердикт triage, без обоих — null', () => {
+    expect(bucketOf(vacancy({ triage: { bucket: 'maybe', reason: '' } }))).toBe('maybe')
+    expect(bucketOf(vacancy({}))).toBeNull()
   })
 })

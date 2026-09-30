@@ -1,4 +1,5 @@
 import type { FoundVacancy, TriageBucket } from '../api/types'
+import { bucketOf } from '../components/VacancyRow'
 
 /** Which verdicts the list shows, and which folded groups are mixed in.
  *
@@ -7,7 +8,7 @@ import type { FoundVacancy, TriageBucket } from '../api/types'
  *  it, and losing it (private window, cleared site data) only brings back the
  *  defaults. */
 
-/** `null` is "no verdict yet". */
+/** `null` is "no verdict yet" — neither triage nor a full evaluation. */
 export type BucketKey = TriageBucket | null
 
 /** "fresh" keeps the order rows were found in; "score" puts the evaluated
@@ -79,7 +80,7 @@ export function saveFilters(filters: SearchFilters): void {
 /** Unscored rows keep the verdict order the bucket buttons show, so sorting
  *  by score still leaves "стоит посмотреть" ahead of "может быть". */
 const BUCKET_RANK: Record<string, number> = { worth: 0, maybe: 1, skip: 2 }
-const bucketRank = (row: FoundVacancy) => BUCKET_RANK[row.triage?.bucket ?? ''] ?? 3
+const bucketRank = (row: FoundVacancy) => BUCKET_RANK[bucketOf(row) ?? ''] ?? 3
 
 /** Rows in the chosen order. Array.sort is stable, so ties — and every row
  *  under "fresh" — keep the order the server sent. */

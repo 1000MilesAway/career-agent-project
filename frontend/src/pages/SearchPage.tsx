@@ -21,7 +21,12 @@ import {
 } from '../api/hooks'
 import type { FoundVacancy, SourceScan } from '../api/types'
 import { SalaryInput } from '../components/SalaryInput'
-import { BUCKET_TITLES, DROPPED_STAGES, VacancyRow } from '../components/VacancyRow'
+import {
+  BUCKET_TITLES,
+  DROPPED_STAGES,
+  VacancyRow,
+  bucketOf,
+} from '../components/VacancyRow'
 import { StarIcon } from '../components/icons'
 import { useToast } from '../components/toast'
 import { Empty, ErrorNote, PageHead, Skeleton, rub } from '../components/ui'
@@ -156,17 +161,17 @@ export function SearchPage() {
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
     for (const row of base) {
-      const key = row.triage?.bucket ?? null
+      const key = bucketOf(row)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return counts
   }, [base])
 
-  const anyJudged = useMemo(() => rows.some((row) => row.triage), [rows])
+  const anyJudged = useMemo(() => rows.some((row) => bucketOf(row) != null), [rows])
 
   const bucketed = useMemo(() => {
     if (!anyJudged) return base
-    return base.filter((row) => visibleBuckets.has(row.triage?.bucket ?? null))
+    return base.filter((row) => visibleBuckets.has(bucketOf(row)))
   }, [base, anyJudged, visibleBuckets])
 
   // Counted before «только оценённые» so the toggle's own number does not

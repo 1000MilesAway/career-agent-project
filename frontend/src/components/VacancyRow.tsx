@@ -11,7 +11,7 @@
  */
 
 import { memo, type ReactNode } from 'react'
-import type { FoundVacancy, TriageBucket } from '../api/types'
+import type { FoundVacancy, TriageBucket, Verdict } from '../api/types'
 import { ExternalIcon } from './icons'
 import { Score } from './ui'
 import './vacancy.css'
@@ -20,6 +20,22 @@ export const BUCKET_TITLES: Record<TriageBucket, string> = {
   worth: 'стоит посмотреть',
   maybe: 'может быть',
   skip: 'мимо',
+}
+
+const VERDICT_BUCKETS: Record<Verdict, TriageBucket> = {
+  apply: 'worth',
+  apply_with_caveats: 'maybe',
+  skip: 'skip',
+}
+
+/** The bucket a row is filed under. A full evaluation outranks the cheap
+ *  triage: it read the whole posting, triage only the listing. Triage never
+ *  looks at an evaluated row, so without this a scored vacancy fell into
+ *  «без вердикта» — the one row judged most thoroughly shown as unjudged.
+ *  `null` then means only what it says: nothing has judged the row. */
+export function bucketOf(row: FoundVacancy): TriageBucket | null {
+  if (row.verdict) return VERDICT_BUCKETS[row.verdict]
+  return row.triage?.bucket ?? null
 }
 
 /** Named in the row for every source but Habr, the default one. */
@@ -45,7 +61,7 @@ function VacancyRowInner({
   const dropped = DROPPED_STAGES.has(vacancy.stage)
   const dimmed =
     dropped ||
-    vacancy.triage?.bucket === 'skip' ||
+    bucketOf(vacancy) === 'skip' ||
     Boolean(vacancy.closed || vacancy.stale || vacancy.hidden)
   const sourceLabel = SOURCE_LABELS[vacancy.source]
 
