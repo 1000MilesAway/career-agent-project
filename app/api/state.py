@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from core.profiles import steps_as_list
 
@@ -67,6 +67,31 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         select(Vacancy)
         .where(Vacancy.user_id == user.id)
         .options(
+            # Only what the payload carries. `raw_text` is the posting itself —
+            # megabytes for a few thousand rows — and was read on every call
+            # only to be dropped. raiseload: a field added to the payload but
+            # not here fails loudly instead of lazy-loading row by row.
+            load_only(
+                Vacancy.id,
+                Vacancy.url,
+                Vacancy.title,
+                Vacancy.company,
+                Vacancy.qualification,
+                Vacancy.salary_text,
+                Vacancy.remote,
+                Vacancy.source,
+                Vacancy.stage,
+                Vacancy.screen_reason,
+                Vacancy.triage_verdict,
+                Vacancy.is_saved,
+                Vacancy.duplicate_of_id,
+                Vacancy.closed_at,
+                Vacancy.closed_reason,
+                Vacancy.hidden_at,
+                Vacancy.published,
+                Vacancy.created_at,
+                raiseload=True,
+            ),
             selectinload(Vacancy.evaluations).selectinload(Evaluation.artifacts),
             selectinload(Vacancy.application),
         )

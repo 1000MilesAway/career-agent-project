@@ -22,7 +22,7 @@ vi.mock('./client', () => ({
   fetchText: vi.fn(),
 }))
 
-const { STATE_KEY, saveVacancy, useAppState } = await import('./hooks')
+const { STATE_KEY, hideVacancy, saveVacancy, useAppState } = await import('./hooks')
 
 const state = {
   found: [
@@ -57,5 +57,19 @@ describe('saveVacancy', () => {
     pending.settle!.reject(new Error('502'))
     await expect(saving).rejects.toThrow('502')
     expect(await shown()).toEqual([false, false])
+  })
+
+  it('folds a hidden row away at once too', async () => {
+    await mutate(STATE_KEY, state, false)
+    const hiding = hideVacancy('a', true)
+    const view = renderHook(() => useAppState())
+    await act(async () => {})
+    expect(view.result.current.data!.found.map((row) => row.hidden)).toEqual([
+      true,
+      undefined,
+    ])
+    view.unmount()
+    pending.settle!.resolve()
+    await hiding
   })
 })

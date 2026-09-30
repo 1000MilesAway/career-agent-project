@@ -14,7 +14,7 @@ import type { FoundVacancy, ScanJob, ScanResult } from '../api/types'
 
 const mocks = vi.hoisted(() => ({
   startScan: vi.fn(),
-  setHidden: vi.fn(),
+  hideVacancy: vi.fn(),
   found: [] as unknown[],
   scanJob: null as unknown,
 }))
@@ -39,7 +39,7 @@ vi.mock('../api/hooks', () => ({
   runTriage: vi.fn(),
   clearFound: vi.fn(),
   saveVacancy: vi.fn(),
-  setHidden: mocks.setHidden,
+  hideVacancy: mocks.hideVacancy,
 }))
 
 vi.mock('swr', () => ({ useSWRConfig: () => ({ mutate: vi.fn() }) }))
@@ -188,12 +188,12 @@ describe('SearchPage', () => {
 
   it('«Скрыть» зовёт API, ничего не удаляя', async () => {
     mocks.found.splice(0, mocks.found.length, row('live'))
-    mocks.setHidden.mockResolvedValue({})
+    mocks.hideVacancy.mockResolvedValue({})
     render(<SearchPage />)
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Скрыть' }))
     })
-    expect(mocks.setHidden).toHaveBeenCalledWith('live', true)
+    expect(mocks.hideVacancy).toHaveBeenCalledWith('live', true)
     mocks.found.length = 0
   })
 

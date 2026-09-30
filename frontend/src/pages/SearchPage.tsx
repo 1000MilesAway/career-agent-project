@@ -13,7 +13,7 @@ import {
   clearFound,
   isActive,
   runTriage,
-  setHidden,
+  hideVacancy,
   saveVacancy,
   startScan,
   useAppState,
@@ -337,8 +337,7 @@ export function SearchPage() {
 
   async function toggleHidden(vacancy: FoundVacancy) {
     try {
-      await setHidden(vacancy.id, !vacancy.hidden)
-      await mutate(STATE_KEY)
+      await hideVacancy(vacancy.id, !vacancy.hidden)
     } catch (e) {
       toast.error(e)
     }

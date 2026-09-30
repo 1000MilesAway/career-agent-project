@@ -16,6 +16,7 @@ import type {
   ChatProposal,
   ChatResponse,
   EvaluationResponse,
+  FoundVacancy,
   Job,
   RecheckResult,
   ResumeResponse,
@@ -105,22 +106,26 @@ export const setSaved = (vacancyId: string, saved: boolean) =>
     method: saved ? 'POST' : 'DELETE',
   })
 
-/** Save or unsave with the star redrawn on the click. The save is one UPDATE;
- *  what took the time was waiting for /api/state, which after a scan carries
- *  every found row — half a megabyte. The list is still reloaded after, and a
- *  failed save puts the star back; the caller reports the error. */
-export const saveVacancy = (vacancyId: string, saved: boolean) =>
-  mutate<AppState>(
+/** A change to one row, drawn on the click rather than after /api/state comes
+ *  back: the write is one UPDATE, while the state carries every found row —
+ *  hundreds of kilobytes after a scan. The list still reloads behind it, and a
+ *  failed write puts the row back; the caller reports the error. */
+function changeRow(
+  vacancyId: string,
+  change: Partial<FoundVacancy>,
+  write: () => Promise<unknown>,
+) {
+  return mutate<AppState>(
     STATE_KEY,
     async (current) => {
-      await setSaved(vacancyId, saved)
+      await write()
       return current
     },
     {
       optimisticData: (current) => ({
         ...current!,
         found: current!.found.map((row) =>
-          row.id === vacancyId ? { ...row, saved } : row,
+          row.id === vacancyId ? { ...row, ...change } : row,
         ),
       }),
       rollbackOnError: true,
@@ -128,6 +133,16 @@ export const saveVacancy = (vacancyId: string, saved: boolean) =>
       revalidate: true,
     },
   )
+}
+
+export const saveVacancy = (vacancyId: string, saved: boolean) =>
+  changeRow(vacancyId, { saved }, () => setSaved(vacancyId, saved))
+
+export const hideVacancy = (vacancyId: string, hidden: boolean) =>
+  changeRow(vacancyId, { hidden }, () => setHidden(vacancyId, hidden))
+
+export const moveVacancy = (vacancyId: string, status: string) =>
+  changeRow(vacancyId, { status }, () => setStatus(vacancyId, status))
 
 export const setStatus = (vacancyId: string, status: string) =>
   api<unknown>(`/api/vacancies/${vacancyId}/status`, {

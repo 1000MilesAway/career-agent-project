@@ -17,7 +17,7 @@ import {
   tailoredExportBase,
   recheckVacancies,
   saveVacancy,
-  setStatus,
+  moveVacancy,
   useAppState,
 } from '../api/hooks'
 import type { ApplyStep, FoundVacancy } from '../api/types'
@@ -86,8 +86,7 @@ export function SavedPage() {
 
   async function move(id: string, status: string) {
     try {
-      await setStatus(id, status)
-      await mutate(STATE_KEY)
+      await moveVacancy(id, status)
     } catch (e) {
       toast.error(e)
     }
