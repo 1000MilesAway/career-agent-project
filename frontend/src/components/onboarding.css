@@ -1,0 +1,49 @@
+.onboarding {
+  margin-bottom: 20px;
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.onboarding__title {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+
+.onboarding__lede {
+  margin: 0 0 14px;
+}
+
+.onboarding__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 20px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding__step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.onboarding__step p {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.onboarding__icon {
+  display: inline-flex;
+  flex: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.onboarding__note {
+  margin: 0 0 14px;
+  color: var(--ink-2);
+}

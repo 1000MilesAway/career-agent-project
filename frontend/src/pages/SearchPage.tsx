@@ -5,7 +5,7 @@
  * is no button that skips one.
  */
 
-import { useMemo, useState, useTransition } from 'react'
+import { type ReactNode, useMemo, useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
   SCAN_JOB_KEY,
@@ -95,7 +95,9 @@ function whenText(iso: string): string {
   })
 }
 
-export function SearchPage() {
+/** `intro` is the first-visit tour; it is passed in by the shell rather than
+ *  read here so the page does not depend on the router's state. */
+export function SearchPage({ intro }: { intro?: ReactNode } = {}) {
   const { data, isLoading, error } = useAppState()
   const { mutate } = useSWRConfig()
   const toast = useToast()
@@ -396,6 +398,8 @@ export function SearchPage() {
           </>
         }
       />
+
+      {intro}
 
       <section className="card scan" aria-label="Параметры поиска">
         <SalaryInput value={salary} anySalary={anySalary} onChange={setSalary} />
