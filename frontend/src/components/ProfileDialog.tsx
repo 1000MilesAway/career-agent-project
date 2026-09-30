@@ -15,7 +15,7 @@ import { useAuth } from '../auth'
 import { CloseIcon, LogoutIcon } from './icons'
 import { TelegramLink } from './TelegramLogin'
 import { useToast } from './toast'
-import './profile.css'
+import './account.css'
 
 type User = AppState['user']
 
@@ -52,7 +52,7 @@ export function ProfileDialog({
   return (
     <dialog
       ref={ref}
-      className="profile"
+      className="account"
       aria-label="Профиль"
       onCancel={(event) => {
         event.preventDefault()
@@ -62,9 +62,9 @@ export function ProfileDialog({
         if (event.target === ref.current) onClose()
       }}
     >
-      <header className="profile__head">
+      <header className="account__head">
         <Avatar user={user} />
-        <h2 className="profile__title">{displayName(user)}</h2>
+        <h2 className="account__title">{displayName(user)}</h2>
         <button
           type="button"
           className="btn btn--quiet btn--small btn--icon"
@@ -76,9 +76,9 @@ export function ProfileDialog({
         </button>
       </header>
 
-      <div className="profile__body">
-        <section className="profile__section">
-          <label className="eyebrow" htmlFor="profile-name">
+      <div className="account__body">
+        <section className="account__section">
+          <label className="eyebrow" htmlFor="account-name">
             Имя
           </label>
           {/* Keyed by the saved value: a save or another tab's change resets
@@ -86,17 +86,17 @@ export function ProfileDialog({
           <NameForm key={user.name ?? ''} saved={user.name ?? ''} />
         </section>
 
-        <section className="profile__section">
+        <section className="account__section">
           <p className="eyebrow">Почта для входа</p>
-          <p className="profile__value">{user.email}</p>
+          <p className="account__value">{user.email}</p>
         </section>
 
-        <section className="profile__section">
+        <section className="account__section">
           <p className="eyebrow">Вход через Telegram</p>
           <TelegramLink linkedAs={user.telegram_name ?? null} />
         </section>
 
-        <section className="profile__section">
+        <section className="account__section">
           <p className="eyebrow">Персональные данные</p>
           <p className="muted">
             {user.consent_at
@@ -106,7 +106,7 @@ export function ProfileDialog({
         </section>
       </div>
 
-      <footer className="profile__foot">
+      <footer className="account__foot">
         <button type="button" className="btn btn--quiet btn--small" onClick={logout}>
           <LogoutIcon />
           Выйти
@@ -138,9 +138,9 @@ function NameForm({ saved }: { saved: string }) {
   }
 
   return (
-    <form className="profile__line" onSubmit={onSubmit}>
+    <form className="account__line" onSubmit={onSubmit}>
       <input
-        id="profile-name"
+        id="account-name"
         className="input"
         value={draft}
         maxLength={80}

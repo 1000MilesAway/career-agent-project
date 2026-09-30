@@ -1,4 +1,8 @@
-.profile {
+/* The account dialog. Its block is `account`, not `profile`: `.profile` is the
+   resume card on "Моё резюме", and sharing the name once gave that card the
+   dialog's width, max-height and overflow — the experience was cut off. */
+
+.account {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 0;
@@ -11,18 +15,18 @@
   overflow: hidden;
 }
 
-.profile::backdrop {
+.account::backdrop {
   background: rgb(20 19 15 / 32%);
   backdrop-filter: blur(1px);
 }
 
 /* `display` only when open: a bare `display: flex` would override the user
    agent's `display: none` on a closed <dialog> — see drawer.css. */
-.profile[open] {
+.account[open] {
   display: flex;
 }
 
-.profile__head {
+.account__head {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -30,7 +34,7 @@
   border-bottom: 1px solid var(--line);
 }
 
-.profile__title {
+.account__title {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -43,7 +47,7 @@
   white-space: nowrap;
 }
 
-.profile__body {
+.account__body {
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -51,21 +55,21 @@
   overflow-y: auto;
 }
 
-.profile__section .eyebrow {
+.account__section .eyebrow {
   display: block;
 }
 
-.profile__section .muted {
+.account__section .muted {
   margin: 0;
 }
 
-.profile__line {
+.account__line {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.profile__value {
+.account__value {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -75,7 +79,7 @@
   white-space: nowrap;
 }
 
-.profile__foot {
+.account__foot {
   display: flex;
   justify-content: flex-end;
   padding: 10px 16px;

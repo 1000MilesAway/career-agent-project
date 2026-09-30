@@ -153,8 +153,8 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
 
   if (linkedAs) {
     return (
-      <div className="profile__line">
-        <span className="profile__value" title="Вход через Telegram включён">
+      <div className="account__line">
+        <span className="account__value" title="Вход через Telegram включён">
           {linkedAs}
         </span>
         <button
@@ -177,8 +177,8 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
   if (!config)
     return <p className="muted">Вход через Telegram на этом сервере не настроен.</p>
   return (
-    <div className="profile__line">
-      <span className="profile__value muted">Не привязан</span>
+    <div className="account__line">
+      <span className="account__value muted">Не привязан</span>
       <TelegramButton
         config={config}
         small
