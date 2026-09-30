@@ -14,6 +14,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 # Set before anything imports the app, because both values are read at import
 # time: app/main.py refuses to start on the default SECRET_KEY, and
@@ -136,6 +137,8 @@ async def user(session):
         email=f"u{uuid.uuid4().hex[:8]}@example.com",
         password_hash=hash_password("correct horse"),
         is_active=True,
+        # As the admin CLI makes it; a self-signup starts unconfirmed.
+        email_verified_at=datetime.now(UTC),
     )
     session.add(account)
     await session.commit()

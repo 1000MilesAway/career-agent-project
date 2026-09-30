@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
@@ -11,9 +11,18 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from ..core import telegram_login
+from ..core.config import get_settings
 from ..core.deps import SessionDep, UserDep
-from ..core.security import create_access_token, verify_password
+from ..core.security import (
+    create_access_token,
+    create_email_token,
+    hash_password,
+    password_mark_matches,
+    read_email_token,
+    verify_password,
+)
 from ..models import User
+from ..services import mail
 from ..services.spend import remaining_rub
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -78,7 +87,141 @@ async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
         )
+    # After the password check, so it tells nothing to someone without it.
+    if user.email_verified_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Почта ещё не подтверждена — откройте ссылку из письма",
+        )
 
+    return TokenResponse(access_token=create_access_token(user.id))
+
+
+# A second letter to the same address waits this long. Resend's free plan is
+# 100 letters a day for the whole service, and a held "send again" button
+# should not be able to spend them.
+RESEND_AFTER = timedelta(seconds=60)
+
+
+class SignupConfig(BaseModel):
+    # False when mail is not configured: the login page then offers no signup.
+    enabled: bool
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    # bcrypt reads only the first 72 bytes; a longer password would be
+    # accepted and silently cut.
+    password: str = Field(min_length=8, max_length=72)
+
+
+class SignupResponse(BaseModel):
+    email: EmailStr
+    detail: str
+
+
+class VerifyRequest(BaseModel):
+    token: str
+
+
+@router.get("/signup", response_model=SignupConfig)
+async def signup_config() -> SignupConfig:
+    """Whether signing up by email is on. Public, like the Telegram config."""
+    return SignupConfig(enabled=mail.mail_enabled())
+
+
+@router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_202_ACCEPTED)
+async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
+    """Create an account and send the link that confirms its address.
+
+    The account cannot log in until the link is opened. Signing up again for
+    an unconfirmed address replaces the password and sends a new letter: the
+    first attempt may have been a typo, or somebody else's — only the owner of
+    the inbox can finish either one.
+
+    A confirmed address gets the same answer and no letter, so the form does
+    not tell a stranger which addresses have accounts here. Its owner logs in.
+    """
+    if not mail.mail_enabled():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Регистрация по почте не настроена")
+    email = body.email.lower()
+    sent = SignupResponse(
+        email=email,
+        detail="Письмо со ссылкой отправлено — откройте его, чтобы войти",
+    )
+
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is not None and user.email_verified_at is not None:
+        return sent
+
+    now = datetime.now(UTC)
+    if (
+        user is not None
+        and user.verification_sent_at is not None
+        and now - user.verification_sent_at < RESEND_AFTER
+    ):
+        wait = int((RESEND_AFTER - (now - user.verification_sent_at)).total_seconds()) + 1
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Письмо только что ушло — повторить можно через {wait} с",
+        )
+
+    password_hash = hash_password(body.password)
+    if user is None:
+        user = User(email=email, password_hash=password_hash)
+        session.add(user)
+        try:
+            await session.flush()
+        except IntegrityError:
+            # The same address submitted twice at once: the other request won
+            # and is sending its letter.
+            await session.rollback()
+            return sent
+    else:
+        user.password_hash = password_hash
+
+    link = f"{get_settings().public_url.rstrip('/')}/#/verify?token=" + create_email_token(
+        user.id, email, password_hash
+    )
+    subject, text, html_body = mail.verification_letter(link)
+    try:
+        await mail.send_email(email, subject, text, html_body)
+    except mail.MailUnavailable:
+        await session.rollback()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Не получилось отправить письмо — попробуйте позже или войдите через Telegram",
+        ) from None
+    user.verification_sent_at = now
+    await session.commit()
+    return sent
+
+
+@router.post("/verify", response_model=TokenResponse)
+async def verify_email(body: VerifyRequest, session: SessionDep) -> TokenResponse:
+    """Confirm the address from a letter's link and log in.
+
+    Opening a link twice is fine: an already confirmed account just logs in.
+    A link from before a repeat signup no longer matches the password and is
+    refused, like an expired one — one message for every failure.
+    """
+    refused = HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        "Ссылка устарела или повреждена — зарегистрируйтесь ещё раз, придёт новое письмо",
+    )
+    claims = read_email_token(body.token)
+    if claims is None:
+        raise refused
+    user_id, email, mark = claims
+    user = await session.get(User, user_id)
+    if user is None or user.email != email or not password_mark_matches(mark, user.password_hash):
+        raise refused
+    if not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Учётка выключена администратором")
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(UTC)
+        await session.commit()
     return TokenResponse(access_token=create_access_token(user.id))
 
 

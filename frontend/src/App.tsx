@@ -11,11 +11,12 @@
  */
 
 import { Suspense, useState, type ReactNode } from 'react'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { isActive, useAppState, useProposals } from './api/hooks'
 import type { Spend } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
+import { VerifyPage } from './pages/VerifyPage'
 import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
@@ -33,6 +34,10 @@ const ChatPage = lazyPage(() => import('./pages/ChatPage').then((m) => m.ChatPag
 
 export function App() {
   const { token } = useAuth()
+  const { pathname } = useLocation()
+  // Before the token check: the link from a letter must work whether or not
+  // this browser is logged in, and logged in as whom.
+  if (pathname === '/verify') return <VerifyPage />
   if (!token) return <LoginPage />
   return <Cabinet />
 }

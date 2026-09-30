@@ -12,6 +12,8 @@ interface AuthValue {
   token: string | null
   login: (email: string, password: string) => Promise<void>
   loginTelegram: (idToken: string) => Promise<void>
+  /** Opens a letter's link: confirms the address and logs in. */
+  verifyEmail: (token: string) => Promise<void>
   logout: () => void
 }
 
@@ -38,10 +40,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(response.access_token)
   }, [])
 
+  const verifyEmail = useCallback(async (token: string) => {
+    const response = await api<{ access_token: string }>('/api/auth/verify', {
+      method: 'POST',
+      json: { token },
+    })
+    setToken(response.access_token)
+  }, [])
+
   const logout = useCallback(() => setToken(null), [])
 
   return (
-    <AuthContext value={{ token, login, loginTelegram, logout }}>{children}</AuthContext>
+    <AuthContext value={{ token, login, loginTelegram, verifyEmail, logout }}>
+      {children}
+    </AuthContext>
   )
 }
 

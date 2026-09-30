@@ -45,7 +45,8 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class User(Base, TimestampMixin):
-    """An account: made by the admin CLI, or by a first login with Telegram.
+    """An account: made by the admin CLI, by a confirmed email signup, or by a
+    first login with Telegram.
 
     A Telegram sign-up has no email or password — Telegram is its only way in,
     which is why such an account cannot unlink it (see api/auth.py).
@@ -64,6 +65,14 @@ class User(Base, TimestampMixin):
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # When the email was confirmed by a link from a letter. A self-signup
+    # cannot log in until it is set; accounts made by the admin CLI are born
+    # confirmed. Null for a Telegram-only account, which has no email.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the last confirmation letter went out: repeat signups are throttled
+    # by it, because Resend's free plan is 100 letters a day for everyone.
+    verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # What the cabinet calls the user instead of the login email. Optional:
     # the cabinet falls back to the email, or to the Telegram name for an

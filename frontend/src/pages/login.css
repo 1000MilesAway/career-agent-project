@@ -107,6 +107,18 @@
   color: var(--ink-2);
 }
 
+/* A text link that switches the form; a button, because it navigates nowhere. */
+.login__switch {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .login__form-title {
   font-family: var(--font-serif);
   font-weight: 400;

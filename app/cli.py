@@ -26,6 +26,7 @@ import argparse
 import asyncio
 import secrets
 import sys
+from datetime import UTC, datetime
 
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
@@ -76,7 +77,13 @@ async def _user_add(email: str, password: str | None, is_admin: bool) -> int:
             return 1
 
         session.add(
-            User(email=email, password_hash=hash_password(password), is_admin=is_admin)
+            User(
+                email=email,
+                password_hash=hash_password(password),
+                is_admin=is_admin,
+                # The admin vouches for the address; there is no letter to click.
+                email_verified_at=datetime.now(UTC),
+            )
         )
         await session.commit()
 

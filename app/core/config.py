@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_client_id: int | None = None
 
+    # Email via Resend (https://resend.com), used for now only to confirm the
+    # address of a self-signup. With either value empty, signing up by email is
+    # off and the login page offers only Telegram. The sender's domain must be
+    # verified in Resend: without it Resend delivers only to the owner's own
+    # address, and every other signup would wait for a letter that never comes.
+    resend_api_key: str = ""
+    mail_from: str = ""
+    # Where the link in a letter points. The cabinet is what opens it, so this
+    # is the site's address, not the API's.
+    public_url: str = "https://career-helper.site"
+    # How long a confirmation link works.
+    email_token_hours: int = 24
+
     debug: bool = False
 
     # Which revision is actually running, reported by /api/health. Set by the
