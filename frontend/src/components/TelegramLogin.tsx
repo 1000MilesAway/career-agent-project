@@ -133,7 +133,13 @@ export function TelegramButton({
 }
 
 /** Profile row: link Telegram for login, or show what is linked. */
-export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
+export function TelegramLink({
+  linkedAs,
+  canUnlink = true,
+}: {
+  linkedAs: string | null
+  canUnlink?: boolean
+}) {
   const config = useTelegramConfig()
   const toast = useToast()
   const { mutate } = useSWRConfig()
@@ -157,18 +163,20 @@ export function TelegramLink({ linkedAs }: { linkedAs: string | null }) {
         <span className="account__value" title="Вход через Telegram включён">
           {linkedAs}
         </span>
-        <button
-          className="btn btn--quiet btn--small"
-          disabled={isPending}
-          onClick={() =>
-            run(
-              () => api('/api/auth/telegram/link', { method: 'DELETE' }),
-              'Telegram отвязан. Вход — по email и паролю.',
-            )
-          }
-        >
-          Отвязать
-        </button>
+        {canUnlink ? (
+          <button
+            className="btn btn--quiet btn--small"
+            disabled={isPending}
+            onClick={() =>
+              run(
+                () => api('/api/auth/telegram/link', { method: 'DELETE' }),
+                'Telegram отвязан. Вход — по email и паролю.',
+              )
+            }
+          >
+            Отвязать
+          </button>
+        ) : null}
       </div>
     )
   }

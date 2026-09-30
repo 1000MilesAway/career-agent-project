@@ -142,10 +142,39 @@ class TestTelegramEndpoints:
         nonce = (await client.get("/api/auth/telegram")).json()["nonce"]
         assert verify_id_token(id_token(nonce=nonce), BOT_ID) is not None
 
-    async def test_an_unlinked_telegram_does_not_create_an_account(self, client, bot):
+    async def test_an_unknown_telegram_signs_up(self, client, bot, session):
+        from sqlalchemy import func, select
+
+        from app.models import User
+
         r = await client.post("/api/auth/telegram", json=body())
+        assert r.status_code == 200
+        headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        me = (await client.get("/api/auth/me", headers=headers)).json()
+        assert me["email"] is None
+        assert me["telegram_name"] == "@max"
+
+        # The second login is the same account, not a second one.
+        again = await client.post("/api/auth/telegram", json=body())
+        assert again.status_code == 200
+        count = await session.scalar(select(func.count()).select_from(User))
+        assert count == 1
+
+    async def test_a_telegram_sign_up_cannot_unlink_its_only_login(self, client, bot):
+        token = (await client.post("/api/auth/telegram", json=body())).json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        r = await client.delete("/api/auth/telegram/link", headers=headers)
+        assert r.status_code == 409
+        assert (await client.post("/api/auth/telegram", json=body())).status_code == 200
+
+    async def test_a_forged_token_signs_up_nobody(self, client, bot, session):
+        from sqlalchemy import func, select
+
+        from app.models import User
+
+        r = await client.post("/api/auth/telegram", json=body(id_token(_OTHER_KEY)))
         assert r.status_code == 401
-        assert "не привязан" in r.json()["detail"]
+        assert await session.scalar(select(func.count()).select_from(User)) == 0
 
     async def test_linked_telegram_logs_into_the_same_account(
         self, client, bot, user, auth_headers
@@ -177,11 +206,16 @@ class TestTelegramEndpoints:
         r = await client.post("/api/auth/telegram/link", json=body(), headers=auth_headers)
         assert r.status_code == 409
 
-    async def test_unlinking_stops_telegram_login(self, client, bot, auth_headers):
+    async def test_unlinking_detaches_telegram_from_the_account(
+        self, client, bot, user, auth_headers
+    ):
         await client.post("/api/auth/telegram/link", json=body(), headers=auth_headers)
         r = await client.delete("/api/auth/telegram/link", headers=auth_headers)
         assert r.json()["telegram_name"] is None
-        assert (await client.post("/api/auth/telegram", json=body())).status_code == 401
+        # Telegram now leads to a new, empty account — not back into this one.
+        token = (await client.post("/api/auth/telegram", json=body())).json()["access_token"]
+        me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert me.json()["email"] is None
 
     async def test_a_disabled_account_cannot_log_in_by_telegram(
         self, client, bot, session, user, auth_headers

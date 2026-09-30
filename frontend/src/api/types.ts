@@ -196,7 +196,8 @@ export interface AppState {
   apply_steps: ApplyStep[]
   spend: Spend
   user: {
-    email: string
+    /** Null for an account that signed up with Telegram — it has no password either. */
+    email: string | null
     /** What the user calls themselves; null until set — show the email then. */
     name?: string | null
     consent_at: string | null

@@ -19,8 +19,9 @@ import './account.css'
 
 type User = AppState['user']
 
-/** What the sidebar calls the user: their name once given, the email until then. */
-export const displayName = (user: User): string => user.name || user.email
+/** What the sidebar calls the user: their name once given, else how they log in. */
+export const displayName = (user: User): string =>
+  user.name || user.email || user.telegram_name || 'Без имени'
 
 export function Avatar({ user }: { user: User }) {
   return (
@@ -86,14 +87,23 @@ export function ProfileDialog({
           <NameForm key={user.name ?? ''} saved={user.name ?? ''} />
         </section>
 
-        <section className="account__section">
-          <p className="eyebrow">Почта для входа</p>
-          <p className="account__value">{user.email}</p>
-        </section>
+        {/* A Telegram sign-up has no email: an empty "Почта" row would read as
+            something missing that the user is supposed to fill in. */}
+        {user.email ? (
+          <section className="account__section">
+            <p className="eyebrow">Почта для входа</p>
+            <p className="account__value">{user.email}</p>
+          </section>
+        ) : null}
 
         <section className="account__section">
           <p className="eyebrow">Вход через Telegram</p>
-          <TelegramLink linkedAs={user.telegram_name ?? null} />
+          {/* Email and password come as a pair, so no email means Telegram is
+              the only way in — and the server refuses to unlink it. */}
+          <TelegramLink
+            linkedAs={user.telegram_name ?? null}
+            canUnlink={user.email !== null}
+          />
         </section>
 
         <section className="account__section">
@@ -130,7 +140,7 @@ function NameForm({ saved }: { saved: string }) {
       try {
         await updateProfile({ name: draft })
         await mutate(STATE_KEY)
-        toast.info(draft.trim() ? 'Имя сохранено' : 'Имя убрано — показываем почту')
+        toast.info(draft.trim() ? 'Имя сохранено' : 'Имя убрано')
       } catch (e) {
         toast.error(e)
       }

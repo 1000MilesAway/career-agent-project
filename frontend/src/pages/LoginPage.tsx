@@ -105,8 +105,7 @@ export function LoginPage() {
           </button>
         </form>
 
-        {/* Only for an account that has linked Telegram in the cabinet: an
-            unknown Telegram account is refused, not registered. */}
+        {/* Logs into the linked account, or creates one on the first visit. */}
         {telegram ? (
           <div className="login__telegram">
             <span className="login__or">или</span>
@@ -124,7 +123,7 @@ export function LoginPage() {
         <ErrorNote error={error} />
 
         <p className="muted" style={{ marginBottom: 0 }}>
-          Регистрации пока нет — учётку заводит администратор.
+          Впервые здесь? Войдите через Telegram — учётка создастся сама.
         </p>
       </section>
     </main>

@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -44,19 +45,29 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class User(Base, TimestampMixin):
-    """An account. Created by the admin CLI — there is no public registration."""
+    """An account: made by the admin CLI, or by a first login with Telegram.
+
+    A Telegram sign-up has no email or password — Telegram is its only way in,
+    which is why such an account cannot unlink it (see api/auth.py).
+    """
 
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "(email IS NOT NULL AND password_hash IS NOT NULL) OR telegram_id IS NOT NULL",
+            name="has_a_login",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # What the cabinet calls the user instead of the login email. Optional:
-    # accounts are created by the admin with an email only, and the cabinet
-    # falls back to the email until the user names themselves.
+    # the cabinet falls back to the email, or to the Telegram name for an
+    # account without one, until the user names themselves.
     name: Mapped[str | None] = mapped_column(String(80))
 
     # Consent to process personal data. A resume IS personal data, so the
@@ -70,9 +81,9 @@ class User(Base, TimestampMixin):
     # cost me" while testing.
     spent_rub: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
 
-    # A Telegram account linked from the cabinet, which then logs in by itself.
-    # Linking only — an unknown Telegram account never creates a user, since
-    # accounts are still the admin's to create. The name is for display
+    # A Telegram account linked from the cabinet, or the one the account was
+    # created by on its first Telegram login; either way it then logs in by
+    # itself. The name is for display
     # ("@handle" or the first name when there is no handle) and is refreshed on
     # every Telegram login; the id is what identifies.
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)

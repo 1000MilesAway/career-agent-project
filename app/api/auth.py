@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from ..core import telegram_login
 from ..core.deps import SessionDep, UserDep
@@ -29,7 +30,8 @@ class TokenResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    email: EmailStr
+    # Null for an account that signed up with Telegram.
+    email: EmailStr | None
     # Null until the user sets one; the cabinet shows the email instead.
     name: str | None
     is_admin: bool
@@ -66,7 +68,12 @@ async def login(body: LoginRequest, session: SessionDep) -> TokenResponse:
     result = await session.execute(select(User).where(User.email == body.email.lower()))
     user = result.scalar_one_or_none()
 
-    if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+    if (
+        user is None
+        or not user.is_active
+        or user.password_hash is None
+        or not verify_password(body.password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
@@ -158,21 +165,28 @@ async def telegram_config() -> TelegramConfig:
 
 @router.post("/telegram", response_model=TokenResponse)
 async def telegram_login_endpoint(body: TelegramToken, session: SessionDep) -> TokenResponse:
-    """Log in with a Telegram account linked to a user beforehand.
+    """Log in with Telegram; an account seen for the first time is created.
 
-    An unknown Telegram account is refused, not registered: accounts are
-    still created by the admin. Saying "not linked" leaks nothing — only the
-    owner of that Telegram account can get a signed token for it.
+    Signing up takes nothing but the Telegram confirmation: no email, no
+    password. What bounds a stranger's cost is SPEND_LIMIT_RUB, per account.
+    A disabled account is refused rather than re-created — the Telegram id is
+    still its, so a fresh account would undo `user-off`.
     """
     identity = await _telegram_identity(body)
     result = await session.execute(select(User).where(User.telegram_id == identity.id))
     user = result.scalar_one_or_none()
-    if user is None or not user.is_active:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "Этот Telegram не привязан к учётке. Войдите по email и привяжите его "
-            "в кабинете.",
-        )
+    if user is None:
+        user = User(telegram_id=identity.id, telegram_name=identity.name)
+        session.add(user)
+        try:
+            await session.commit()
+        except IntegrityError:
+            # Two popups for one Telegram account at once: the other won.
+            await session.rollback()
+            result = await session.execute(select(User).where(User.telegram_id == identity.id))
+            user = result.scalar_one()
+    if not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Учётка выключена администратором")
     # The handle can change in Telegram; keep the displayed one current.
     if user.telegram_name != identity.name:
         user.telegram_name = identity.name
@@ -204,7 +218,16 @@ async def telegram_link(body: TelegramToken, user: UserDep, session: SessionDep)
 
 @router.delete("/telegram/link", response_model=UserResponse)
 async def telegram_unlink(user: UserDep, session: SessionDep) -> UserResponse:
-    """Unlink Telegram. The password still logs in, so this cannot lock anyone out."""
+    """Unlink Telegram, when a password is there to log in with instead.
+
+    An account that signed up with Telegram has nothing else: unlinking would
+    leave an account nobody can reach, with the user's resume in it.
+    """
+    if user.password_hash is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Telegram — единственный вход в эту учётку, отвязать его нельзя",
+        )
     user.telegram_id = None
     user.telegram_name = None
     await session.commit()

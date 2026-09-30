@@ -20,12 +20,28 @@ vi.mock('swr', () => ({ useSWRConfig: () => ({ mutate: mocks.mutate }) }))
 vi.mock('../auth', () => ({ useAuth: () => ({ logout: vi.fn() }) }))
 vi.mock('./toast', () => ({ useToast: () => ({ info: vi.fn(), error: vi.fn() }) }))
 vi.mock('./TelegramLogin', () => ({
-  TelegramLink: ({ linkedAs }: { linkedAs: string | null }) => <p>tg:{String(linkedAs)}</p>,
+  TelegramLink: ({
+    linkedAs,
+    canUnlink,
+  }: {
+    linkedAs: string | null
+    canUnlink: boolean
+  }) => (
+    <p>
+      tg:{String(linkedAs)}
+      {canUnlink ? '' : ':only'}
+    </p>
+  ),
 }))
 
 const { ProfileDialog, displayName } = await import('./ProfileDialog')
 
-const user = {
+const user: {
+  email: string | null
+  name: string | null
+  consent_at: string | null
+  telegram_name: string | null
+} = {
   email: 'max@example.com',
   name: null,
   consent_at: null,
@@ -46,12 +62,22 @@ describe('displayName', () => {
   it('с именем — имя', () => {
     expect(displayName({ ...user, name: 'Макс' })).toBe('Макс')
   })
+
+  it('без почты и имени — Telegram', () => {
+    expect(displayName({ ...user, email: null })).toBe('@max')
+  })
 })
 
 describe('ProfileDialog', () => {
   it('Telegram показывается в профиле', () => {
     render(<ProfileDialog open user={user} onClose={vi.fn()} />)
     expect(screen.getByText('tg:@max')).toBeTruthy()
+  })
+
+  it('учётка из Telegram: без строки почты, отвязать нельзя', () => {
+    render(<ProfileDialog open user={{ ...user, email: null }} onClose={vi.fn()} />)
+    expect(screen.queryByText('Почта для входа')).toBeNull()
+    expect(screen.getByText('tg:@max:only')).toBeTruthy()
   })
 
   it('«Сохранить» неактивна, пока имя не изменено', () => {

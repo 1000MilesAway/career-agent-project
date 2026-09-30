@@ -102,7 +102,7 @@ async def _user_list() -> int:
         if not u.is_active:
             flags.append("выключен")
         suffix = f"  [{', '.join(flags)}]" if flags else ""
-        print(f"{u.email:<40} потрачено {float(u.spent_rub):.2f} ₽{suffix}")
+        print(f"{u.email or u.telegram_name or u.id!s:<40} потрачено {float(u.spent_rub):.2f} ₽{suffix}")
     return 0
 
 
@@ -127,18 +127,25 @@ async def _user_passwd(email: str, password: str | None) -> int:
     return 0
 
 
-async def _user_toggle(email: str, active: bool) -> int:
-    email = email.strip().lower()
+async def _user_toggle(who: str, active: bool) -> int:
+    """`who` is an email, or the "@handle" user-list shows for a Telegram sign-up."""
+    who = who.strip()
+    column = User.telegram_name if who.startswith("@") else User.email
+    key = who if who.startswith("@") else who.lower()
     async with SessionLocal() as session:
-        result = await session.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
-        if user is None:
-            print(f"Нет пользователя {email}", file=sys.stderr)
+        result = await session.execute(select(User).where(column == key))
+        users = list(result.scalars())
+        if not users:
+            print(f"Нет пользователя {who}", file=sys.stderr)
             return 1
-        user.is_active = active
+        # Handles are Telegram's, not ours, and a stale one can repeat.
+        if len(users) > 1:
+            print(f"{who}: несколько учёток, уточните через email", file=sys.stderr)
+            return 1
+        users[0].is_active = active
         await session.commit()
 
-    print(f"{email}: {'включён' if active else 'выключен'}")
+    print(f"{who}: {'включён' if active else 'выключен'}")
     return 0
 
 
@@ -237,10 +244,10 @@ def main(argv: list[str] | None = None) -> int:
     passwd.add_argument("--password")
 
     off = sub.add_parser("user-off", help="выключить доступ")
-    off.add_argument("email")
+    off.add_argument("email", help="email или @handle из user-list")
 
     on = sub.add_parser("user-on", help="включить доступ обратно")
-    on.add_argument("email")
+    on.add_argument("email", help="email или @handle из user-list")
 
     cal = sub.add_parser("calibrate", help="соблюдает ли скоринг свои правила (бесплатно)")
     cal.add_argument(
