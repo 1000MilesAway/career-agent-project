@@ -17,7 +17,7 @@ import type { Spend } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
-import { Onboarding } from './components/Onboarding'
+import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
 import { Skeleton, rub } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
@@ -105,6 +105,8 @@ function Cabinet() {
         </div>
       </aside>
 
+      <Tour savedCount={savedCount} />
+
       <main className="main">
         <Suspense
           fallback={
@@ -115,7 +117,7 @@ function Cabinet() {
         >
           <Routes>
             <Route path="/resume" element={<ResumePage />} />
-            <Route path="/search" element={<SearchPage intro={<Onboarding />} />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/saved" element={<SavedPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="*" element={<Navigate to={home} replace />} />

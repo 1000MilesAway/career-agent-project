@@ -1,0 +1,82 @@
+.coach {
+  position: fixed;
+  z-index: 40;
+  width: min(290px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-pop);
+  animation: coach-in 0.2s ease-out;
+}
+
+/* Measured before it is placed: invisible, but laid out, so its size is known. */
+.coach--hidden {
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: none;
+}
+
+.coach__arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+
+.coach--right .coach__arrow {
+  left: -7px;
+  margin-top: -6px;
+  border-top: none;
+  border-right: none;
+}
+
+.coach--bottom .coach__arrow {
+  top: -7px;
+  margin-left: -6px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.coach__title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.coach__text {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.coach__ring {
+  position: fixed;
+  z-index: 39;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  animation: coach-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes coach-pulse {
+  50% {
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach,
+  .coach__ring {
+    animation: none;
+  }
+}

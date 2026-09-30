@@ -6,7 +6,6 @@
  */
 
 import { useState, useTransition } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
 import {
   CHAT_KEY,
@@ -22,7 +21,7 @@ import type { ResumeProfile, ResumeVersion, SearchProfile } from '../api/types'
 import { useToast } from '../components/toast'
 import { Card, Chips, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
-import { ONBOARDING_STATE } from '../components/Onboarding'
+import { setTourStep } from '../components/tour'
 import { SearchProfileDiff } from '../components/SearchProfileDiff'
 import './resume.css'
 
@@ -30,7 +29,6 @@ export function ResumePage() {
   const { data, isLoading, error } = useAppState()
   const { mutate } = useSWRConfig()
   const toast = useToast()
-  const navigate = useNavigate()
 
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -51,9 +49,9 @@ export function ResumePage() {
         await mutate(STATE_KEY)
         setFile(null)
         toast.info('Резюме разобрано')
-        // A new account has nothing more to do here: the search is the next
-        // step, and the tour explains the rest of the cabinet once.
-        if (first) navigate('/search', { state: ONBOARDING_STATE })
+        // The user stays to check how the CV was read; a hint on the sidebar
+        // points to the search as the next step.
+        if (first) setTourStep('search')
       } catch (e) {
         toast.error(e)
       }
