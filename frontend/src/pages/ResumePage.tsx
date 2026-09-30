@@ -139,8 +139,7 @@ export function ResumePage() {
         </div>
       ) : null}
       <p className="muted upload__note">
-        PDF, DOC, DOCX, RTF, TXT или MD до 10 МБ. Разбор стоит около 0.05 ₽ и делается один
-        раз.
+        PDF, DOC, DOCX, RTF, TXT или MD до 10 МБ.
       </p>
     </div>
   )

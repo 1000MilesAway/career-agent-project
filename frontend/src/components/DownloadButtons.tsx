@@ -1,8 +1,7 @@
 /** "Оформить · PDF / DOCX / MD" — one set of buttons, used on both screens.
  *
  * Shared so the two places cannot disagree on what a download costs. Nothing
- * here is paid: the server renders JSON that already exists, which is why no
- * price is shown next to these buttons while every paid button states one.
+ * here is paid: the server renders JSON that already exists.
  *
  * The quick buttons download in the style last picked in the designer, so a
  * user who chose "Акцент" once does not have to open the designer again for

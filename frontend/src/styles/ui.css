@@ -200,12 +200,6 @@
   border-color: var(--ink);
 }
 
-.btn__price {
-  font-size: 12px;
-  opacity: 0.65;
-  font-variant-numeric: tabular-nums;
-}
-
 .linkish {
   background: none;
   border: none;
@@ -552,17 +546,6 @@ pre {
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 0;
-}
-
-.cost {
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.cost b {
-  color: var(--ink);
-  font-weight: 600;
 }
 
 .kv {

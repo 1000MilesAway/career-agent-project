@@ -25,7 +25,7 @@ import { DownloadButtons } from '../components/DownloadButtons'
 import { VacancyRow } from '../components/VacancyRow'
 import { CloseIcon } from '../components/icons'
 import { useToast } from '../components/toast'
-import { Empty, ErrorNote, PageHead, Skeleton, rub } from '../components/ui'
+import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
 import './saved.css'
 
@@ -197,9 +197,7 @@ export function SavedPage() {
                       onClick={() => openReport(vacancy)}
                       disabled={isBusy(`${vacancy.id}:report`)}
                       title={
-                        vacancy.score != null
-                          ? 'Отчёт уже куплен — показ бесплатный'
-                          : 'Полная оценка — около 0.17 ₽'
+                        vacancy.score != null ? 'Открыть готовый отчёт' : 'Полная оценка вакансии'
                       }
                     >
                       {isBusy(`${vacancy.id}:report`)
@@ -207,22 +205,19 @@ export function SavedPage() {
                         : vacancy.score != null
                           ? 'Отчёт'
                           : 'Оценить'}
-                      {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
-                        <span className="btn__price">0.17 ₽</span>
-                      ) : null}
                     </button>
                     {vacancy.outdated ? (
                       <button
                         className="btn btn--quiet btn--small"
                         onClick={() => openReport(vacancy, true)}
                         disabled={isBusy(`${vacancy.id}:report`)}
-                        title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                        title="Оценка сделана по прежней версии резюме"
                       >
                         Переоценить
                       </button>
                     ) : null}
 
-                    {/* One button per document, each stating its own price. A
+                    {/* One button per document. A
                         package made people pay for documents they did not ask
                         for — see docs/decisions.md, 2026-09-18. */}
                     {vacancy.score != null ? (
@@ -297,12 +292,9 @@ function ArtifactButton({
       className={done ? 'btn btn--ghost btn--small btn--done' : 'btn btn--quiet btn--small'}
       onClick={onClick}
       disabled={busy}
-      title={
-        done ? `${step.hint} — готово, показ бесплатный` : `${step.hint} — ${rub(step.rub)}`
-      }
+      title={done ? `${step.hint} — готово` : step.hint}
     >
       {busy ? 'Готовлю…' : done ? `${step.title} ✓` : step.title}
-      {!busy && !done ? <span className="btn__price">{rub(step.rub)}</span> : null}
     </button>
   )
 }

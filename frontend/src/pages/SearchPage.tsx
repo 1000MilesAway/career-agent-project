@@ -29,7 +29,7 @@ import {
 } from '../components/VacancyRow'
 import { StarIcon } from '../components/icons'
 import { useToast } from '../components/toast'
-import { Empty, ErrorNote, PageHead, Skeleton, rub } from '../components/ui'
+import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
 import {
   type BucketKey,
@@ -304,9 +304,7 @@ export function SearchPage() {
           toast.info(result.note)
           return
         }
-        toast.info(
-          `Отсев: судили ${result.judged}, потрачено ${rub(result.cost_rub ?? 0, 3)}.`,
-        )
+        toast.info(`Отсев: разобрано ${result.judged}.`)
         // A short reply leaves postings unjudged. They are reported, never
         // backfilled as "skip": an unjudged vacancy is not a rejected one.
         if (result.missing?.length) {
@@ -500,10 +498,9 @@ export function SearchPage() {
                 className="btn btn--ghost btn--small"
                 onClick={triage}
                 disabled={isTriaging}
-                title="Один дешёвый прогон: разложить список на «стоит посмотреть / может быть / мимо»"
+                title="Один прогон: разложить список на «стоит посмотреть / может быть / мимо»"
               >
                 {isTriaging ? 'Отсеиваю…' : 'Отсеять моделью'}
-                {isTriaging ? null : <span className="btn__price">~0.01 ₽/шт</span>}
               </button>
             ) : null}
             {rows.length ? (
@@ -657,7 +654,7 @@ export function SearchPage() {
                           className="btn btn--quiet btn--small"
                           onClick={() => openReport(vacancy, true)}
                           disabled={isBusy(`${vacancy.id}:report`)}
-                          title="Оценка куплена по прежней версии резюме. Новая — около 0.17 ₽"
+                          title="Оценка сделана по прежней версии резюме"
                         >
                           Переоценить
                         </button>
@@ -667,9 +664,7 @@ export function SearchPage() {
                         onClick={() => openReport(vacancy)}
                         disabled={isBusy(`${vacancy.id}:report`)}
                         title={
-                          vacancy.score != null
-                            ? 'Отчёт уже куплен — показ бесплатный'
-                            : 'Полная оценка — около 0.17 ₽'
+                          vacancy.score != null ? 'Открыть готовый отчёт' : 'Полная оценка вакансии'
                         }
                       >
                         {isBusy(`${vacancy.id}:report`)
@@ -677,9 +672,6 @@ export function SearchPage() {
                           : vacancy.score != null
                             ? 'Отчёт'
                             : 'Оценить'}
-                        {vacancy.score == null && !isBusy(`${vacancy.id}:report`) ? (
-                          <span className="btn__price">0.17 ₽</span>
-                        ) : null}
                       </button>
                       <button
                         className="btn btn--quiet btn--small"

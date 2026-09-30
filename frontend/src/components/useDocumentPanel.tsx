@@ -26,7 +26,7 @@ import {
   TailoredResumeView,
 } from './report'
 import { useToast } from './toast'
-import { Skeleton, rub } from './ui'
+import { Skeleton } from './ui'
 
 const STEP_TITLES: Record<ApplyStepName, string> = {
   tailor: 'Резюме под вакансию',
@@ -41,9 +41,6 @@ interface PanelState {
   title: string
   /** null while the paid call is in flight. */
   content: PanelContent | null
-  /** What this click cost; 0 when it was already paid for. */
-  costRub: number
-  cached: boolean
 }
 
 export function useDocumentPanel() {
@@ -70,22 +67,18 @@ export function useDocumentPanel() {
         setPanel({
           title: vacancy.title,
           content: { type: 'report', report: vacancy.report },
-          costRub: 0,
-          cached: true,
         })
         return
       }
 
       const key = `${vacancy.id}:report`
       mark(key, true)
-      setPanel({ title: vacancy.title, content: null, costRub: 0, cached: false })
+      setPanel({ title: vacancy.title, content: null })
       try {
         const data = await evaluateVacancy(vacancy.id)
         setPanel({
           title: vacancy.title,
           content: { type: 'report', report: data.report },
-          costRub: data.cost_rub,
-          cached: data.cached,
         })
         // A fresh score changed what is stored; a cached one changed nothing.
         if (!data.cached) await mutate(STATE_KEY)
@@ -106,8 +99,6 @@ export function useDocumentPanel() {
         setPanel({
           title: `${STEP_TITLES[step]} — ${vacancy.title}`,
           content: { type: step, content: stored },
-          costRub: 0,
-          cached: true,
         })
         return
       }
@@ -117,16 +108,12 @@ export function useDocumentPanel() {
       setPanel({
         title: `${STEP_TITLES[step]} — ${vacancy.title}`,
         content: null,
-        costRub: 0,
-        cached: false,
       })
       try {
         const data = await buyArtifact(vacancy.id, step)
         setPanel({
           title: `${STEP_TITLES[step]} — ${vacancy.title}`,
           content: { type: step, content: data.content },
-          costRub: data.cost_rub,
-          cached: data.cached,
         })
         if (!data.cached) await mutate(STATE_KEY)
       } catch (e) {
@@ -173,12 +160,6 @@ function PanelBody({ panel }: { panel: PanelState }) {
       {content.type === 'interview' ? (
         <InterviewPrepView value={content.content as InterviewPrep} />
       ) : null}
-
-      <p className="cost" style={{ marginTop: 24 }}>
-        {panel.cached
-          ? 'Сохранено с прошлого раза — показ бесплатный.'
-          : `Стоило ${rub(panel.costRub, 3)}.`}
-      </p>
     </>
   )
 }
