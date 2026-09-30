@@ -29,10 +29,10 @@ export interface SearchFilters {
 const STORAGE_KEY = 'search-filters'
 const KNOWN: readonly BucketKey[] = ['worth', 'maybe', 'skip', null]
 
-/** "skip" is off by default — the point is a short list — but one click
- *  brings it back. */
+/** Only "worth" is on by default — the point is a short list — and one click
+ *  brings back any other verdict. */
 export const DEFAULT_FILTERS: SearchFilters = {
-  buckets: ['worth', 'maybe', null],
+  buckets: ['worth'],
   sort: 'fresh',
   scoredOnly: false,
   showDropped: false,

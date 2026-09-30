@@ -16,6 +16,7 @@ afterEach(() => {
 describe('searchFilters', () => {
   it('без сохранённого — умолчания', () => {
     expect(loadFilters()).toEqual(DEFAULT_FILTERS)
+    expect(DEFAULT_FILTERS.buckets).toEqual(['worth'])
   })
 
   it('сохранённый выбор возвращается, включая «без вердикта»', () => {
