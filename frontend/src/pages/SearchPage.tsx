@@ -14,7 +14,7 @@ import {
   isActive,
   runTriage,
   setHidden,
-  setSaved,
+  saveVacancy,
   startScan,
   useAppState,
   useScanJob,
@@ -346,8 +346,7 @@ export function SearchPage() {
 
   async function toggleSave(vacancy: FoundVacancy) {
     try {
-      await setSaved(vacancy.id, !vacancy.saved)
-      await mutate(STATE_KEY)
+      await saveVacancy(vacancy.id, !vacancy.saved)
     } catch (e) {
       toast.error(e)
     }

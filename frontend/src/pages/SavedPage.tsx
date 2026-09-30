@@ -16,7 +16,7 @@ import {
   STATE_KEY,
   tailoredExportBase,
   recheckVacancies,
-  setSaved,
+  saveVacancy,
   setStatus,
   useAppState,
 } from '../api/hooks'
@@ -78,8 +78,7 @@ export function SavedPage() {
 
   async function unsave(id: string) {
     try {
-      await setSaved(id, false)
-      await mutate(STATE_KEY)
+      await saveVacancy(id, false)
     } catch (e) {
       toast.error(e)
     }

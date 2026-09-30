@@ -6,7 +6,7 @@
  * rather than three, and any mutation revalidates it in one call.
  */
 
-import useSWR from 'swr'
+import useSWR, { mutate } from 'swr'
 import { api, download, fetcher, fetchText } from './client'
 import type {
   ApplyStepName,
@@ -104,6 +104,30 @@ export const setSaved = (vacancyId: string, saved: boolean) =>
   api<unknown>(`/api/vacancies/${vacancyId}/save`, {
     method: saved ? 'POST' : 'DELETE',
   })
+
+/** Save or unsave with the star redrawn on the click. The save is one UPDATE;
+ *  what took the time was waiting for /api/state, which after a scan carries
+ *  every found row — half a megabyte. The list is still reloaded after, and a
+ *  failed save puts the star back; the caller reports the error. */
+export const saveVacancy = (vacancyId: string, saved: boolean) =>
+  mutate<AppState>(
+    STATE_KEY,
+    async (current) => {
+      await setSaved(vacancyId, saved)
+      return current
+    },
+    {
+      optimisticData: (current) => ({
+        ...current!,
+        found: current!.found.map((row) =>
+          row.id === vacancyId ? { ...row, saved } : row,
+        ),
+      }),
+      rollbackOnError: true,
+      populateCache: false,
+      revalidate: true,
+    },
+  )
 
 export const setStatus = (vacancyId: string, status: string) =>
   api<unknown>(`/api/vacancies/${vacancyId}/status`, {

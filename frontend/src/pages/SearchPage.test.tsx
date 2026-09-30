@@ -38,7 +38,7 @@ vi.mock('../api/hooks', () => ({
   startScan: mocks.startScan,
   runTriage: vi.fn(),
   clearFound: vi.fn(),
-  setSaved: vi.fn(),
+  saveVacancy: vi.fn(),
   setHidden: mocks.setHidden,
 }))
 
