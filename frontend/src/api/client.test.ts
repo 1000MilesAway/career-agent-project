@@ -47,7 +47,7 @@ describe('api', () => {
   it('объясняет 402 по-русски, а не кодом', async () => {
     respond(402, {})
 
-    await expect(api('/api/evaluations/x')).rejects.toThrow(/Бюджет исчерпан/)
+    await expect(api('/api/evaluations/x')).rejects.toThrow(/Лимит исчерпан/)
   })
 
   it('несёт status в ошибке, чтобы вызывающий мог различить случаи', async () => {
