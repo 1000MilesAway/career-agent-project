@@ -1,5 +1,5 @@
 /** Избранное: вакансию переносят на другой этап, перетащив строку на шаг
- * воронки. Селект в строке остаётся — на телефоне перетаскивание не работает.
+ * воронки. Мышью — после короткого сдвига, пальцем — долгим нажатием.
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react'
@@ -73,32 +73,25 @@ function row(id: string, extra: Partial<FoundVacancy> = {}): FoundVacancy {
   }
 }
 
-/** jsdom has no DataTransfer; this is the part of it the page touches. */
-function dataTransfer() {
-  const store = new Map<string, string>()
-  return {
-    setData: (type: string, value: string) => store.set(type, value),
-    getData: (type: string) => store.get(type) ?? '',
-    get types() {
-      return [...store.keys()]
-    },
-    effectAllowed: 'none',
-    dropEffect: 'none',
-  }
-}
-
 function stage(title: string) {
   return screen.getByText(title, { selector: '.funnel__label' }).closest('button')!
 }
 
-function drag(rowTitle: string, stageTitle: string) {
+/** jsdom does no layout, so whatever the pointer is over is said outright. */
+function pointAt(element: Element | null) {
+  document.elementFromPoint = () => element
+}
+
+function press(rowTitle: string, pointerType = 'mouse') {
   const source = screen.getByText(rowTitle).closest('.drag')!
-  const target = stage(stageTitle)
-  const transfer = dataTransfer()
-  fireEvent.dragStart(source, { dataTransfer: transfer })
-  fireEvent.dragOver(target, { dataTransfer: transfer })
-  fireEvent.drop(target, { dataTransfer: transfer })
-  fireEvent.dragEnd(source, { dataTransfer: transfer })
+  fireEvent.pointerDown(source, { button: 0, pointerType, clientX: 100, clientY: 300 })
+}
+
+function carry(rowTitle: string, stageTitle: string) {
+  press(rowTitle)
+  pointAt(stage(stageTitle))
+  fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
+  fireEvent.pointerUp(window)
 }
 
 describe('SavedPage', () => {
@@ -109,34 +102,76 @@ describe('SavedPage', () => {
 
   it('строка, брошенная на этап, переезжает на него', () => {
     render(<SavedPage />)
-    drag('Вакансия a', 'откликнулся')
+    carry('Вакансия a', 'откликнулся')
     expect(mocks.moveVacancy).toHaveBeenCalledWith('a', 'applied')
   })
 
-  it('пустой этап принимает перетаскивание, хотя без него выключен', async () => {
+  it('пока строку несут, под курсором её карточка, а курсор — рука', () => {
     render(<SavedPage />)
-    expect(stage('интервью').disabled).toBe(true)
+    press('Вакансия a')
+    pointAt(stage('интервью'))
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
 
-    const source = screen.getByText('Вакансия a').closest('.drag')!
-    fireEvent.dragStart(source, { dataTransfer: dataTransfer() })
-    await act(() => new Promise((resolve) => setTimeout(resolve)))
-    expect(stage('интервью').disabled).toBe(false)
+    expect(document.querySelector('.drag-ghost')?.textContent).toContain('Вакансия a')
+    expect(document.documentElement.classList.contains('is-dragging')).toBe(true)
+    expect(stage('интервью').className).toContain('funnel__step--over')
 
-    fireEvent.dragEnd(source)
-    expect(stage('интервью').disabled).toBe(true)
+    fireEvent.pointerUp(window)
+    expect(document.querySelector('.drag-ghost')).toBeNull()
+    expect(document.documentElement.classList.contains('is-dragging')).toBe(false)
+    // An empty stage takes the row: that is the main reason to drag at all.
+    expect(mocks.moveVacancy).toHaveBeenCalledWith('a', 'interview')
   })
 
   it('на свой же этап — ничего не пишет', () => {
     render(<SavedPage />)
-    drag('Вакансия b', 'откликнулся')
+    carry('Вакансия b', 'откликнулся')
     expect(mocks.moveVacancy).not.toHaveBeenCalled()
   })
 
-  it('чужое перетаскивание (текст, ссылка) не принимается', () => {
+  it('отпущенная мимо этапов или по Esc — остаётся где была', () => {
     render(<SavedPage />)
-    const transfer = dataTransfer()
-    transfer.setData('text/plain', 'a')
-    fireEvent.drop(stage('откликнулся'), { dataTransfer: transfer })
+    press('Вакансия a')
+    pointAt(document.body)
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
+    fireEvent.pointerUp(window)
+
+    press('Вакансия a')
+    pointAt(stage('откликнулся'))
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.pointerUp(window)
+
     expect(mocks.moveVacancy).not.toHaveBeenCalled()
+  })
+
+  it('щелчок без движения — не перетаскивание', () => {
+    render(<SavedPage />)
+    press('Вакансия a')
+    pointAt(stage('откликнулся'))
+    fireEvent.pointerMove(window, { clientX: 102, clientY: 301 })
+    fireEvent.pointerUp(window)
+    expect(mocks.moveVacancy).not.toHaveBeenCalled()
+  })
+
+  it('палец, сдвинувшийся до долгого нажатия, листает, а не тащит', () => {
+    vi.useFakeTimers()
+    try {
+      render(<SavedPage />)
+      press('Вакансия a', 'touch')
+      pointAt(stage('откликнулся'))
+      fireEvent.pointerMove(window, { clientX: 100, clientY: 200 })
+      act(() => vi.advanceTimersByTime(500))
+      fireEvent.pointerUp(window)
+      expect(mocks.moveVacancy).not.toHaveBeenCalled()
+
+      press('Вакансия a', 'touch')
+      act(() => vi.advanceTimersByTime(500))
+      fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
+      fireEvent.pointerUp(window)
+      expect(mocks.moveVacancy).toHaveBeenCalledWith('a', 'applied')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

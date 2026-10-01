@@ -9,12 +9,13 @@
  * trackers settled on: "where am I stuck" is answered by the numbers before
  * any row is read.
  *
- * A row can be dragged onto a stage of the funnel to move it there. The
- * select in the row stays: native drag and drop does not work with touch on
- * most phones, and it is the keyboard's way in too.
+ * A row can be dragged onto a stage of the funnel to move it there (see
+ * `useStageDrag`). The select in the row stays: it is the keyboard's way in,
+ * and the only one for a row nobody can see the funnel from.
  */
 
-import { useMemo, useState, useTransition, type DragEvent } from 'react'
+import { useMemo, useState, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import { useSWRConfig } from 'swr'
 import {
   STATE_KEY,
@@ -32,13 +33,10 @@ import { useToast } from '../components/toast'
 import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
 import './saved.css'
+import { GRIP, useStageDrag } from './useStageDrag'
 
 /** `null` is "all". */
 type StatusFilter = string | null
-
-/** A private type, so text or a link dragged in from elsewhere is not taken
- *  for a vacancy. */
-const DRAG_TYPE = 'application/x-career-vacancy'
 
 export function SavedPage() {
   const { data, isLoading, error } = useAppState()
@@ -46,8 +44,6 @@ export function SavedPage() {
   const toast = useToast()
   const { openReport, openArtifact, isBusy, panel } = useDocumentPanel()
   const [filter, setFilter] = useState<StatusFilter>(null)
-  const [dragged, setDragged] = useState<FoundVacancy | null>(null)
-  const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   const found = data?.found
   const saved = useMemo(() => found?.filter((row) => row.saved) ?? [], [found])
@@ -102,35 +98,11 @@ export function SavedPage() {
     }
   }
 
-  function startDrag(e: DragEvent, vacancy: FoundVacancy) {
-    e.dataTransfer.setData(DRAG_TYPE, vacancy.id)
-    e.dataTransfer.effectAllowed = 'move'
-    // Deferred: Chrome cancels a drag whose source changes inside dragstart,
-    // and React re-renders a discrete event before it returns.
-    setTimeout(() => setDragged(vacancy))
-  }
-
-  function endDrag() {
-    setDragged(null)
-    setDropTarget(null)
-  }
-
-  function dragOver(e: DragEvent, key: string) {
-    if (!e.dataTransfer.types.includes(DRAG_TYPE)) return
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    if (dropTarget !== key) setDropTarget(key)
-  }
-
-  function drop(e: DragEvent, key: string) {
-    const id = e.dataTransfer.getData(DRAG_TYPE)
-    if (!id) return
-    e.preventDefault()
-    endDrag()
+  const { held, over, ghostRef, onPointerDown } = useStageDrag((id, stage) => {
     const row = saved.find((r) => r.id === id)
-    if (!row || (row.status ?? 'none') === key) return
-    void move(id, key)
-  }
+    if (row && (row.status ?? 'none') !== stage) void move(id, stage)
+  })
+  const carried = held ? saved.find((r) => r.id === held.id) : undefined
 
   if (error)
     return (
@@ -166,7 +138,11 @@ export function SavedPage() {
 
       {saved.length ? (
         <>
-          <div className="funnel" role="group" aria-label="Этап отклика">
+          <div
+            className={carried ? 'funnel funnel--live' : 'funnel'}
+            role="group"
+            aria-label="Этап отклика"
+          >
             <button
               className="funnel__step"
               aria-pressed={active === null}
@@ -179,20 +155,21 @@ export function SavedPage() {
               const count = counts.get(key) ?? 0
               const classes = ['funnel__step']
               if (status.terminal) classes.push('funnel__step--end')
-              if (dragged) classes.push('funnel__step--target')
-              if (dropTarget === key) classes.push('funnel__step--over')
+              if (carried) {
+                classes.push('funnel__step--target')
+                if ((carried.status ?? 'none') === key)
+                  classes.push('funnel__step--current')
+              }
+              if (carried && over === key && (carried.status ?? 'none') !== key)
+                classes.push('funnel__step--over')
               return (
                 <button
                   key={key}
                   className={classes.join(' ')}
                   aria-pressed={active === key}
-                  // A disabled button receives no drag events, so an empty
-                  // stage opens up for the length of a drag.
-                  disabled={!count && !dragged}
+                  data-stage={key}
+                  disabled={!count}
                   onClick={() => setFilter(active === key ? null : key)}
-                  onDragOver={(e) => dragOver(e, key)}
-                  onDragLeave={() => setDropTarget((t) => (t === key ? null : t))}
-                  onDrop={(e) => drop(e, key)}
                 >
                   <span className="funnel__count">{count}</span>
                   <span className="funnel__label">{status.title}</span>
@@ -202,19 +179,17 @@ export function SavedPage() {
           </div>
 
           <p className="muted funnel__hint">
-            {dragged
-              ? `Отпустите на этапе, куда перенести «${dragged.title}».`
-              : 'Вакансию можно перетащить на этап выше.'}
+            {carried
+              ? 'Отпустите на этапе, куда перенести. Esc — отмена.'
+              : 'Вакансию можно перетащить на этап: зажмите строку и ведите вверх.'}
           </p>
 
           <div className="vlist">
             {shown.map((vacancy) => (
               <div
                 key={vacancy.id}
-                className={dragged?.id === vacancy.id ? 'drag drag--active' : 'drag'}
-                draggable
-                onDragStart={(e) => startDrag(e, vacancy)}
-                onDragEnd={endDrag}
+                className={carried?.id === vacancy.id ? 'drag drag--active' : 'drag'}
+                onPointerDown={(e) => onPointerDown(e, vacancy.id)}
               >
                 <VacancyRow
                   vacancy={vacancy}
@@ -331,6 +306,28 @@ export function SavedPage() {
           </Empty>
         </div>
       )}
+
+      {carried && held
+        ? createPortal(
+            <div
+              ref={ghostRef}
+              className="drag-ghost"
+              aria-hidden="true"
+              style={{
+                transform: `translate(${held.x - GRIP.x}px, ${held.y - GRIP.y}px)`,
+              }}
+            >
+              <div className="drag-ghost__card">
+                <span className="drag-ghost__title">{carried.title}</span>
+                <span className="drag-ghost__meta">
+                  {[carried.company, carried.salary_text].filter(Boolean).join(' · ') ||
+                    'компания не указана'}
+                </span>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {panel}
     </div>

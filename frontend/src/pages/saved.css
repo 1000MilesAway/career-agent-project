@@ -109,6 +109,15 @@
   font-size: 12.5px;
 }
 
+/* Carrying a row from far down the list must not mean scrolling back up with
+   it in hand: the funnel follows the viewport for the length of a drag. */
+.funnel--live {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+
 .funnel__step--target {
   border-style: dashed;
   border-color: var(--line-strong);
@@ -118,27 +127,93 @@
   background: var(--surface);
 }
 
+/* The row is already there; dropping on it changes nothing. */
+.funnel__step--current {
+  border-style: solid;
+  opacity: 0.55;
+}
+
 .funnel__step--over {
   border-style: solid;
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  transform: translateY(-2px);
 }
 
 .drag {
   cursor: grab;
+  /* A press that becomes a drag would otherwise select the row's text, and a
+     long press on a phone would open its callout. */
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
-.drag:active {
-  cursor: grabbing;
-}
-
-.drag--active {
-  opacity: 0.45;
+/* The row stays in place as the slot it was lifted from. */
+.drag--active .vrow {
+  opacity: 0.35;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 8px,
+    color-mix(in srgb, var(--line) 50%, transparent) 8px 9px
+  );
 }
 
 /* Controls keep their own cursor: the row is draggable, its buttons are not
    a handle. */
 .drag :is(a, button, select, label) {
   cursor: pointer;
+}
+
+/* One cursor for the whole drag, whatever it passes over. */
+html.is-dragging,
+html.is-dragging * {
+  cursor: grabbing !important;
+}
+
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.drag-ghost__card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: min(360px, 80vw);
+  padding: 12px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  transform: rotate(-2deg);
+  animation: drag-lift 0.12s ease-out;
+}
+
+@keyframes drag-lift {
+  from {
+    transform: rotate(0) scale(0.96);
+    opacity: 0.6;
+  }
+}
+
+.drag-ghost__title {
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drag-ghost__meta {
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
