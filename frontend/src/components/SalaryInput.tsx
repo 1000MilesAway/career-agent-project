@@ -6,20 +6,26 @@
  * they could not explain.
  */
 
-import { useRef, type ChangeEvent } from 'react'
+import { useRef, type ChangeEvent, type CSSProperties } from 'react'
 import { formatSalary } from './ui'
 import './salary.css'
 
-const PRESETS = [150_000, 200_000, 250_000, 300_000, 400_000]
+/** The slider covers where nearly every threshold lands; a higher one is
+ *  typed into the field, and the thumb then rests at the right end. */
+const SLIDER_MAX = 500_000
+const SLIDER_STEP = 10_000
+const TICKS = [0, 100_000, 200_000, 300_000, 400_000, 500_000]
 
 export function SalaryInput({
   value,
   anySalary,
   onChange,
+  onAnySalaryChange,
 }: {
   value: number | null
   anySalary: boolean
   onChange: (value: number | null) => void
+  onAnySalaryChange: (anySalary: boolean) => void
 }) {
   const ref = useRef<HTMLInputElement>(null)
 
@@ -84,21 +90,44 @@ export function SalaryInput({
         <span className="salary__unit">₽ в месяц</span>
       </div>
 
-      <div className="salary__presets">
-        {PRESETS.map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            className="chip chip--pick"
-            aria-pressed={preset === value}
-            // Pressing the active preset clears it: otherwise the only way
-            // back to "no threshold" is to select the text and delete it.
-            onClick={() => onChange(preset === value ? null : preset)}
-          >
-            {formatSalary(preset)}
-          </button>
-        ))}
+      <div className="salary__slider">
+        <input
+          type="range"
+          min={0}
+          max={SLIDER_MAX}
+          step={SLIDER_STEP}
+          aria-label="Порог зарплаты"
+          aria-valuetext={value ? `от ${formatSalary(value)} ₽` : 'без порога'}
+          value={Math.min(value ?? 0, SLIDER_MAX)}
+          // The filled part of the track is painted from this, since only
+          // Firefox has a pseudo-element for it.
+          style={
+            {
+              '--fill': `${(Math.min(value ?? 0, SLIDER_MAX) / SLIDER_MAX) * 100}%`,
+            } as CSSProperties
+          }
+          // The left end is "no threshold", not "from 0 ₽": the same request,
+          // but the hint below then says plainly that nothing is cut.
+          onChange={(event) => onChange(Number(event.target.value) || null)}
+        />
+        <div className="salary__ticks" aria-hidden="true">
+          {TICKS.map((tick) => (
+            <span key={tick}>{tick === 0 ? 'любая' : `${tick / 1000}к`}</span>
+          ))}
+        </div>
       </div>
+
+      <label
+        className="toggle salary__any"
+        title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана — их оценят бесплатные фильтры по заголовку."
+      >
+        <input
+          type="checkbox"
+          checked={anySalary}
+          onChange={(event) => onAnySalaryChange(event.target.checked)}
+        />
+        и без указанной зарплаты
+      </label>
 
       <p id="salary-hint" className="salary__hint muted">
         {hint}

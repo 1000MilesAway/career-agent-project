@@ -20,6 +20,7 @@ import {
   useScanJob,
 } from '../api/hooks'
 import type { FoundVacancy, SourceScan } from '../api/types'
+import { FilterMenu } from '../components/FilterMenu'
 import { SalaryInput } from '../components/SalaryInput'
 import {
   BUCKET_TITLES,
@@ -396,22 +397,16 @@ export function SearchPage() {
       />
 
       <section className="card scan" aria-label="Параметры поиска">
-        <SalaryInput value={salary} anySalary={anySalary} onChange={setSalary} />
+        <SalaryInput
+          value={salary}
+          anySalary={anySalary}
+          onChange={setSalary}
+          onAnySalaryChange={setAnySalary}
+        />
 
         <div className="scan__side">
           <p className="eyebrow">Условия</p>
           <div className="scan__opts">
-            <label
-              className="toggle"
-              title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана — их оценят бесплатные фильтры по заголовку."
-            >
-              <input
-                type="checkbox"
-                checked={anySalary}
-                onChange={(e) => setAnySalary(e.target.checked)}
-              />
-              и без указанной зарплаты
-            </label>
             <label
               className="toggle"
               title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
@@ -423,28 +418,34 @@ export function SearchPage() {
               />
               только удалёнка
             </label>
-            <label
-              className="toggle"
-              title="Отсеиваются вакансии Хабра от компаний без значка ИТ-аккредитации Минцифры. Telegram и geekjob аккредитацию не указывают — их вакансии остаются"
-            >
-              <input
-                type="checkbox"
-                checked={accreditedOnly}
-                onChange={(e) => setAccreditedOnly(e.target.checked)}
-              />
-              только ИТ-аккредитованные
-            </label>
-            <label
-              className="toggle"
-              title="Nebius, JetBrains, Wrike, Xsolla и другие компании с русскоязычными командами — вакансии обычно за рубежом и на английском"
-            >
-              <input
-                type="checkbox"
-                checked={includeGlobal}
-                onChange={(e) => setIncludeGlobal(e.target.checked)}
-              />
-              и зарубежные компании
-            </label>
+            {/* Rarely changed, so folded away; the count on the button keeps
+                a narrowing filter from going unnoticed. */}
+            <FilterMenu label="Ещё" active={Number(accreditedOnly) + Number(includeGlobal)}>
+              <label className="fmenu__opt">
+                <input
+                  type="checkbox"
+                  checked={accreditedOnly}
+                  onChange={(e) => setAccreditedOnly(e.target.checked)}
+                />
+                только ИТ-аккредитованные
+                <span className="fmenu__hint">
+                  Отсеиваются вакансии Хабра от компаний без аккредитации Минцифры. Telegram
+                  и geekjob её не указывают — их вакансии остаются.
+                </span>
+              </label>
+              <label className="fmenu__opt">
+                <input
+                  type="checkbox"
+                  checked={includeGlobal}
+                  onChange={(e) => setIncludeGlobal(e.target.checked)}
+                />
+                и зарубежные компании
+                <span className="fmenu__hint">
+                  Nebius, JetBrains, Wrike, Xsolla и другие с русскоязычными командами —
+                  вакансии обычно за рубежом и на английском.
+                </span>
+              </label>
+            </FilterMenu>
           </div>
 
           <div className="scan__go">
@@ -677,7 +678,9 @@ export function SearchPage() {
                         onClick={() => openReport(vacancy)}
                         disabled={isBusy(`${vacancy.id}:report`)}
                         title={
-                          vacancy.score != null ? 'Открыть готовый отчёт' : 'Полная оценка вакансии'
+                          vacancy.score != null
+                            ? 'Открыть готовый отчёт'
+                            : 'Полная оценка вакансии'
                         }
                       >
                         {isBusy(`${vacancy.id}:report`)

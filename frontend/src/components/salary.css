@@ -50,10 +50,97 @@
   white-space: nowrap;
 }
 
-.salary__presets {
+/* A thin ink track with the chosen part filled: the browser's own slider is
+   blue and differs on every OS, which clashed with the paper palette. */
+.salary__slider {
+  max-width: 340px;
+  margin-top: 18px;
+}
+
+.salary__slider input[type='range'] {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.salary__slider input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--ink) 0 var(--fill, 0%),
+    var(--line-strong) var(--fill, 0%) 100%
+  );
+}
+
+.salary__slider input[type='range']::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.salary__slider input[type='range']::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.salary__slider input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  transition: transform 0.12s;
+}
+
+.salary__slider input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  transition: transform 0.12s;
+}
+
+.salary__slider input[type='range']:hover::-webkit-slider-thumb,
+.salary__slider input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.salary__slider input[type='range']:hover::-moz-range-thumb,
+.salary__slider input[type='range']:active::-moz-range-thumb {
+  transform: scale(1.15);
+}
+
+.salary__slider input[type='range']:focus {
+  outline: none;
+}
+
+.salary__slider input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.salary__slider input[type='range']:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.salary__ticks {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.salary__any {
   margin-top: 14px;
 }
 
