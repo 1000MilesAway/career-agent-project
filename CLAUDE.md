@@ -104,6 +104,7 @@
 | `frontend/src/api/` | типы контракта, клиент с токеном, хуки SWR |
 | `frontend/src/pages/` | три страницы: резюме, поиск, избранное |
 | `frontend/src/components/` | строка вакансии, панель отчёта, дифф профиля, тосты |
+| `frontend/src/landing/` | лендинг: разметка в `frontend/index.html`, здесь стили и смена слайдов |
 | `frontend/nginx.conf` | отдача статики и прокси `/api` на контейнер api |
 | `migrations/` | Alembic |
 | `data/golden/` | размеченные случаи-эталоны для калибровки |

@@ -4,14 +4,349 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <title>career-agent</title>
+    <title>career-agent — работу ищет сервис, вы выбираете лучшее</title>
     <meta
       name="description"
-      content="Оценка вакансий по резюме. Отклик отправляете вы сами."
+      content="Загрузите резюме — дальше всё само: подбор вакансий по множеству ресурсов, разбор каждой с красными флагами, резюме под вакансию и подготовка к интервью."
     />
+    <!--
+      The landing and the cabinet share this one page, and this script picks
+      which of them shows before the first paint.
+
+      Not a separate /app path for the cabinet: Telegram's login script sends
+      origin + pathname as redirect_uri, and the bot accepts exactly
+      https://career-helper.site/ — moving the cabinet would break the login.
+      Old links keep working too: the letter's #/verify and every bookmark
+      carry a hash route, and any hash route means the cabinet.
+    -->
+    <script>
+      ;(function () {
+        // Mirrors TOKEN_KEY in src/api/client.ts.
+        var KEY = 'career-agent:token:v1'
+        function pick() {
+          var token = null
+          try {
+            token = localStorage.getItem(KEY)
+          } catch (e) {}
+          // Cabinet routes all start with #/; the landing's own anchors
+          // (#how, #top) do not, and must not switch the page away.
+          var hash = location.hash
+          var route = hash.indexOf('#/') === 0 && hash !== '#/'
+          var landing = !token && !route
+          document.documentElement.dataset.view = landing ? 'landing' : 'app'
+          if (!landing) window.scrollTo(0, 0)
+        }
+        pick()
+        addEventListener('hashchange', pick)
+      })()
+    </script>
+    <link rel="stylesheet" href="/src/landing/landing.css" />
   </head>
   <body>
+    <div id="landing" class="l">
+      <header class="l-head">
+        <a class="l-brand" href="#top" aria-label="career-agent — в начало">
+          <span class="l-brand__mark" aria-hidden="true"></span>
+          <span>career-agent</span>
+        </a>
+        <nav class="l-head__nav">
+          <a class="l-link" href="#/login">Войти</a>
+          <a class="l-btn l-btn--small" href="#/login">Попробовать</a>
+        </nav>
+      </header>
+
+      <main>
+        <!-- 0. Hero -->
+        <section class="l-hero l-snap" id="top">
+          <div class="l-hero__text">
+            <p class="l-eyebrow">Ассистент по поиску работы</p>
+            <h1 class="l-hero__title">
+              Работу ищет сервис. <br />
+              <em>Вы выбираете лучшее.</em>
+            </h1>
+            <p class="l-lead">
+              Загрузите резюме — дальше всё само: подбор, разбор каждой вакансии, резюме под
+              неё и подготовка к интервью.
+            </p>
+            <div class="l-actions">
+              <a class="l-btn" href="#/login">Попробовать</a>
+              <a class="l-link l-link--arrow" href="#how">Как это работает</a>
+            </div>
+          </div>
+
+          <div class="l-hero__art" aria-hidden="true">
+            <div class="m-vac m-vac--a">
+              <div class="m-vac__body">
+                <b>Продуктовый аналитик</b>
+                <span>Финтех · удалённо · 220–280 тыс. ₽</span>
+              </div>
+              <span class="m-score m-score--ok">4.6</span>
+            </div>
+            <div class="m-vac m-vac--b">
+              <div class="m-vac__body">
+                <b>Руководитель отдела продаж</b>
+                <span>Ритейл · Москва · 180 тыс. ₽ + бонус</span>
+              </div>
+              <span class="m-score m-score--mid">3.9</span>
+            </div>
+            <div class="m-vac m-vac--c">
+              <div class="m-vac__body">
+                <b>Бренд-менеджер</b>
+                <span>FMCG · гибрид · по итогам собеседования</span>
+              </div>
+              <span class="m-score m-score--bad">2.1</span>
+              <span class="m-flag">⚑ красный флаг</span>
+            </div>
+          </div>
+
+          <a class="l-scroll" href="#how" aria-label="Листать дальше">
+            <span></span>
+          </a>
+        </section>
+
+        <!-- 1–6. The deck: text on one side, a sticky "screen" on the other -->
+        <section class="l-deck" id="how">
+          <div class="l-stage" aria-hidden="true">
+            <div class="l-device">
+              <div class="l-device__bar"><i></i><i></i><i></i></div>
+
+              <!-- 01: resume becomes a search profile -->
+              <div class="l-screen" data-screen="0">
+                <div class="s-resume">
+                  <div class="s-doc">
+                    <div class="s-doc__head"></div>
+                    <i style="width: 82%"></i><i style="width: 64%"></i
+                    ><i style="width: 90%"></i> <i style="width: 48%"></i
+                    ><i style="width: 76%"></i><i style="width: 58%"></i>
+                  </div>
+                  <div class="s-arrow"></div>
+                  <div class="s-profile">
+                    <p class="s-cap">Профиль поиска</p>
+                    <div class="s-chips">
+                      <span class="s-chip">Продуктовый аналитик</span>
+                      <span class="s-chip">Middle+</span>
+                      <span class="s-chip">от 220 000 ₽</span>
+                      <span class="s-chip">Удалённо или гибрид</span>
+                      <span class="s-chip s-chip--neg">без «стажёр»</span>
+                    </div>
+                    <span class="s-accept">Принять</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 02: many sources, one feed -->
+              <div class="l-screen" data-screen="1">
+                <div class="s-sources">
+                  <div class="s-orbit">
+                    <span class="s-src"
+                      ><svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="9" />
+                        <path
+                          d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"
+                        /></svg
+                    ></span>
+                    <span class="s-src"
+                      ><svg viewBox="0 0 24 24">
+                        <path d="M21 4 3 11l6 2 2 6 3-4 5 4z" /></svg
+                    ></span>
+                    <span class="s-src"
+                      ><svg viewBox="0 0 24 24">
+                        <path
+                          d="M4 21V5l8-2v18M12 9h8v12M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2M2 21h20"
+                        /></svg
+                    ></span>
+                    <span class="s-src"
+                      ><svg viewBox="0 0 24 24">
+                        <rect x="3" y="7" width="18" height="13" rx="2" />
+                        <path d="M9 7V4h6v3M3 13h18" /></svg
+                    ></span>
+                    <span class="s-src"
+                      ><svg viewBox="0 0 24 24">
+                        <rect x="4" y="3" width="16" height="18" rx="2" />
+                        <path d="M8 8h8M8 12h8M8 16h5" /></svg
+                    ></span>
+                    <span class="s-src"
+                      ><svg viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="6" />
+                        <path d="m20 20-4.5-4.5" /></svg
+                    ></span>
+                  </div>
+                  <div class="s-funnel">
+                    <div class="s-count"><b>1 248</b><span>найдено</span></div>
+                    <div class="s-count"><b>312</b><span>без повторов</span></div>
+                    <div class="s-count s-count--hl">
+                      <b>27</b><span>подходят вам</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 03: the report -->
+              <div class="l-screen" data-screen="2">
+                <div class="s-report">
+                  <div class="s-report__head">
+                    <div>
+                      <b>Аналитик данных</b>
+                      <span>Логистика · Санкт-Петербург</span>
+                    </div>
+                    <span class="s-big-score">4.2</span>
+                  </div>
+                  <p class="s-sec s-sec--ok">Совпадает</p>
+                  <p class="s-item">SQL и Python — как в требованиях</p>
+                  <p class="s-item">Опыт с дашбордами для руководства</p>
+                  <p class="s-sec s-sec--warn">Пробелы</p>
+                  <p class="s-item">Нет A/B-тестов — расскажите про курс и пилот</p>
+                  <p class="s-sec s-sec--bad">Красные флаги</p>
+                  <p class="s-item">«Готовность к ненормированному графику»</p>
+                  <p class="s-item">Третья публикация вакансии за месяц</p>
+                </div>
+              </div>
+
+              <!-- 04: tailored resume and letter -->
+              <div class="l-screen" data-screen="3">
+                <div class="s-tailor">
+                  <div class="s-doc s-doc--wide">
+                    <div class="s-doc__head"></div>
+                    <i style="width: 70%"></i>
+                    <p class="s-line">
+                      <s>Делал отчёты для отдела</s>
+                      <ins>Построил дашборд выручки для 4 директоров</ins>
+                    </p>
+                    <i style="width: 86%"></i>
+                    <p class="s-line">
+                      <s>Работал с базами данных</s>
+                      <ins>SQL: витрины и когорты, 30+ млн строк</ins>
+                    </p>
+                    <i style="width: 60%"></i>
+                    <div class="s-keys">
+                      <span>+ продуктовые метрики</span><span>+ ClickHouse</span>
+                    </div>
+                  </div>
+                  <div class="s-letter">
+                    <p class="s-cap">Сопроводительное письмо</p>
+                    <i style="width: 92%"></i><i style="width: 80%"></i
+                    ><i style="width: 88%"></i>
+                    <i style="width: 54%"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 05: the board -->
+              <div class="l-screen" data-screen="4">
+                <div class="s-board">
+                  <div class="s-col">
+                    <p>Интересно</p>
+                    <span class="s-card">Аналитик · Логистика</span>
+                    <span class="s-card">BI-разработчик</span>
+                  </div>
+                  <div class="s-col">
+                    <p>Отклик</p>
+                    <span class="s-card s-card--move">Продуктовый аналитик</span>
+                    <span class="s-card">Data analyst</span>
+                  </div>
+                  <div class="s-col">
+                    <p>Интервью</p>
+                    <span class="s-card s-card--ghost"></span>
+                  </div>
+                  <div class="s-col">
+                    <p>Оффер</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 06: interview prep -->
+              <div class="l-screen" data-screen="5">
+                <div class="s-prep">
+                  <div class="s-q">
+                    <p class="s-cap">Вероятный вопрос</p>
+                    <b>Расскажите о случае, когда метрика пошла не туда.</b>
+                  </div>
+                  <div class="s-a">
+                    <p class="s-cap">Ваш ответ — из вашего опыта</p>
+                    <p><em>Ситуация.</em> Конверсия в оплату упала на 12% за неделю…</p>
+                    <p><em>Действие.</em> Разложил воронку по платформам и нашёл…</p>
+                    <p><em>Результат.</em> Вернули конверсию за 3 дня, баг закрыт.</p>
+                  </div>
+                  <div class="s-q s-q--dim">
+                    <b>Почему уходите с текущего места?</b>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="l-counter"><b>01</b> / 06</p>
+          </div>
+
+          <div class="l-slides">
+            <article class="l-slide l-snap" data-slide="0">
+              <p class="l-num">01</p>
+              <h2>Загрузите резюме. <br />Остальное&nbsp;— само.</h2>
+              <p class="l-lead">
+                Сервис прочитает ваш опыт, поймёт, кого искать, и соберёт профиль поиска:
+                роли, уровень, зарплату. Вам остаётся нажать «Принять».
+              </p>
+            </article>
+
+            <article class="l-slide l-snap" data-slide="1">
+              <p class="l-num">02</p>
+              <h2>Множество ресурсов&nbsp;— <br />одна лента.</h2>
+              <p class="l-lead">
+                Не нужно держать десять вкладок и листать каналы. Сервис сам обходит
+                площадки, убирает повторы и показывает только то, что вам подходит.
+              </p>
+            </article>
+
+            <article class="l-slide l-snap" data-slide="2">
+              <p class="l-num">03</p>
+              <h2>Сразу видно, стоит ли <br />тратить время.</h2>
+              <p class="l-lead">
+                Каждая вакансия получает оценку и короткий разбор: что совпадает, каких
+                навыков не хватает и какие красные флаги спрятаны в тексте.
+              </p>
+            </article>
+
+            <article class="l-slide l-snap" data-slide="3">
+              <p class="l-num">04</p>
+              <h2>Резюме под вакансию&nbsp;— <br />за минуту.</h2>
+              <p class="l-lead">
+                Одна кнопка — и резюме переписано под требования, а к нему готово письмо.
+                Без выдуманного опыта: только ваш, но поданный так, как ждёт работодатель.
+              </p>
+            </article>
+
+            <article class="l-slide l-snap" data-slide="4">
+              <p class="l-num">05</p>
+              <h2>Все отклики&nbsp;— <br />на одной доске.</h2>
+              <p class="l-lead">
+                Перетаскивайте вакансии по этапам: интересно, отклик, интервью, оффер.
+                Всегда видно, где вы сейчас и что делать дальше.
+              </p>
+            </article>
+
+            <article class="l-slide l-snap" data-slide="5">
+              <p class="l-num">06</p>
+              <h2>На интервью&nbsp;— <br />подготовленным.</h2>
+              <p class="l-lead">
+                Вопросы, которые вероятно зададут на этой позиции, и ответы, собранные из
+                вашего же опыта. Приходите с готовыми историями, а не с волнением.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <!-- Final -->
+        <section class="l-final l-snap">
+          <h2>
+            Следующая работа уже где-то опубликована. <br />
+            <em>Давайте найдём её.</em>
+          </h2>
+          <a class="l-btn l-btn--big" href="#/login">Попробовать</a>
+          <footer class="l-foot">© 2026 career-agent</footer>
+        </section>
+      </main>
+    </div>
+
     <div id="root"></div>
+    <script type="module" src="/src/landing/landing.ts"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -227,10 +227,11 @@ function SwitchLink({ onClick, children }: { onClick: () => void; children: Reac
 export function Pitch() {
   return (
     <section className="login__pitch">
-      <div className="brand">
+      {/* Back to the landing: #/ with no token is the landing (see index.html). */}
+      <a className="brand login__home" href="#/" title="О сервисе">
         <span className="brand__mark" aria-hidden="true" />
         <span className="brand__name">career-agent</span>
-      </div>
+      </a>
       <h1 className="login__title">
         Сотни вакансий — <em>короткий список</em> тех, что стоят отклика.
       </h1>

@@ -21,6 +21,13 @@
   padding: 0;
 }
 
+.login__home,
+.login__home:visited {
+  align-self: flex-start;
+  color: var(--ink);
+  text-decoration: none;
+}
+
 .login__title {
   font-family: var(--font-serif);
   font-weight: 400;
