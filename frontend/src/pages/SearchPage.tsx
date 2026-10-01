@@ -105,6 +105,7 @@ export function SearchPage() {
   const [anySalary, setAnySalary] = useState(true)
   const [remoteOnly, setRemoteOnly] = useState(true)
   const [includeGlobal, setIncludeGlobal] = useState(false)
+  const [accreditedOnly, setAccreditedOnly] = useState(false)
 
   // The scan is a job on the server, not a request this page holds: the
   // page can be left and come back to, and the result is read off the job.
@@ -282,6 +283,7 @@ export function SearchPage() {
         salary_min: salary,
         any_salary: anySalary,
         remote_only: remoteOnly,
+        accredited_only: accreditedOnly,
         include_global: includeGlobal,
       })
       // Seeded with the queued row so polling starts without waiting a round.
@@ -420,6 +422,17 @@ export function SearchPage() {
                 onChange={(e) => setRemoteOnly(e.target.checked)}
               />
               только удалёнка
+            </label>
+            <label
+              className="toggle"
+              title="Отсеиваются вакансии Хабра от компаний без значка ИТ-аккредитации Минцифры. Telegram и geekjob аккредитацию не указывают — их вакансии остаются"
+            >
+              <input
+                type="checkbox"
+                checked={accreditedOnly}
+                onChange={(e) => setAccreditedOnly(e.target.checked)}
+              />
+              только ИТ-аккредитованные
             </label>
             <label
               className="toggle"

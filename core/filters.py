@@ -49,6 +49,8 @@ class SearchProfile:
     remote_only: bool = False
     salary_min: int | None = None
     max_age_days: int | None = None
+    # Only employers with Russian IT accreditation (deferment, mortgage).
+    accredited_only: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -63,6 +65,7 @@ class SearchProfile:
             "remote_only": self.remote_only,
             "salary_min": self.salary_min,
             "max_age_days": self.max_age_days,
+            "accredited_only": self.accredited_only,
         }
 
     @classmethod
@@ -281,6 +284,15 @@ class PreScreen:
             top = p.salary_to or p.salary_from
             if top and top < self.profile.salary_min:
                 return Decision(False, f"зарплата ниже порога: {p.salary_text}")
+
+        # 7. IT accreditation. Same three-valued rule as remote: only an
+        #    explicit False drops. Telegram and geekjob never state it, and
+        #    dropping the silence would empty both sources at one tick.
+        #    The reason says "not confirmed", not "not accredited": the only
+        #    source of False is Habr's badge, which the company itself must
+        #    claim — Yandex had none on 2026-10-01.
+        if self.profile.accredited_only and p.accredited is False:
+            return Decision(False, "ИТ-аккредитация не подтверждена на Хабре")
 
         return Decision(True)
 

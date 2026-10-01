@@ -63,6 +63,10 @@ class Board:
     name: str
     slug: str = ""
     group: str = "ru"
+    # Stated in the list only where Habr shows the accreditation badge for
+    # the same company. Never False: Habr's missing badge is no evidence
+    # (Yandex lacks it), and False would drop the whole board under the filter.
+    accredited: bool | None = None
 
 
 @dataclass
@@ -81,7 +85,13 @@ def load(path: Path | None = None) -> list[Board]:
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
     return [
-        Board(kind=b["kind"], name=b["name"], slug=b.get("slug", ""), group=b.get("group", "ru"))
+        Board(
+            kind=b["kind"],
+            name=b["name"],
+            slug=b.get("slug", ""),
+            group=b.get("group", "ru"),
+            accredited=b.get("accredited"),
+        )
         for b in data.get("boards", [])
     ]
 
@@ -529,6 +539,7 @@ def collect(
             for posting in out.postings[before:]:
                 if posting.id not in seen:
                     seen.add(posting.id)
+                    posting.accredited = board.accredited
                     fresh.append(posting)
             out.postings[before:] = fresh
     finally:

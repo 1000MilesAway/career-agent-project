@@ -57,6 +57,11 @@ class Posting:
     skills: list[str] = field(default_factory=list)
     published: str = ""
     employment: str = ""
+    # Russian IT accreditation (Минцифры) as the source states it. None: the
+    # source does not say — Telegram, geekjob, most employer boards. Habr's
+    # False means "not confirmed on Habr", not "absent from the registry":
+    # Yandex, accredited by the ministry, carried False there on 2026-10-01.
+    accredited: bool | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -73,6 +78,7 @@ class Posting:
             "divisions": self.divisions,
             "skills": self.skills,
             "published": self.published,
+            "accredited": self.accredited,
         }
 
 
@@ -104,6 +110,7 @@ def _posting(raw: dict) -> Posting:
         skills=[s.get("title", "") for s in (raw.get("skills") or [])],
         published=(pub.get("date") or ""),
         employment=raw.get("employment") or "",
+        accredited=company.get("accredited"),
     )
 
 

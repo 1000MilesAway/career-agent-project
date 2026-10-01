@@ -178,6 +178,8 @@ class Vacancy(Base, TimestampMixin):
     salary_text: Mapped[str | None] = mapped_column(String(255))
     location: Mapped[str | None] = mapped_column(String(255))
     remote: Mapped[bool | None] = mapped_column(Boolean)
+    # Russian IT accreditation as the source states it; None = not stated.
+    accredited: Mapped[bool | None] = mapped_column(Boolean)
     published: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     divisions: Mapped[list[str] | None] = mapped_column(JSONB)
     skills: Mapped[list[str] | None] = mapped_column(JSONB)

@@ -169,6 +169,19 @@ class TestPreScreen:
         assert not PreScreen(prof).check(posting("Разработчик", remote=False)).keep
         assert PreScreen(prof).check(posting("Разработчик", remote=True)).keep
 
+    def test_accredited_only_drops_only_an_explicit_no(self):
+        """Telegram and geekjob never state it; silence must not empty them."""
+        prof = SearchProfile(accredited_only=True)
+        no = PreScreen(prof).check(posting("Разработчик", accredited=False))
+        assert not no.keep
+        assert "аккредитац" in no.reason
+        assert PreScreen(prof).check(posting("Разработчик", accredited=True)).keep
+        assert PreScreen(prof).check(posting("Разработчик", accredited=None)).keep
+
+    def test_accreditation_is_ignored_unless_asked(self):
+        prof = SearchProfile()
+        assert PreScreen(prof).check(posting("Разработчик", accredited=False)).keep
+
     def test_salary_below_floor_is_dropped(self):
         prof = SearchProfile(salary_min=250_000)
         low = posting("Разработчик", salary_from=100_000, salary_to=150_000,
@@ -229,3 +242,23 @@ class TestStarterProfile:
         a = starter_profile()
         a.queries.append("испорчено")
         assert "испорчено" not in starter_profile().queries
+
+
+class TestAccreditationSource:
+    def test_habr_listing_states_it_from_the_company(self):
+        from core.sources.habr_api import _posting
+
+        yes = _posting({"id": 1, "title": "x", "company": {"title": "VK", "accredited": True}})
+        no = _posting({"id": 2, "title": "x", "company": {"title": "Яндекс", "accredited": False}})
+        silent = _posting({"id": 3, "title": "x", "company": {"title": "Нечто"}})
+        assert (yes.accredited, no.accredited, silent.accredited) == (True, False, None)
+
+    def test_scan_form_overrides_the_profile_for_one_run(self):
+        from app.services.scan import ScanRequest, with_overrides
+
+        stored = {"queries": ["python"]}
+        merged = with_overrides(stored, ScanRequest(source="all", accredited_only=True))
+        assert SearchProfile.from_dict(merged).accredited_only is True
+        assert "accredited_only" not in stored
+        untouched = with_overrides(stored, ScanRequest(source="all"))
+        assert "accredited_only" not in untouched

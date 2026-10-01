@@ -36,6 +36,7 @@ class VacancyResponse(BaseModel):
     qualification: str | None
     salary_text: str | None
     remote: bool | None
+    accredited: bool | None = None
     stage: str
     screen_reason: str | None
     triage_verdict: str | None
@@ -62,6 +63,7 @@ class VacancyResponse(BaseModel):
             qualification=v.qualification,
             salary_text=v.salary_text,
             remote=v.remote,
+            accredited=v.accredited,
             stage=v.stage,
             screen_reason=v.screen_reason,
             triage_verdict=v.triage_verdict,

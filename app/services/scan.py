@@ -159,6 +159,7 @@ def _listing_fields(posting: Posting) -> dict[str, Any]:
         "salary_text": posting.salary_text or None,
         "location": posting.location or None,
         "remote": posting.remote,
+        "accredited": posting.accredited,
         "published": _published(posting.published),
         "divisions": posting.divisions or None,
         "skills": posting.skills or None,
@@ -593,6 +594,10 @@ class ScanRequest(BaseModel):
     # title anyway, and a hidden vacancy cannot be judged at all.
     any_salary: bool = True
     remote_only: bool | None = None
+    # Not sent to Habr as `has_accreditation`: what Habr filters out never
+    # reaches us, and a vacancy hidden without a reason is the one thing the
+    # free stage must not do. PreScreen drops it here and says why.
+    accredited_only: bool | None = None
 
 
 def with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[str, Any]:
@@ -614,6 +619,8 @@ def with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[st
 
     if body.remote_only is not None:
         merged["remote_only"] = body.remote_only
+    if body.accredited_only is not None:
+        merged["accredited_only"] = body.accredited_only
     return merged
 
 

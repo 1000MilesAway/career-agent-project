@@ -47,6 +47,8 @@ export interface ScanParams {
   salary_min?: number | null
   any_salary?: boolean
   remote_only?: boolean
+  /** Drop employers whose IT accreditation is explicitly not confirmed. */
+  accredited_only?: boolean
   /** Also read employers abroad hiring Russian speakers. */
   include_global?: boolean
 }

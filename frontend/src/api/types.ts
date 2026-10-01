@@ -88,6 +88,8 @@ export interface FoundVacancy {
   qualification: string | null
   salary_text: string | null
   remote: boolean | null
+  /** IT accreditation as the source states it; null — the source is silent. */
+  accredited?: boolean | null
   source: string
   /** collected | screened_out | shortlist | triaged_out | evaluated */
   stage: string

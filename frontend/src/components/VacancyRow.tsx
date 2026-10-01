@@ -68,6 +68,7 @@ function VacancyRowInner({
   const meta = [
     vacancy.qualification || 'грейд не указан',
     vacancy.remote ? 'удалённо' : null,
+    vacancy.accredited ? 'ИТ-аккредитация' : null,
     sourceLabel ?? null,
   ].filter(Boolean)
 

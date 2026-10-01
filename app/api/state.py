@@ -79,6 +79,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 Vacancy.qualification,
                 Vacancy.salary_text,
                 Vacancy.remote,
+                Vacancy.accredited,
                 Vacancy.source,
                 Vacancy.stage,
                 Vacancy.screen_reason,
@@ -129,6 +130,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "qualification": v.qualification,
                 "salary_text": v.salary_text,
                 "remote": v.remote,
+                "accredited": v.accredited,
                 "source": v.source,
                 "stage": v.stage,
                 # A dropped posting keeps its reason and stays on screen: the

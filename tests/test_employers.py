@@ -105,6 +105,12 @@ class TestCollect:
         assert [p["board"] for p in out.problems] == ["Xsolla"]
         assert any(p.id.startswith("greenhouse/") for p in out.postings)
 
+    def test_board_accreditation_reaches_every_posting(self, client):
+        boards = [Board("vk", "VK", accredited=True), Board("sber", "Сбер")]
+        out = employers.collect(["python"], ("ru",), boards, client)
+        by_kind = {p.id.split("/", 1)[0]: p.accredited for p in out.postings}
+        assert by_kind == {"vk": True, "sber": None}
+
     def test_several_queries_do_not_duplicate_a_vacancy(self, client):
         out = employers.collect(["python", "backend"], ("ru",), BOARDS[:1], client)
         ids = [p.id for p in out.postings]
@@ -216,3 +222,6 @@ class TestTheShippedList:
         for board in boards:
             assert board.kind in employers.FETCHERS, board
             assert board.group in ("ru", "global"), board
+            # False would drop a whole board under "only accredited", and a
+            # missing Habr badge is no evidence of a missing accreditation.
+            assert board.accredited in (True, None), board
