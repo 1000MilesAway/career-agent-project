@@ -256,7 +256,6 @@ async def triage(
         # Ids the model invented, which are not ours. Reported so a broken
         # prompt looks broken instead of looking like a short answer.
         "unknown": outcome.unknown,
-        "cost_rub": round(ledger.rub, 4),
     }
 
 

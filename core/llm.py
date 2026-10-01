@@ -86,6 +86,16 @@ class Ledger:
         return self.usd * USD_RUB
 
     @property
+    def offpeak_usd(self) -> float:
+        """What the run would have cost outside DeepSeek's peak hours.
+
+        This, not `usd`, is what a user's quota is charged: the same button
+        must take the same share of the budget at 10:00 and at 15:00. The peak
+        surcharge is the owner's cost, not the user's.
+        """
+        return sum(c.usd / (c.peak or 1.0) for c in self.calls)
+
+    @property
     def seconds(self) -> float:
         return sum(c.seconds for c in self.calls)
 

@@ -68,7 +68,6 @@ function row(id: string, extra: Partial<FoundVacancy> = {}): FoundVacancy {
     verdict: null,
     report: null,
     artifacts: null,
-    rub: null,
     ...extra,
   }
 }

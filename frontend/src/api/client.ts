@@ -201,7 +201,7 @@ function errorMessage(data: unknown, status: number): string {
       .filter((msg): msg is string => Boolean(msg))
     if (parts.length) return parts.join('; ')
   }
-  if (status === 402) return 'Бюджет исчерпан — платные шаги недоступны'
+  if (status === 402) return 'Лимит исчерпан — платные шаги недоступны'
   return `Ошибка ${status}`
 }
 

@@ -28,7 +28,6 @@ class EvaluationResponse(BaseModel):
     score: float | None
     verdict: str | None
     report: dict[str, Any]
-    cost_rub: float
     cached: bool = False
 
     @classmethod
@@ -39,7 +38,6 @@ class EvaluationResponse(BaseModel):
             score=e.score,
             verdict=e.verdict,
             report=e.report,
-            cost_rub=float(e.cost_rub),
             cached=cached,
         )
 

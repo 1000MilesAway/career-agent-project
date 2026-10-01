@@ -28,7 +28,6 @@ const base: FoundVacancy = {
   verdict: null,
   report: null,
   artifacts: null,
-  rub: null,
 }
 
 describe('VacancyRow', () => {

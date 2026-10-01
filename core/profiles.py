@@ -5,10 +5,10 @@ Borrowed from DeepSeek Harness, where a run is a named composition (`web`,
 fits here for a different reason: every step costs money, so the choice of
 steps is a product decision the user makes, not a switch they tick.
 
-Measured on 2026-09-12 (off-peak, 95 RUB/USD) — see docs/decisions.md:
-an evaluation is ~0.17 RUB / 13 s, the full package ~0.81 RUB / 54 s.
-The numbers below are carried here so the UI can state the price before
-the user pays it.
+Measured on 2026-09-12 — see docs/decisions.md: an evaluation takes ~13 s,
+the full package ~54 s. The time is carried here so the UI can say how long a
+click will take. The price is not: users see a share of their quota, never
+money (2026-10-01).
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ class RunProfile:
     name: str
     title: str
     steps: tuple[str, ...]
-    rub: float
     seconds: int
     hint: str
 
@@ -36,7 +35,6 @@ class RunProfile:
             "name": self.name,
             "title": self.title,
             "steps": list(self.steps),
-            "rub": self.rub,
             "seconds": self.seconds,
             "hint": self.hint,
         }
@@ -47,7 +45,6 @@ PROFILES: dict[str, RunProfile] = {
         name="evaluate",
         title="Только оценка",
         steps=("evaluate",),
-        rub=0.17,
         seconds=13,
         hint="Балл, разбор требований, красные флаги. Это режим сканера.",
     ),
@@ -55,7 +52,6 @@ PROFILES: dict[str, RunProfile] = {
         name="apply",
         title="Готовлюсь откликнуться",
         steps=("evaluate", "tailor", "letter"),
-        rub=0.64,
         seconds=40,
         hint="Резюме под вакансию и сопроводительное письмо — поверх готовой оценки.",
     ),
@@ -63,7 +59,6 @@ PROFILES: dict[str, RunProfile] = {
         name="all",
         title="Полный пакет",
         steps=ALL_STEPS,
-        rub=0.81,
         seconds=54,
         hint="То же плюс вопросы к интервью и STAR-истории.",
     ),
@@ -71,17 +66,14 @@ PROFILES: dict[str, RunProfile] = {
 
 DEFAULT = "evaluate"
 
-# Price and label per single step, because the screen buys them one at a time:
+# Label and time per single step, because the screen buys them one at a time:
 # each vacancy row carries its own buttons rather than a bundle selector.
-# Derived from the measured profiles above — evaluate is 0.17, evaluate+tailor+
-# letter is 0.64, the full package 0.81 — so tailor+letter ≈ 0.47 and the prep
-# ≈ 0.17. Split evenly between the two; they are close in size.
 STEP_INFO: dict[str, dict] = {
-    "letter": {"title": "Сопровод", "rub": 0.23, "seconds": 13,
+    "letter": {"title": "Сопровод", "seconds": 13,
                "hint": "Сопроводительное письмо под эту вакансию"},
-    "tailor": {"title": "Резюме", "rub": 0.24, "seconds": 14,
+    "tailor": {"title": "Резюме", "seconds": 14,
                "hint": "Резюме, переупакованное под эту вакансию"},
-    "interview": {"title": "Интервью", "rub": 0.17, "seconds": 14,
+    "interview": {"title": "Интервью", "seconds": 14,
                   "hint": "Вопросы, которые зададут, и STAR-истории"},
 }
 

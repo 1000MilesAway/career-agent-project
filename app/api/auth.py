@@ -23,7 +23,7 @@ from ..core.security import (
 )
 from ..models import User
 from ..services import mail
-from ..services.spend import remaining_rub
+from ..services.spend import plan_of
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -45,11 +45,8 @@ class UserResponse(BaseModel):
     name: str | None
     is_admin: bool
     consent_at: datetime | None
-    spent_rub: float
-    # What is left of the budget; null when no limit is configured. Shown so
-    # the ceiling is visible before it is hit, rather than arriving as a
-    # surprise 402 mid-click.
-    remaining_rub: float | None
+    # "free" or "paid". How much of the quota is used lives in /api/state.
+    plan: str
     # "@handle", or the first name for an account without one; null = not linked.
     telegram_name: str | None
 
@@ -60,8 +57,7 @@ class UserResponse(BaseModel):
             name=user.name,
             is_admin=user.is_admin,
             consent_at=user.consent_at,
-            spent_rub=float(user.spent_rub),
-            remaining_rub=remaining_rub(user),
+            plan=plan_of(user),
             telegram_name=user.telegram_name if user.telegram_id is not None else None,
         )
 
@@ -311,7 +307,7 @@ async def telegram_login_endpoint(body: TelegramToken, session: SessionDep) -> T
     """Log in with Telegram; an account seen for the first time is created.
 
     Signing up takes nothing but the Telegram confirmation: no email, no
-    password. What bounds a stranger's cost is SPEND_LIMIT_RUB, per account.
+    password. What bounds a stranger's cost is the free plan's quota, per account.
     A disabled account is refused rather than re-created — the Telegram id is
     still its, so a fresh account would undo `user-off`.
     """

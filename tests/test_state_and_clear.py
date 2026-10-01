@@ -80,14 +80,15 @@ class TestState:
         assert len(dropped) == 1
         assert "бариста" in dropped[0]["screen_reason"]
 
-    async def test_the_remaining_budget_travels_with_the_state(
-        self, client, auth_headers, monkeypatch
+    async def test_the_quota_travels_with_the_state_as_shares(
+        self, client, auth_headers
     ):
-        from app.core.config import get_settings
-
-        monkeypatch.setattr(get_settings(), "spend_limit_rub", 25.0)
+        """Percentages and reset times — no money anywhere in the payload."""
         spend = (await client.get("/api/state", headers=auth_headers)).json()["spend"]
-        assert spend["limit_rub"] == 25.0
+        assert spend["quota"]["plan"] == "free"
+        assert spend["quota"]["day"]["used_pct"] == 0
+        assert spend["quota"]["week"]["resets_at"]
+        assert not any("rub" in key for key in spend)
 
 
 @requires_db

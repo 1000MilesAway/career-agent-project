@@ -31,23 +31,17 @@ class TestLookup:
             assert positions == sorted(positions), p.name
 
 
-class TestPricing:
-    def test_more_steps_cost_more(self):
-        ranked = sorted(profiles.PROFILES.values(), key=lambda p: len(p.steps))
-        costs = [p.rub for p in ranked]
-        assert costs == sorted(costs)
-
-    def test_quoted_price_matches_measured_cost(self):
-        """Numbers come from the week-0 measurement in docs/decisions.md."""
-        assert profiles.get("evaluate").rub == 0.17
-        assert profiles.get("all").rub == 0.81
-
+class TestShownToTheUser:
     def test_every_profile_can_be_shown_to_the_user(self):
         for row in profiles.as_list():
             assert row["title"]
             assert row["hint"]
-            assert row["rub"] > 0
             assert row["seconds"] > 0
+
+    def test_no_price_reaches_the_screen(self):
+        """Users see a share of their quota, never money (decided 2026-10-01)."""
+        rows = profiles.as_list() + profiles.steps_as_list()
+        assert all("rub" not in row for row in rows)
 
 
 class TestPipelineContract:

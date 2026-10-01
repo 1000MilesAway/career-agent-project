@@ -17,13 +17,14 @@ where they get lost:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -84,11 +85,23 @@ class User(Base, TimestampMixin):
     # account agreed, and when.
     consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # Spend accounting. No limit is enforced yet — the user asked to open the
-    # service to testers without one — but the number has to exist before a
-    # limit can ever be switched on, and it answers "what did this account
-    # cost me" while testing.
+    # What this account has cost the owner, in roubles at the real (peak
+    # included) price. The owner's accounting only: users never see roubles,
+    # they see a share of their quota below.
     spent_rub: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
+
+    # The plan: paid while this is in the future, free otherwise. A date
+    # rather than a flag, so a lapsed subscription turns itself off.
+    paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Quota windows, in USD at the off-peak price (`app/services/spend.py`).
+    # Each counter belongs to the period its date names — the Moscow day, the
+    # Monday of the Moscow week; a counter from an older period is stale and
+    # read as reset, so nothing has to run at midnight to clear them.
+    quota_day: Mapped[date | None] = mapped_column(Date)
+    quota_day_usd: Mapped[float] = mapped_column(Numeric(12, 6), default=0, nullable=False)
+    quota_week: Mapped[date | None] = mapped_column(Date)
+    quota_week_usd: Mapped[float] = mapped_column(Numeric(12, 6), default=0, nullable=False)
 
     # A Telegram account linked from the cabinet, or the one the account was
     # created by on its first Telegram login; either way it then logs in by

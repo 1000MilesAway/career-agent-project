@@ -32,11 +32,16 @@ class Settings(BaseSettings):
     # where the API needs to report them (the /health payload names the model).
     deepseek_model: str = "deepseek-flash"
 
-    # Per-account budget in roubles; 0 disables the check. The owner's key pays
-    # for every model call, so a host reachable from the internet needs this set
-    # — an evaluation is ~0.17 RUB and a full package ~0.81 RUB, which adds up
-    # fast under a held F5.
-    spend_limit_rub: float = 0.0
+    # Quotas per plan, in USD at the off-peak price; 0 or less switches that
+    # window off. The owner's key pays for every call, so a public host needs
+    # them on. An evaluation is ~$0.0018, a full package ~$0.0085: the free day
+    # is ~11 evaluations, the paid day ~55. Users see a percentage, never these
+    # numbers, so they can be retuned without a word of the interface changing.
+    # Decided 2026-10-01, see docs/decisions.md.
+    free_day_usd: float = 0.02
+    free_week_usd: float = 0.06
+    paid_day_usd: float = 0.10
+    paid_week_usd: float = 0.30
 
     # Telegram Login (OIDC). The client id is the bot id, read from the token
     # when not given; with neither set, Telegram login is off and the cabinet

@@ -26,7 +26,7 @@ import argparse
 import asyncio
 import secrets
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
@@ -108,6 +108,8 @@ async def _user_list() -> int:
             flags.append("админ")
         if not u.is_active:
             flags.append("выключен")
+        if u.paid_until and u.paid_until > datetime.now(UTC):
+            flags.append(f"подписка до {u.paid_until:%Y-%m-%d}")
         suffix = f"  [{', '.join(flags)}]" if flags else ""
         print(f"{u.email or u.telegram_name or u.id!s:<40} потрачено {float(u.spent_rub):.2f} ₽{suffix}")
     return 0
@@ -134,25 +136,60 @@ async def _user_passwd(email: str, password: str | None) -> int:
     return 0
 
 
-async def _user_toggle(who: str, active: bool) -> int:
+async def _find_user(session, who: str) -> User | None:
     """`who` is an email, or the "@handle" user-list shows for a Telegram sign-up."""
-    who = who.strip()
     column = User.telegram_name if who.startswith("@") else User.email
     key = who if who.startswith("@") else who.lower()
+    result = await session.execute(select(User).where(column == key))
+    users = list(result.scalars())
+    if not users:
+        print(f"Нет пользователя {who}", file=sys.stderr)
+        return None
+    # Handles are Telegram's, not ours, and a stale one can repeat.
+    if len(users) > 1:
+        print(f"{who}: несколько учёток, уточните через email", file=sys.stderr)
+        return None
+    return users[0]
+
+
+async def _user_toggle(who: str, active: bool) -> int:
+    who = who.strip()
     async with SessionLocal() as session:
-        result = await session.execute(select(User).where(column == key))
-        users = list(result.scalars())
-        if not users:
-            print(f"Нет пользователя {who}", file=sys.stderr)
+        user = await _find_user(session, who)
+        if user is None:
             return 1
-        # Handles are Telegram's, not ours, and a stale one can repeat.
-        if len(users) > 1:
-            print(f"{who}: несколько учёток, уточните через email", file=sys.stderr)
-            return 1
-        users[0].is_active = active
+        user.is_active = active
         await session.commit()
 
     print(f"{who}: {'включён' if active else 'выключен'}")
+    return 0
+
+
+async def _user_plan(who: str, days: int | None) -> int:
+    """Grant the paid plan for `days`, or end it with None.
+
+    Days add to a subscription still running rather than restarting it, so a
+    referral bonus or a renewal paid early is not lost. There is no payment in
+    the product yet: this is how a subscription is given by hand.
+    """
+    who = who.strip()
+    now = datetime.now(UTC)
+    async with SessionLocal() as session:
+        user = await _find_user(session, who)
+        if user is None:
+            return 1
+        if days is None:
+            user.paid_until = None
+        else:
+            start = user.paid_until if user.paid_until and user.paid_until > now else now
+            user.paid_until = start + timedelta(days=days)
+        await session.commit()
+        until = user.paid_until
+
+    if until is None:
+        print(f"{who}: бесплатный тариф")
+    else:
+        print(f"{who}: подписка до {until:%Y-%m-%d %H:%M} UTC")
     return 0
 
 
@@ -256,6 +293,12 @@ def main(argv: list[str] | None = None) -> int:
     on = sub.add_parser("user-on", help="включить доступ обратно")
     on.add_argument("email", help="email или @handle из user-list")
 
+    plan = sub.add_parser("user-plan", help="выдать или снять подписку")
+    plan.add_argument("email", help="email или @handle из user-list")
+    group = plan.add_mutually_exclusive_group(required=True)
+    group.add_argument("--days", type=int, help="продлить подписку на столько дней")
+    group.add_argument("--free", action="store_true", help="вернуть на бесплатный тариф")
+
     cal = sub.add_parser("calibrate", help="соблюдает ли скоринг свои правила (бесплатно)")
     cal.add_argument(
         "--source", choices=("stored", "golden"), default="stored",
@@ -275,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_user_toggle(args.email, active=False))
     if args.command == "user-on":
         return asyncio.run(_user_toggle(args.email, active=True))
+    if args.command == "user-plan":
+        return asyncio.run(_user_plan(args.email, None if args.free else args.days))
     if args.command == "calibrate":
         # The golden set is files only, so it must stay runnable with no
         # database at all — that is what makes it usable in CI.

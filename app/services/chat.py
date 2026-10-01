@@ -27,7 +27,7 @@ from core import chat as chat_core
 from core import tools
 
 from ..models import ChatMessage, Evaluation, Proposal, Resume, User, Vacancy
-from .spend import remaining_rub
+from .spend import quota
 from .tracker import STATUSES
 
 PENDING = "pending"
@@ -215,10 +215,9 @@ class ToolRunner:
         return {"filename": resume.filename, "profile": resume.profile}
 
     async def _get_spend(self, _arguments: dict) -> dict:
-        return {
-            "spent_rub": float(self.user.spent_rub),
-            "remaining_rub": remaining_rub(self.user),
-        }
+        # Shares and reset times only: the user is never told a price, so the
+        # assistant must not be able to tell them one either.
+        return quota(self.user)
 
     async def _list_vacancies(self, arguments: dict) -> dict:
         query = select(Vacancy).where(Vacancy.user_id == self.user.id)

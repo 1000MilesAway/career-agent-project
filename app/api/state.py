@@ -21,7 +21,7 @@ from core.profiles import steps_as_list
 from ..core.deps import SessionDep, UserDep
 from ..models import Evaluation, Resume, Vacancy
 from ..services import liveness, revisions
-from ..services.spend import remaining_rub
+from ..services.spend import quota
 from ..services.tracker import STATUSES
 
 router = APIRouter(prefix="/api", tags=["state"])
@@ -102,7 +102,6 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
 
     now = datetime.now(UTC)
     found = []
-    spent_total = 0.0
     scored = 0
     with_artifacts = 0
 
@@ -113,11 +112,9 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         )
         artifacts: dict[str, Any] = {}
         if evaluation:
-            spent_total += float(evaluation.cost_rub)
             scored += 1
             for a in evaluation.artifacts:
                 artifacts[a.kind] = a.content
-                spent_total += float(a.cost_rub)
         if artifacts:
             with_artifacts += 1
 
@@ -148,7 +145,6 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "verdict": evaluation.verdict if evaluation else None,
                 "report": evaluation.report if evaluation else None,
                 "artifacts": artifacts or None,
-                "rub": float(evaluation.cost_rub) if evaluation else None,
                 # The report on screen was bought against an earlier CV or an
                 # earlier revision of it. Shown rather than hidden — it was
                 # paid for — but marked, so the user knows a fresh score is
@@ -185,11 +181,10 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
             "found": len(found),
             "scored": scored,
             "with_artifacts": with_artifacts,
-            "rub": round(spent_total, 3),
             "free_to_reopen": scored + with_artifacts,
-            # The ceiling, so the screen can show it before it is hit.
-            "limit_rub": remaining_rub(user),
-            "spent_total_rub": float(user.spent_rub),
+            # Shares of the daily and weekly quota, never money, so the screen
+            # can show the ceiling before it is hit.
+            "quota": quota(user),
         },
         "user": {
             "email": user.email,

@@ -13,14 +13,14 @@
 import { Suspense, useState, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { isActive, useAppState, useProposals } from './api/hooks'
-import type { Spend } from './api/types'
+import type { Quota, QuotaWindow } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
 import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
-import { Skeleton, rub } from './components/ui'
+import { Skeleton } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
 import { lazyPage } from './lazyPage'
 import './App.css'
@@ -83,7 +83,7 @@ function Cabinet() {
         </nav>
 
         <div className="side__foot">
-          {data ? <SpendMeter spend={data.spend} /> : null}
+          {data ? <QuotaMeter quota={data.spend.quota} /> : null}
           <p className="side__promise">Отклик всегда отправляете вы сами.</p>
           {data ? (
             <>
@@ -166,37 +166,65 @@ function NavItem({
   )
 }
 
-/** "What have I spent so far, and how much is left" — the question a paying
- *  user actually asks, answered before they hit the ceiling rather than by a
- *  402 when they do. */
-function SpendMeter({ spend }: { spend: Spend }) {
-  const spent = spend.spent_total_rub
-  const left = spend.limit_rub
-  const share = left != null && spent + left > 0 ? spent / (spent + left) : null
+/** "How much can I still do, and when does it come back" — answered in
+ *  shares, never money, before the user hits the ceiling rather than by a
+ *  402 when they do. The week is the budget; the day stops one evening from
+ *  eating it. */
+function QuotaMeter({ quota }: { quota: Quota }) {
+  const plan =
+    quota.plan === 'paid' && quota.paid_until
+      ? `Подписка до ${moscowDate(quota.paid_until, { day: 'numeric', month: 'long' })}`
+      : 'Бесплатный тариф'
   return (
     <div className="meter">
       <div className="meter__row">
-        <span>Потрачено</span>
-        <b className="num">{rub(spent)}</b>
+        <b>{plan}</b>
       </div>
-      {share != null ? (
-        <>
-          <div
-            className={share > 0.85 ? 'meter__bar meter__bar--low' : 'meter__bar'}
-            role="meter"
-            aria-label="Израсходовано бюджета"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(share * 100)}
-          >
-            <span style={{ width: `${Math.min(100, share * 100)}%` }} />
-          </div>
-          <div className="meter__row meter__row--sub">
-            <span>Осталось</span>
-            <span className="num">{rub(left ?? 0)}</span>
-          </div>
-        </>
+      {quota.day ? (
+        <QuotaBar label="Сегодня" win={quota.day} resets="обновится в 00:00" />
+      ) : null}
+      {quota.week ? (
+        <QuotaBar
+          label="Неделя"
+          win={quota.week}
+          resets={`обновится ${moscowDate(quota.week.resets_at, { weekday: 'short', day: 'numeric', month: 'short' })}`}
+        />
       ) : null}
     </div>
   )
 }
+
+function QuotaBar({
+  label,
+  win,
+  resets,
+}: {
+  label: string
+  win: QuotaWindow
+  resets: string
+}) {
+  const pct = win.used_pct
+  return (
+    <>
+      <div className="meter__row">
+        <span>{label}</span>
+        <span className="num">{pct}%</span>
+      </div>
+      <div
+        className={pct >= 85 ? 'meter__bar meter__bar--low' : 'meter__bar'}
+        role="meter"
+        aria-label={`${label}: израсходовано лимита`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      {pct >= 100 ? <div className="meter__row meter__row--sub">{resets}</div> : null}
+    </>
+  )
+}
+
+/** Dates on the Moscow clock: that is where the quota periods turn over. */
+const moscowDate = (iso: string, options: Intl.DateTimeFormatOptions): string =>
+  new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', ...options })

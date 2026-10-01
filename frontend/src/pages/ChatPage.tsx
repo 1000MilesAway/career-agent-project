@@ -37,7 +37,7 @@ const TOOL_TITLES: Record<string, string> = {
   list_vacancies: 'просмотрел список вакансий',
   skill_gap: 'разобрал требования',
   open_gaps: 'сверил с купленными отчётами',
-  get_spend: 'проверил расходы',
+  get_spend: 'проверил лимиты',
   propose_profile_patch: 'подготовил правку резюме',
   set_vacancy_status: 'подготовил смену статуса',
   save_vacancy: 'подготовил избранное',

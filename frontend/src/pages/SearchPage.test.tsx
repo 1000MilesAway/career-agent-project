@@ -26,7 +26,13 @@ vi.mock('../api/hooks', () => ({
       has_resume: true,
       found: mocks.found,
       apply_steps: [],
-      spend: { found: 0, scored: 0, with_artifacts: 0, rub: 0, free_to_reopen: 0 },
+      spend: {
+        found: 0,
+        scored: 0,
+        with_artifacts: 0,
+        free_to_reopen: 0,
+        quota: { plan: 'free', paid_until: null, day: null, week: null },
+      },
     },
     isLoading: false,
     error: null,
@@ -93,7 +99,6 @@ function row(id: string, extra: Partial<FoundVacancy> = {}): FoundVacancy {
     verdict: null,
     report: null,
     artifacts: null,
-    rub: null,
     ...extra,
   }
 }

@@ -102,7 +102,6 @@ export interface FoundVacancy {
   verdict: Verdict | null
   report: Report | null
   artifacts: Partial<Record<ArtifactKind, ArtifactContent>> | null
-  rub: number | null
   /** The score was bought against an earlier CV or revision of it. */
   outdated?: boolean
   /** The row this one copies, when the scan found it elsewhere first. The
@@ -154,7 +153,6 @@ export interface SearchProfile {
 export interface ApplyStep {
   step: ApplyStepName
   title: string
-  rub: number
   seconds: number
   hint: string
 }
@@ -164,15 +162,28 @@ export interface TrackerStatus {
   terminal: boolean
 }
 
+/** One quota window. Shares only: the cabinet never shows money. */
+export interface QuotaWindow {
+  /** Whole percent, capped at 100. */
+  used_pct: number
+  /** When the window turns over, ISO with the Moscow offset. */
+  resets_at: string
+}
+
+export interface Quota {
+  plan: 'free' | 'paid'
+  paid_until: string | null
+  /** null when the window is off — no limit configured, or an admin. */
+  day: QuotaWindow | null
+  week: QuotaWindow | null
+}
+
 export interface Spend {
   found: number
   scored: number
   with_artifacts: number
-  rub: number
   free_to_reopen: number
-  /** null when no ceiling is configured. */
-  limit_rub: number | null
-  spent_total_rub: number
+  quota: Quota
 }
 
 /** One version of the CV: an upload, a chat edit or a rollback. */
@@ -264,7 +275,6 @@ export interface TriageResult {
   missing?: string[]
   /** Ids the model invented. A broken prompt must look broken. */
   unknown?: string[]
-  cost_rub?: number
   note?: string
 }
 
@@ -274,7 +284,6 @@ export interface EvaluationResponse {
   score: number | null
   verdict: Verdict | null
   report: Report
-  cost_rub: number
   cached: boolean
 }
 
@@ -282,7 +291,6 @@ export interface ArtifactResponse {
   id: string
   kind: ApplyStepName
   content: ArtifactContent
-  cost_rub: number
   cached: boolean
 }
 
@@ -346,5 +354,4 @@ export interface ChatResponse {
   reply: string
   messages: ChatMessage[]
   proposals: ChatProposal[]
-  cost_rub: number
 }

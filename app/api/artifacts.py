@@ -41,7 +41,6 @@ class ArtifactResponse(BaseModel):
     id: uuid.UUID
     kind: str
     content: dict[str, Any]
-    cost_rub: float
     cached: bool = False
 
     @classmethod
@@ -50,7 +49,6 @@ class ArtifactResponse(BaseModel):
             id=a.id,
             kind=a.kind,
             content=a.content,
-            cost_rub=float(a.cost_rub),
             cached=cached,
         )
 

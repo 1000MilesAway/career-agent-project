@@ -84,7 +84,6 @@ class ChatResponse(BaseModel):
     reply: str
     messages: list[MessageResponse]
     proposals: list[ProposalResponse]
-    cost_rub: float
 
 
 def _visible(message: ChatMessage) -> MessageResponse | None:
@@ -280,7 +279,6 @@ async def send(
         reply=reply,
         messages=_as_conversation(rows),
         proposals=[ProposalResponse.of(p) for p in runner.proposals],
-        cost_rub=round(ledger.rub, 4),
     )
 
 

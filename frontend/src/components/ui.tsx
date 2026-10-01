@@ -126,9 +126,6 @@ export function Chips({
   )
 }
 
-/** Money, always with the same number of decimals and the same unit. */
-export const rub = (value: number, digits = 2): string => `${value.toFixed(digits)} ₽`
-
 /** NBSP, so a wrapped line never splits "250 000" in half. */
 export const formatSalary = (value: number): string =>
   value.toLocaleString('ru-RU').replace(/\s/g, ' ')
