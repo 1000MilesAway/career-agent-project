@@ -30,7 +30,9 @@ PRICING = {
     "deepseek-flash": {"in_hit": 0.003, "in_miss": 0.15, "out": 0.60},
     "deepseek-v4-pro": {"in_hit": 0.03, "in_miss": 1.00, "out": 3.00},
 }
-USD_RUB = float(os.getenv("USD_RUB", "95"))
+# CBR rate on 2026-10-01. Only the owner's own accounting reads it: users see a
+# share of their budget, never roubles.
+USD_RUB = float(os.getenv("USD_RUB", "83.56"))
 
 
 def _peak_multiplier(ts: datetime | None = None) -> float:
