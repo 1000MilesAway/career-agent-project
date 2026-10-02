@@ -1,4 +1,4 @@
-/** A side panel for a report or a document.
+/** A centred window for a report or a document.
  *
  * The old page appended the report to the bottom of the document and scrolled
  * there, which lost the list: closing the report meant scrolling back up and
