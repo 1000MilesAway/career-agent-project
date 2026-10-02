@@ -171,7 +171,7 @@ describe('SearchPage', () => {
     mocks.found.length = 0
   })
 
-  it('закрытые, старые и скрытые свёрнуты под своими переключателями, а не пропали', () => {
+  it('закрытые и старые не показываются, скрытые свёрнуты под переключателем', () => {
     localStorage.clear()
     mocks.found.splice(
       0,
@@ -187,9 +187,9 @@ describe('SearchPage', () => {
     expect(screen.queryByText('Вакансия closed')).toBeNull()
     expect(screen.queryByText('Вакансия hidden')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /показать неактуальные \(2\)/ }))
-    expect(screen.getByText('Вакансия closed')).toBeTruthy()
-    expect(screen.getByText('Вакансия old')).toBeTruthy()
+    // Hidden for now by the owner's call of 2026-10-02: no toggle brings them back.
+    expect(screen.queryByText('Вакансия old')).toBeNull()
+    expect(screen.queryByRole('button', { name: /неактуальные/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /показать скрытые \(1\)/ }))
     expect(screen.getByText('Вакансия hidden')).toBeTruthy()

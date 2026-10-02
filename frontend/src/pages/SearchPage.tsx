@@ -159,9 +159,13 @@ export function SearchPage() {
   const { counts, base, scored, misses, untriaged } = useMemo(() => {
     const shownGroups: Record<Group, boolean> = {
       kept: true,
-      dropped: showDropped,
+      // Dropped and inactive rows are not shown at all for now, against the
+      // «отсев никогда не молчит» rule: the owner's call of 2026-10-02, until
+      // the pipeline is redesigned (docs/decisions.md). Still counted, so the
+      // rows are one line away from coming back.
+      dropped: false,
       mismatch: showMismatch,
-      inactive: showInactive,
+      inactive: false,
       hidden: showHidden,
     }
     const counts: Record<Group, number> = {
@@ -189,7 +193,7 @@ export function SearchPage() {
       if (shownGroups[group]) base.push(row)
     }
     return { counts, base, scored, misses, untriaged }
-  }, [rows, conditions, showDropped, showMismatch, showInactive, showHidden])
+  }, [rows, conditions, showMismatch, showHidden])
 
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
@@ -634,14 +638,6 @@ export function SearchPage() {
               ) : null}
             </div>
             <div className="listbar__groups">
-              {counts.dropped ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('dropped')}
-                >
-                  {showDropped ? 'убрать' : 'показать'} отсеянные ({counts.dropped})
-                </button>
-              ) : null}
               {counts.mismatch ? (
                 <button
                   className="linkish listbar__dropped"
@@ -649,15 +645,6 @@ export function SearchPage() {
                   title="Найдены раньше, но не проходят условия выше"
                 >
                   {showMismatch ? 'убрать' : 'показать'} не под условия ({counts.mismatch})
-                </button>
-              ) : null}
-              {counts.inactive ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('inactive')}
-                  title="Закрытые у источника и слишком старые там, где источник не отвечает"
-                >
-                  {showInactive ? 'убрать' : 'показать'} неактуальные ({counts.inactive})
                 </button>
               ) : null}
               {counts.hidden ? (
@@ -685,8 +672,7 @@ export function SearchPage() {
                 <p>Оценённых среди них нет — снимите «только оценённые».</p>
               ) : (
                 <p>
-                  Ослабьте условия, включите другие вердикты или покажите отсеянные,
-                  неактуальные и скрытые.
+                  Ослабьте условия, включите другие вердикты или покажите скрытые.
                 </p>
               )}
             </Empty>
