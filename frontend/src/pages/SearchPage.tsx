@@ -93,12 +93,12 @@ function failedSources(sources: Record<string, SourceScan> | undefined): number 
   return Object.values(sources ?? {}).filter((s) => s.error).length
 }
 
-/** "вакансия / вакансии / вакансий" for a count. */
+/** «разберём 1 вакансию / 3 вакансии / 5 вакансий». */
 function vacanciesWord(n: number): string {
   const tens = n % 100
   const ones = n % 10
   if (tens >= 11 && tens <= 14) return 'вакансий'
-  if (ones === 1) return 'вакансия'
+  if (ones === 1) return 'вакансию'
   if (ones >= 2 && ones <= 4) return 'вакансии'
   return 'вакансий'
 }
@@ -173,7 +173,7 @@ export function SearchPage() {
     }
     const base: FoundVacancy[] = []
     const misses = new Map<string, string>()
-    // What «Отсеять моделью» would pay for: the server's own selection
+    // What «Умный отбор» would pay for: the server's own selection
     // (shortlist, no verdict, not closed, not hidden) narrowed to the rows the
     // conditions keep — a row they fold away is not worth a paid verdict.
     const untriaged: string[] = []
@@ -351,7 +351,7 @@ export function SearchPage() {
           toast.info(result.note)
           return
         }
-        toast.info(`Отсев: разобрано ${result.judged}.`)
+        toast.info(`Умный отбор: разобрано ${result.judged}.`)
         // A short reply leaves postings unjudged. They are reported, never
         // backfilled as "skip": an unjudged vacancy is not a rejected one.
         if (result.missing?.length) {
@@ -459,40 +459,31 @@ export function SearchPage() {
 
           <div className="scan__side">
             <div className="scan__opts">
-              <label
-                className="toggle"
-                title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
-              >
+              <label className="toggle">
                 <input
                   type="checkbox"
                   checked={conditions.remoteOnly}
                   onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
                 />
-                только удалёнка
+                Удалёнка
               </label>
-              <label
-                className="toggle"
-                title="Убираются вакансии Хабра от компаний без аккредитации Минцифры. Telegram и geekjob её не указывают — их вакансии остаются"
-              >
+              <label className="toggle">
                 <input
                   type="checkbox"
                   checked={conditions.accreditedOnly}
                   onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
                 />
-                только ИТ-аккредитованные
+                ИТ-аккредитованные
               </label>
               {/* A source choice, not a property of a row — the employer's
                   group is not stored — so it cannot filter what was found. */}
-              <label
-                className="toggle"
-                title="Nebius, JetBrains, Wrike, Xsolla и другие с русскоязычными командами. Это выбор источников, поэтому действует только на следующий поиск"
-              >
+              <label className="toggle">
                 <input
                   type="checkbox"
                   checked={conditions.includeGlobal}
                   onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
                 />
-                и зарубежные компании
+                Зарубежные
               </label>
             </div>
 
@@ -500,7 +491,6 @@ export function SearchPage() {
               <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
                 {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
               </button>
-              <span className="muted">бесплатно · 1–2 минуты</span>
             </div>
           </div>
         </div>
@@ -585,16 +575,15 @@ export function SearchPage() {
         {untriaged.length ? (
           <div className="triage-cta">
             <div className="triage-cta__text">
-              <p className="triage-cta__title">Следующий шаг — отсев моделью</p>
+              <p className="triage-cta__title">Умный отбор</p>
               <p className="muted">
-                <span className="num">{untriaged.length}</span>{' '}
-                {vacanciesWord(untriaged.length)} ещё без вердикта. Модель прочтёт их
-                карточки и разложит на «стоит посмотреть», «может быть» и «мимо» — один
-                запрос на всю пачку. Вакансии не под условия не отправляются.
+                Разберём <span className="num">{untriaged.length}</span>{' '}
+                {vacanciesWord(untriaged.length)} по вашему резюме: что стоит посмотреть, а
+                что мимо.
               </p>
             </div>
             <button className="btn triage-cta__btn" onClick={triage} disabled={isTriaging}>
-              {isTriaging ? 'Отсеиваю…' : 'Отсеять моделью'}
+              {isTriaging ? 'Отбираю…' : 'Отобрать лучшие'}
             </button>
           </div>
         ) : null}
@@ -628,7 +617,7 @@ export function SearchPage() {
                 ) : null}
               </div>
             ) : (
-              <span className="muted">Список ещё не разобран моделью.</span>
+              <span className="muted">Умный отбор ещё не запускался.</span>
             )}
             <div className="listbar__view">
               <div className="seg" role="group" aria-label="Порядок списка">

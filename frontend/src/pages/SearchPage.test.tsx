@@ -116,7 +116,7 @@ describe('SearchPage', () => {
     )
     render(<SearchPage />)
 
-    // «только удалёнка» включена по умолчанию.
+    // «Удалёнка» включена по умолчанию.
     expect(screen.getByText('Вакансия remote')).toBeTruthy()
     expect(screen.queryByText('Вакансия office')).toBeNull()
 
@@ -124,12 +124,12 @@ describe('SearchPage', () => {
     expect(screen.getByText('Вакансия office')).toBeTruthy()
     expect(screen.getByText('не удалённая работа')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'только удалёнка' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Удалёнка' }))
     expect(screen.queryByRole('button', { name: /не под условия/ })).toBeNull()
     mocks.found.length = 0
   })
 
-  it('отсев моделью получает только строки, прошедшие условия', async () => {
+  it('умный отбор получает только строки, прошедшие условия', async () => {
     localStorage.clear()
     mocks.runTriage.mockResolvedValue({ judged: 1, missing: [] })
     mocks.found.splice(
@@ -141,9 +141,9 @@ describe('SearchPage', () => {
     )
     render(<SearchPage />)
 
-    expect(screen.getByText('Следующий шаг — отсев моделью')).toBeTruthy()
+    expect(screen.getByText('Умный отбор')).toBeTruthy()
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Отсеять моделью' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Отобрать лучшие' }))
     })
     expect(mocks.runTriage).toHaveBeenCalledWith(['remote'])
     mocks.found.length = 0
