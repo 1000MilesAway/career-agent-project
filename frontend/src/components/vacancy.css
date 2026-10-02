@@ -8,7 +8,21 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
+}
+
+/* Corners rounded on the edge rows instead of `overflow: hidden` on the list:
+   clipping also cut off the download menu that opens under the last row.
+   A row sits in the list directly on search and inside .drag on the shortlist. */
+.vlist > :first-child,
+.vlist > :first-child > .vrow {
+  border-top-left-radius: calc(var(--radius) - 1px);
+  border-top-right-radius: calc(var(--radius) - 1px);
+}
+
+.vlist > :last-child,
+.vlist > :last-child > .vrow {
+  border-bottom-left-radius: calc(var(--radius) - 1px);
+  border-bottom-right-radius: calc(var(--radius) - 1px);
 }
 
 .vrow {

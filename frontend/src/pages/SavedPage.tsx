@@ -270,15 +270,12 @@ export function SavedPage() {
                       {vacancy.artifacts?.tailor ? (
                         <>
                           <span className="footer__sep" aria-hidden="true" />
-                          <span className="footer__group">
-                            <span className="muted">Скачать</span>
-                            <DownloadButtons
-                              small
-                              label={`Скачать резюме под «${vacancy.title}»`}
-                              exportBase={tailoredExportBase(vacancy.id)}
-                              designerTitle={`Резюме под «${vacancy.title}»`}
-                            />
-                          </span>
+                          <DownloadButtons
+                            small
+                            label={`Скачать резюме под «${vacancy.title}»`}
+                            exportBase={tailoredExportBase(vacancy.id)}
+                            designerTitle={`Резюме под «${vacancy.title}»`}
+                          />
                         </>
                       ) : null}
                     </>
