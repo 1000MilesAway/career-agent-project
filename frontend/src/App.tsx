@@ -84,7 +84,6 @@ function Cabinet() {
 
         <div className="side__foot">
           {data ? <QuotaMeter quota={data.spend.quota} /> : null}
-          <p className="side__promise">Отклик всегда отправляете вы сами.</p>
           {data ? (
             <>
               {/* The name opens the account: settings, Telegram, logout —

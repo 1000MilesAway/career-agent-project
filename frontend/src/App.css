@@ -209,13 +209,6 @@
   background: var(--accent);
 }
 
-.side__promise {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
 /* The whole row is the button: a name is a small target, and the row reads
    as "me" from the avatar to the edge. Bleeds into the footer's padding so
    the hover fill lines up with the nav items above. */
@@ -284,7 +277,6 @@
   }
 
   .brand__name,
-  .side__promise,
   .meter,
   .side__name,
   .side__user::before {
