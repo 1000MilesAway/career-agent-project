@@ -32,7 +32,6 @@ vi.mock('../api/hooks', () => ({
         found: 0,
         scored: 0,
         with_artifacts: 0,
-        free_to_reopen: 0,
         quota: { plan: 'free', paid_until: null, day: null, week: null },
       },
     },

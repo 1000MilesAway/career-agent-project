@@ -540,9 +540,6 @@ export function SearchPage() {
             {rows.length ? (
               <span className="muted num">
                 {counts.kept} · оценено {scored}
-                {data.spend.free_to_reopen
-                  ? ` · ${data.spend.free_to_reopen} откроются бесплатно`
-                  : ''}
               </span>
             ) : null}
           </div>
