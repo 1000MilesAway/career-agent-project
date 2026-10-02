@@ -119,6 +119,24 @@
   color: var(--ink-2);
 }
 
+/* The verdict reads as the start of its sentence, not a badge beside it:
+   colour and the dot set it apart, a smaller bold face only made it jump. */
+.vrow__note .tag {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.vrow__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.vrow__flags .chip {
+  cursor: help;
+}
+
 .vrow__footer {
   display: flex;
   flex-wrap: wrap;

@@ -77,6 +77,23 @@ function VacancyRowInner({
     sourceLabel ?? null,
   ].filter(Boolean)
 
+  // Closed is marked, not hidden: what was bought for it stays readable. An
+  // outdated score still reads against the old profile, so it is marked too.
+  const flags = [
+    mismatch && !dropped ? { label: 'не под условия', why: mismatch } : null,
+    vacancy.closed
+      ? {
+          label: 'закрыта',
+          why: vacancy.closed.reason || 'источник сообщил, что вакансия закрыта',
+        }
+      : null,
+    vacancy.stale ? { label: 'давно', why: vacancy.stale } : null,
+    vacancy.hidden ? { label: 'скрыта', why: 'вы скрыли эту вакансию' } : null,
+    vacancy.outdated
+      ? { label: 'прежнее резюме', why: 'оценка сделана до правки резюме' }
+      : null,
+  ].filter((flag) => flag !== null)
+
   return (
     <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
       <div className="vrow__lead">
@@ -127,39 +144,15 @@ function VacancyRowInner({
           </p>
         ) : null}
 
-        {mismatch && !dropped ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">не под условия</span> {mismatch}
-          </p>
-        ) : null}
-
-        {/* Closed is marked, not hidden: what was bought for it stays
-            readable, and the reason says why applying is pointless. */}
-        {vacancy.closed ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">закрыта</span>{' '}
-            {vacancy.closed.reason || 'источник сообщил, что вакансия закрыта'}
-          </p>
-        ) : null}
-
-        {vacancy.stale ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">давно</span> {vacancy.stale}
-          </p>
-        ) : null}
-
-        {vacancy.hidden ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">скрыта</span> вы скрыли эту вакансию
-          </p>
-        ) : null}
-
-        {/* The resume changed after this score was bought: the report still
-            reads against the old profile, so it is marked, not replaced. */}
-        {vacancy.outdated ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">прежнее резюме</span> оценка сделана до правки
-            резюме
+        {/* Marks of the row's state in one line. The why is on hover: written
+            out under each one, four marks made the card read like a log. */}
+        {flags.length ? (
+          <p className="vrow__flags">
+            {flags.map((flag) => (
+              <span key={flag.label} className="chip chip--flag" title={flag.why}>
+                {flag.label}
+              </span>
+            ))}
           </p>
         ) : null}
 
