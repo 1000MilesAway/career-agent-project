@@ -35,6 +35,11 @@
   transition: background 0.12s;
 }
 
+.vrow--bare {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 18px;
+}
+
 .vrow:last-child {
   border-bottom: none;
 }
@@ -212,9 +217,18 @@
     padding: 14px 14px 14px 8px;
   }
 
+  .vrow--bare {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 14px;
+  }
+
   .vrow__acts {
     grid-column: 2;
     justify-content: flex-start;
     margin-top: 8px;
+  }
+
+  .vrow--bare .vrow__acts {
+    grid-column: 1;
   }
 }

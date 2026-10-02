@@ -94,16 +94,21 @@ function VacancyRowInner({
       : null,
   ].filter((flag) => flag !== null)
   const verdict = vacancy.triage && !dropped ? vacancy.triage : null
+  const scored = vacancy.score != null
 
   return (
-    <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
-      {/* Empty until scored: the verdict chip already says what triage
-          thought, a coloured dot here only repeated it. */}
-      <div className="vrow__lead">
-        {vacancy.score != null ? (
+    <article
+      className={['vrow', dimmed && 'vrow--dim', !scored && 'vrow--bare']
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {/* No column at all until scored: the verdict chip already says what
+          triage thought, and an empty column only pushed the title right. */}
+      {scored ? (
+        <div className="vrow__lead">
           <Score score={vacancy.score} verdict={vacancy.verdict} />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div className="vrow__main">
         <h3 className="vrow__title">
