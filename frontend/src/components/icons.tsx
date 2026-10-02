@@ -65,12 +65,6 @@ export const LogoutIcon = () => (
   </Icon>
 )
 
-export const ChevronIcon = () => (
-  <Icon>
-    <path d="M6 8l4 4 4-4" />
-  </Icon>
-)
-
 export const CloseIcon = () => (
   <Icon>
     <path d="M5 5l10 10M15 5L5 15" />

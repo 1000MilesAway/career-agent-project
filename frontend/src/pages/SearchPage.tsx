@@ -21,7 +21,6 @@ import {
 } from '../api/hooks'
 import type { FoundVacancy, SourceScan } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { FilterMenu } from '../components/FilterMenu'
 import { SalaryInput } from '../components/SalaryInput'
 import {
   BUCKET_TITLES,
@@ -471,39 +470,30 @@ export function SearchPage() {
                 />
                 только удалёнка
               </label>
-              {/* Rarely changed, so folded away; the count on the button keeps
-                  a narrowing filter from going unnoticed. */}
-              <FilterMenu
-                label="Ещё"
-                active={
-                  Number(conditions.accreditedOnly) + Number(conditions.includeGlobal)
-                }
+              <label
+                className="toggle"
+                title="Убираются вакансии Хабра от компаний без аккредитации Минцифры. Telegram и geekjob её не указывают — их вакансии остаются"
               >
-                <label className="fmenu__opt">
-                  <input
-                    type="checkbox"
-                    checked={conditions.accreditedOnly}
-                    onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
-                  />
-                  только ИТ-аккредитованные
-                  <span className="fmenu__hint">
-                    Убираются вакансии Хабра от компаний без аккредитации Минцифры. Telegram
-                    и geekjob её не указывают — их вакансии остаются.
-                  </span>
-                </label>
-                <label className="fmenu__opt">
-                  <input
-                    type="checkbox"
-                    checked={conditions.includeGlobal}
-                    onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
-                  />
-                  искать и в зарубежных компаниях
-                  <span className="fmenu__hint">
-                    Nebius, JetBrains, Wrike, Xsolla и другие с русскоязычными командами.
-                    Это выбор источников, поэтому действует только на следующий поиск.
-                  </span>
-                </label>
-              </FilterMenu>
+                <input
+                  type="checkbox"
+                  checked={conditions.accreditedOnly}
+                  onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
+                />
+                только ИТ-аккредитованные
+              </label>
+              {/* A source choice, not a property of a row — the employer's
+                  group is not stored — so it cannot filter what was found. */}
+              <label
+                className="toggle"
+                title="Nebius, JetBrains, Wrike, Xsolla и другие с русскоязычными командами. Это выбор источников, поэтому действует только на следующий поиск"
+              >
+                <input
+                  type="checkbox"
+                  checked={conditions.includeGlobal}
+                  onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
+                />
+                и зарубежные компании
+              </label>
             </div>
 
             <div className="scan__go">
