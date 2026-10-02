@@ -11,6 +11,8 @@ import { api, fetcher } from '../api/client'
 import { useAuth } from '../auth'
 import { TelegramButton, useTelegramConfig } from '../components/TelegramLogin'
 import { ErrorNote } from '../components/ui'
+import { LegalLinks } from './legal/LegalPage'
+import './legal/legal.css'
 import './login.css'
 
 type Mode = 'login' | 'signup' | 'sent'
@@ -29,6 +31,7 @@ export function LoginPage() {
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [consent, setConsent] = useState(false)
   const [sentTo, setSentTo] = useState('')
   const [error, setError] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -57,7 +60,7 @@ export function LoginPage() {
   async function signup() {
     const data = await api<{ email: string }>('/api/auth/signup', {
       method: 'POST',
-      json: { email: email.trim(), password },
+      json: { email: email.trim(), password, consent },
     })
     setSentTo(data.email)
     setMode('sent')
@@ -158,6 +161,27 @@ export function LoginPage() {
                   </span>
                 ) : null}
               </label>
+              {mode === 'signup' ? (
+                // Its own box, unticked: consent has to be given, not assumed.
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    Даю{' '}
+                    <a href="#/legal/consent" target="_blank" rel="noreferrer">
+                      согласие на обработку персональных данных
+                    </a>{' '}
+                    и принимаю{' '}
+                    <a href="#/legal/terms" target="_blank" rel="noreferrer">
+                      пользовательское соглашение
+                    </a>
+                  </span>
+                </label>
+              ) : null}
               <button
                 className="btn"
                 type="submit"
@@ -209,6 +233,7 @@ export function LoginPage() {
                 'Впервые здесь? Войдите через Telegram — учётка создастся сама.'
               )}
             </p>
+            <LegalLinks />
           </>
         )}
       </section>

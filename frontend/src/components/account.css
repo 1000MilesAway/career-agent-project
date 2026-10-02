@@ -108,3 +108,17 @@
     padding: 16px;
   }
 }
+
+/* Deleting the account: red only in name until it is armed, so the button
+   does not shout from a dialog people open to change their name. */
+.account__danger,
+.account__danger:hover {
+  color: var(--bad);
+}
+
+.account__danger--on,
+.account__danger--on:hover {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: var(--on-ink);
+}

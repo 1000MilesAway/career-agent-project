@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from ..core import telegram_login
@@ -109,6 +109,10 @@ class SignupRequest(BaseModel):
     # bcrypt reads only the first 72 bytes; a longer password would be
     # accepted and silently cut.
     password: str = Field(min_length=8, max_length=72)
+    # The ticked box on the form. Separate from the terms on purpose: since
+    # 2025-09-01 152-FZ wants consent to processing as its own document, not a
+    # clause buried in another one.
+    consent: bool = False
 
 
 class SignupResponse(BaseModel):
@@ -140,6 +144,11 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
     """
     if not mail.mail_enabled():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Регистрация по почте не настроена")
+    if not body.consent:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Без согласия на обработку персональных данных зарегистрироваться нельзя",
+        )
     email = body.email.lower()
     sent = SignupResponse(
         email=email,
@@ -165,7 +174,7 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
 
     password_hash = hash_password(body.password)
     if user is None:
-        user = User(email=email, password_hash=password_hash)
+        user = User(email=email, password_hash=password_hash, consent_at=now)
         session.add(user)
         try:
             await session.flush()
@@ -176,6 +185,8 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
             return sent
     else:
         user.password_hash = password_hash
+        # The first date stands, as in /consent.
+        user.consent_at = user.consent_at or now
 
     link = f"{get_settings().public_url.rstrip('/')}/#/verify?token=" + create_email_token(
         user.id, email, password_hash
@@ -253,6 +264,24 @@ async def give_consent(user: UserDep, session: SessionDep) -> UserResponse:
         user.consent_at = datetime.now(UTC)
         await session.commit()
     return UserResponse.of(user)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(user: UserDep, session: SessionDep) -> None:
+    """Delete the account and everything in it: the way to withdraw consent.
+
+    One row goes and the foreign keys take the rest (resumes, vacancies,
+    evaluations, artifacts, chat, jobs — all ON DELETE CASCADE). Reports go too,
+    and that is the point: they quote the CV in `evidence`, so keeping them
+    would keep the personal data the user asked to erase (docs/decisions.md,
+    2026-09-22). A Core DELETE rather than session.delete(): the ORM would
+    load every child to null it out before the database cascades anyway.
+
+    The token is not revoked; it stops working because current_user finds no
+    account behind it.
+    """
+    await session.execute(delete(User).where(User.id == user.id))
+    await session.commit()
 
 
 class TelegramConfig(BaseModel):

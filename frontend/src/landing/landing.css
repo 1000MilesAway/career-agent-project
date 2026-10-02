@@ -1100,8 +1100,18 @@ html[data-view='landing'] {
 .l-foot {
   position: absolute;
   bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 20px;
+  padding: 0 16px;
   font-size: 13px;
   color: color-mix(in srgb, var(--on-ink) 55%, transparent);
+}
+
+.l-foot a,
+.l-foot a:visited {
+  color: inherit;
 }
 
 /* ---------- keyframes ---------- */

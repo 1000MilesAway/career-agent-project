@@ -40,7 +40,7 @@ def link_token(letter: dict[str, str]) -> str:
     return match.group(1)
 
 
-SIGNUP = {"email": "New@Example.com", "password": "long enough"}
+SIGNUP = {"email": "New@Example.com", "password": "long enough", "consent": True}
 
 
 class TestTokens:
@@ -130,6 +130,21 @@ class TestSignup:
         assert (await client.post("/api/auth/verify", json={"token": token})).status_code == 200
         assert (await client.post("/api/auth/verify", json={"token": token})).status_code == 200
 
+    async def test_signup_without_consent_is_refused_and_sends_nothing(
+        self, client, outbox
+    ):
+        r = await client.post("/api/auth/signup", json={**SIGNUP, "consent": False})
+        assert r.status_code == 400
+        assert outbox == []
+
+    async def test_signup_records_consent(self, client, outbox):
+        await client.post("/api/auth/signup", json=SIGNUP)
+        r = await client.post("/api/auth/verify", json={"token": link_token(outbox[0])})
+        me = await client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {r.json()['access_token']}"}
+        )
+        assert me.json()["consent_at"] is not None
+
     async def test_a_short_password_is_refused(self, client, outbox):
         r = await client.post(
             "/api/auth/signup", json={"email": "a@example.com", "password": "short"}
@@ -142,7 +157,7 @@ class TestSignup:
     ):
         """Same answer as a new signup, no letter, and the owner's password stands."""
         r = await client.post(
-            "/api/auth/signup", json={"email": user.email, "password": "hijacker pass"}
+            "/api/auth/signup", json={"email": user.email, "password": "hijacker pass", "consent": True}
         )
         assert r.status_code == 202
         assert outbox == []
@@ -170,7 +185,7 @@ class TestSignup:
         )
         await session.commit()
         r = await client.post(
-            "/api/auth/signup", json={"email": SIGNUP["email"], "password": "second password"}
+            "/api/auth/signup", json={"email": SIGNUP["email"], "password": "second password", "consent": True}
         )
         assert r.status_code == 202
         assert len(outbox) == 2
@@ -180,7 +195,7 @@ class TestSignup:
         new = await client.post("/api/auth/verify", json={"token": link_token(outbox[1])})
         assert new.status_code == 200
         login = await client.post(
-            "/api/auth/login", json={"email": "new@example.com", "password": "second password"}
+            "/api/auth/login", json={"email": "new@example.com", "password": "second password", "consent": True}
         )
         assert login.status_code == 200
 

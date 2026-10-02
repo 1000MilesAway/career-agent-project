@@ -61,13 +61,14 @@ describe('LoginPage', () => {
     fireEvent.change(container.querySelector('input[type=password]')!, {
       target: { value: 'long enough' },
     })
+    fireEvent.click(screen.getByRole('checkbox', { name: /согласие на обработку/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
 
     await screen.findByText('Проверьте почту')
     expect(screen.getByText('new@example.com')).toBeTruthy()
     expect(mocks.api).toHaveBeenCalledWith('/api/auth/signup', {
       method: 'POST',
-      json: { email: 'New@Example.com', password: 'long enough' },
+      json: { email: 'New@Example.com', password: 'long enough', consent: true },
     })
   })
 })

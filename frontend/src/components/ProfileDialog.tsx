@@ -9,9 +9,10 @@
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 import { useSWRConfig } from 'swr'
-import { STATE_KEY, updateProfile } from '../api/hooks'
+import { STATE_KEY, deleteAccount, updateProfile } from '../api/hooks'
 import type { AppState } from '../api/types'
 import { useAuth } from '../auth'
+import { LegalLinks } from '../pages/legal/LegalPage'
 import { CloseIcon, LogoutIcon } from './icons'
 import { TelegramLink } from './TelegramLogin'
 import { useToast } from './toast'
@@ -111,8 +112,14 @@ export function ProfileDialog({
           <p className="muted">
             {user.consent_at
               ? `Согласие на обработку дано ${formatDate(user.consent_at)}`
-              : 'Согласие ещё не дано — его спросят при загрузке резюме.'}
+              : 'Согласие ещё не дано.'}
           </p>
+          <LegalLinks />
+        </section>
+
+        <section className="account__section">
+          <p className="eyebrow">Удаление аккаунта</p>
+          <DeleteAccount />
         </section>
       </div>
 
@@ -162,6 +169,68 @@ function NameForm({ saved }: { saved: string }) {
         Сохранить
       </button>
     </form>
+  )
+}
+
+/** Withdrawing consent, in the one form the service can honour it: everything
+ *  goes. Two steps, because nothing brings the reports back. */
+function DeleteAccount() {
+  const { logout } = useAuth()
+  const toast = useToast()
+  const [armed, setArmed] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  function onDelete() {
+    startTransition(async () => {
+      try {
+        await deleteAccount()
+        logout()
+      } catch (e) {
+        toast.error(e)
+      }
+    })
+  }
+
+  if (!armed)
+    return (
+      <>
+        <p className="muted">
+          Удалит резюме, найденные вакансии, оценки, письма и переписку. Это же — отзыв
+          согласия на обработку данных.
+        </p>
+        <button
+          type="button"
+          className="btn btn--ghost btn--small account__danger"
+          onClick={() => setArmed(true)}
+        >
+          Удалить аккаунт
+        </button>
+      </>
+    )
+  return (
+    <>
+      <p>
+        <b>Удалить всё безвозвратно?</b> Восстановить аккаунт и оценки будет нельзя.
+      </p>
+      <div className="account__line">
+        <button
+          type="button"
+          className="btn btn--small account__danger account__danger--on"
+          onClick={onDelete}
+          disabled={isPending}
+        >
+          {isPending ? 'Удаляю…' : 'Да, удалить'}
+        </button>
+        <button
+          type="button"
+          className="btn btn--quiet btn--small"
+          onClick={() => setArmed(false)}
+          disabled={isPending}
+        >
+          Отмена
+        </button>
+      </div>
+    </>
   )
 }
 

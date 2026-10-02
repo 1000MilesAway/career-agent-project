@@ -17,6 +17,8 @@ import type { Quota, QuotaWindow } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
+import { ConsentScreen } from './pages/legal/ConsentScreen'
+import { LegalPage } from './pages/legal/LegalPage'
 import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
@@ -38,6 +40,13 @@ export function App() {
   // Before the token check: the link from a letter must work whether or not
   // this browser is logged in, and logged in as whom.
   if (pathname === '/verify') return <VerifyPage />
+  // Readable by anyone, logged in or not: the consent links here.
+  if (pathname.startsWith('/legal/'))
+    return (
+      <Routes>
+        <Route path="/legal/:doc" element={<LegalPage />} />
+      </Routes>
+    )
   if (!token) return <LoginPage />
   return <Cabinet />
 }
@@ -55,6 +64,9 @@ function Cabinet() {
   // Without a CV the scan refuses to work, so that is where a new account
   // starts. Once one is loaded, search is the page people come back to.
   const home = data && !data.has_resume ? '/resume' : '/search'
+
+  // Telegram sign-ups and accounts older than the question have none on record.
+  if (data && !data.user.consent_at) return <ConsentScreen />
 
   return (
     <div className="shell">
