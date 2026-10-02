@@ -93,6 +93,7 @@ function VacancyRowInner({
       ? { label: 'прежнее резюме', why: 'оценка сделана до правки резюме' }
       : null,
   ].filter((flag) => flag !== null)
+  const verdict = vacancy.triage && !dropped ? vacancy.triage : null
 
   return (
     <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
@@ -146,8 +147,15 @@ function VacancyRowInner({
 
         {/* Marks of the row's state in one line. The why is on hover: written
             out under each one, four marks made the card read like a log. */}
-        {flags.length ? (
+        {/* The verdict leads the row: it is the first thing to read about a
+            vacancy, and its reason follows as plain text below. */}
+        {verdict || flags.length ? (
           <p className="vrow__flags">
+            {verdict ? (
+              <span className={`chip chip--verdict chip--${verdict.bucket}`}>
+                {BUCKET_TITLES[verdict.bucket] ?? verdict.bucket}
+              </span>
+            ) : null}
             {flags.map((flag) => (
               <span key={flag.label} className="chip chip--flag" title={flag.why}>
                 {flag.label}
@@ -156,14 +164,7 @@ function VacancyRowInner({
           </p>
         ) : null}
 
-        {vacancy.triage && !dropped ? (
-          <p className="vrow__note">
-            <span className={`tag tag--${vacancy.triage.bucket}`}>
-              {BUCKET_TITLES[vacancy.triage.bucket] ?? vacancy.triage.bucket}
-            </span>{' '}
-            {vacancy.triage.reason}
-          </p>
-        ) : null}
+        {verdict?.reason ? <p className="vrow__note">{verdict.reason}</p> : null}
 
         {footer ? <div className="vrow__footer">{footer}</div> : null}
       </div>
