@@ -97,15 +97,12 @@ function VacancyRowInner({
 
   return (
     <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
+      {/* Empty until scored: the verdict chip already says what triage
+          thought, a coloured dot here only repeated it. */}
       <div className="vrow__lead">
         {vacancy.score != null ? (
           <Score score={vacancy.score} verdict={vacancy.verdict} />
-        ) : (
-          <span
-            className={`vrow__pending dot${vacancy.triage && !dropped ? ` dot--${vacancy.triage.bucket}` : ''}`}
-            aria-hidden="true"
-          />
-        )}
+        ) : null}
       </div>
 
       <div className="vrow__main">

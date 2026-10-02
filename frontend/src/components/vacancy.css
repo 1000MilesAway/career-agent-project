@@ -61,11 +61,6 @@
   padding-top: 1px;
 }
 
-/* No score yet: a dot in the triage colour, grey when not judged. */
-.vrow__pending {
-  margin-top: 9px;
-}
-
 .vrow__main {
   min-width: 0;
 }
