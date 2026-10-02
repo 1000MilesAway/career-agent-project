@@ -266,6 +266,32 @@ class TestTailoredExport:
         assert "Иванов Иван" in body  # identity comes from the profile
         assert "CI/CD" in body
 
+    async def test_a_resume_bought_against_the_previous_cv_still_downloads(
+        self, client, session, user, auth_headers
+    ):
+        """The list shows it with «прежнее резюме» and a download button; a 404
+        there read as "the paid document is gone"."""
+        old = await _resume(session, user)
+        vacancy = await _vacancy_with_tailored(session, user, old)
+        old.is_active = False
+        session.add(
+            Resume(
+                user_id=user.id,
+                filename="cv2.pdf",
+                raw_text="текст",
+                profile=PROFILE,
+                is_active=True,
+            )
+        )
+        await session.commit()
+
+        r = await client.get(
+            f"/api/export/vacancy/{vacancy.id}/tailor.docx", headers=auth_headers
+        )
+
+        assert r.status_code == 200
+        assert "CI/CD" in _text_of(r.content)
+
     async def test_the_model_notes_never_reach_the_employer(
         self, client, session, user, auth_headers
     ):

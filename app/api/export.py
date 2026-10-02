@@ -128,6 +128,11 @@ async def export_tailored(
     404 when it has not been bought: rendering an empty document would hand
     the user a blank file and read as a broken download rather than as a step
     they have not taken yet.
+
+    Bought against any version of the CV, not only the active one: the list
+    shows a CV tailored before the user edited theirs (marked «прежнее
+    резюме»), and a paid document the cabinet offers must download. One made
+    for the active CV wins, then the newest.
     """
     result = await session.execute(
         select(Artifact, Vacancy)
@@ -135,10 +140,11 @@ async def export_tailored(
         .join(Vacancy, Evaluation.vacancy_id == Vacancy.id)
         .where(
             Evaluation.vacancy_id == vacancy_id,
-            Evaluation.resume_id == resume.id,
             Vacancy.user_id == user.id,
             Artifact.kind == "tailor",
         )
+        .order_by((Evaluation.resume_id == resume.id).desc(), Artifact.created_at.desc())
+        .limit(1)
     )
     row = result.first()
     if row is None:
