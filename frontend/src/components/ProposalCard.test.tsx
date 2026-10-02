@@ -94,13 +94,13 @@ describe('ProposalCard', () => {
           ...skill,
           kind: 'vacancy_status',
           arguments: { vacancy_id: 'v1', status: 'applied' },
-          rationale: 'Python-разработчик → откликнулся',
+          rationale: 'Python-разработчик → Откликнулся',
         }}
         onAccept={vi.fn()}
         onReject={vi.fn()}
       />,
     )
 
-    expect(screen.getByText('откликнулся')).toBeTruthy()
+    expect(screen.getByText('Откликнулся')).toBeTruthy()
   })
 })

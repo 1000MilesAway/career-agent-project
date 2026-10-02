@@ -12,13 +12,16 @@ from datetime import UTC, datetime
 from ..models import Application, Vacancy
 
 STATUSES: dict[str, dict] = {
-    "none": {"title": "не решено", "terminal": False},
-    "applied": {"title": "откликнулся", "terminal": False},
-    "responded": {"title": "ответили", "terminal": False},
-    "interview": {"title": "интервью", "terminal": False},
-    "offer": {"title": "оффер", "terminal": True},
-    "rejected": {"title": "отказ", "terminal": True},
-    "discarded": {"title": "отложено", "terminal": True},
+    "none": {"title": "Не решено", "terminal": False},
+    "applied": {"title": "Откликнулся", "terminal": False},
+    "responded": {"title": "Ответили", "terminal": False},
+    # The key stays "interview" so rows already in it need no migration: an
+    # interview recorded before the split was, at the least, the HR one.
+    "interview": {"title": "HR-интервью", "terminal": False},
+    "tech_interview": {"title": "Техническое интервью", "terminal": False},
+    "offer": {"title": "Оффер", "terminal": True},
+    "rejected": {"title": "Отказ", "terminal": True},
+    "discarded": {"title": "Отложено", "terminal": True},
 }
 
 

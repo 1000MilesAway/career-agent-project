@@ -27,13 +27,14 @@ const FIELD_TITLES: Record<string, string> = {
 }
 
 const STATUS_TITLES: Record<string, string> = {
-  none: 'не решено',
-  applied: 'откликнулся',
-  responded: 'ответили',
-  interview: 'интервью',
-  offer: 'оффер',
-  rejected: 'отказ',
-  discarded: 'отложено',
+  none: 'Не решено',
+  applied: 'Откликнулся',
+  responded: 'Ответили',
+  interview: 'HR-интервью',
+  tech_interview: 'Техническое интервью',
+  offer: 'Оффер',
+  rejected: 'Отказ',
+  discarded: 'Отложено',
 }
 
 function title(proposal: ChatProposal): string {

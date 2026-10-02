@@ -143,14 +143,6 @@ export function SavedPage() {
             role="group"
             aria-label="Этап отклика"
           >
-            <button
-              className="funnel__step"
-              aria-pressed={active === null}
-              onClick={() => setFilter(null)}
-            >
-              <span className="funnel__count">{saved.length}</span>
-              <span className="funnel__label">В работе</span>
-            </button>
             {Object.entries(data.statuses).map(([key, status]) => {
               const count = counts.get(key) ?? 0
               const classes = ['funnel__step']

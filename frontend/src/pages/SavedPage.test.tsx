@@ -18,9 +18,9 @@ vi.mock('../api/hooks', () => ({
       found: mocks.found,
       apply_steps: [],
       statuses: {
-        none: { title: 'не решено', terminal: false },
-        applied: { title: 'откликнулся', terminal: false },
-        interview: { title: 'интервью', terminal: false },
+        none: { title: 'Не решено', terminal: false },
+        applied: { title: 'Откликнулся', terminal: false },
+        interview: { title: 'HR-интервью', terminal: false },
       },
     },
     isLoading: false,
@@ -101,19 +101,19 @@ describe('SavedPage', () => {
 
   it('строка, брошенная на этап, переезжает на него', () => {
     render(<SavedPage />)
-    carry('Вакансия a', 'откликнулся')
+    carry('Вакансия a', 'Откликнулся')
     expect(mocks.moveVacancy).toHaveBeenCalledWith('a', 'applied')
   })
 
   it('пока строку несут, под курсором её карточка, а курсор — рука', () => {
     render(<SavedPage />)
     press('Вакансия a')
-    pointAt(stage('интервью'))
+    pointAt(stage('HR-интервью'))
     fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
 
     expect(document.querySelector('.drag-ghost')?.textContent).toContain('Вакансия a')
     expect(document.documentElement.classList.contains('is-dragging')).toBe(true)
-    expect(stage('интервью').className).toContain('funnel__step--over')
+    expect(stage('HR-интервью').className).toContain('funnel__step--over')
 
     fireEvent.pointerUp(window)
     expect(document.querySelector('.drag-ghost')).toBeNull()
@@ -124,7 +124,7 @@ describe('SavedPage', () => {
 
   it('на свой же этап — ничего не пишет', () => {
     render(<SavedPage />)
-    carry('Вакансия b', 'откликнулся')
+    carry('Вакансия b', 'Откликнулся')
     expect(mocks.moveVacancy).not.toHaveBeenCalled()
   })
 
@@ -136,7 +136,7 @@ describe('SavedPage', () => {
     fireEvent.pointerUp(window)
 
     press('Вакансия a')
-    pointAt(stage('откликнулся'))
+    pointAt(stage('Откликнулся'))
     fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
     fireEvent.keyDown(window, { key: 'Escape' })
     fireEvent.pointerUp(window)
@@ -147,7 +147,7 @@ describe('SavedPage', () => {
   it('щелчок без движения — не перетаскивание', () => {
     render(<SavedPage />)
     press('Вакансия a')
-    pointAt(stage('откликнулся'))
+    pointAt(stage('Откликнулся'))
     fireEvent.pointerMove(window, { clientX: 102, clientY: 301 })
     fireEvent.pointerUp(window)
     expect(mocks.moveVacancy).not.toHaveBeenCalled()
@@ -158,7 +158,7 @@ describe('SavedPage', () => {
     try {
       render(<SavedPage />)
       press('Вакансия a', 'touch')
-      pointAt(stage('откликнулся'))
+      pointAt(stage('Откликнулся'))
       fireEvent.pointerMove(window, { clientX: 100, clientY: 200 })
       act(() => vi.advanceTimersByTime(500))
       fireEvent.pointerUp(window)
