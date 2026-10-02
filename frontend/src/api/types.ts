@@ -185,7 +185,6 @@ export interface Spend {
   found: number
   scored: number
   with_artifacts: number
-  free_to_reopen: number
   quota: Quota
 }
 

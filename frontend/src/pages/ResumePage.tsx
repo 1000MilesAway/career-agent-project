@@ -22,7 +22,7 @@ import { useToast } from '../components/toast'
 import { Card, Chips, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
 import { ProfileEditor } from '../components/ProfileEditor'
-import { setTourStep } from '../components/tour'
+import { setTourStep } from '../components/tourStep'
 import { SearchProfileDiff } from '../components/SearchProfileDiff'
 import './resume.css'
 

@@ -42,6 +42,12 @@ function renderButtons() {
   )
 }
 
+/** Opens «Скачать ▾» and picks a format: PDF opens the designer, the rest download. */
+function pick(format: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Скачать резюме' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: `Скачать резюме — ${format}` }))
+}
+
 beforeEach(() => {
   localStorage.clear()
   // jsdom не реализует ни showModal, ни ResizeObserver, ни blob-ссылки.
@@ -67,18 +73,16 @@ describe('DownloadButtons', () => {
     const calls = mockApi()
     renderButtons()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Скачать резюме — PDF' }))
+    pick('DOCX')
 
-    await waitFor(() => expect(calls).toContain('/api/export/resume.pdf?style=classic'))
+    await waitFor(() => expect(calls).toContain('/api/export/resume.docx?style=classic'))
   })
 
   it('конструктор показывает превью выбранного стиля и запоминает выбор', async () => {
     const calls = mockApi()
     renderButtons()
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Скачать резюме — выбрать оформление' }),
-    )
+    pick('PDF')
     await waitFor(() => expect(calls).toContain('/api/export/resume.html?style=classic'))
 
     fireEvent.click(await screen.findByRole('radio', { name: /Акцент/ }))
@@ -86,7 +90,7 @@ describe('DownloadButtons', () => {
     expect(localStorage.getItem('resume-style')).toBe('accent')
 
     // Быстрая кнопка вне окна качает в только что выбранном стиле.
-    fireEvent.click(screen.getByRole('button', { name: 'Скачать резюме — DOCX' }))
+    pick('DOCX')
     await waitFor(() => expect(calls).toContain('/api/export/resume.docx?style=accent'))
   })
 
@@ -94,9 +98,7 @@ describe('DownloadButtons', () => {
     mockApi()
     renderButtons()
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Скачать резюме — выбрать оформление' }),
-    )
+    pick('PDF')
     const frame = await screen.findByTitle('Превью резюме')
 
     expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
@@ -110,9 +112,9 @@ describe('DownloadButtons', () => {
     // Список стилей должен успеть прийти: до него неизвестно, что «neon» пропал.
     await waitFor(() => expect(calls).toContain('/api/export/styles'))
     await new Promise((r) => setTimeout(r, 0))
-    fireEvent.click(screen.getByRole('button', { name: 'Скачать резюме — PDF' }))
+    pick('MD')
 
-    await waitFor(() => expect(calls).toContain('/api/export/resume.pdf?style=classic'))
+    await waitFor(() => expect(calls).toContain('/api/export/resume.md?style=classic'))
     expect(calls.some((c) => c.includes('style=neon'))).toBe(false)
   })
 })

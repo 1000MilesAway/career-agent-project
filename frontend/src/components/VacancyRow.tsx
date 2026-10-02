@@ -77,18 +77,38 @@ function VacancyRowInner({
     sourceLabel ?? null,
   ].filter(Boolean)
 
+  // Closed is marked, not hidden: what was bought for it stays readable. An
+  // outdated score still reads against the old profile, so it is marked too.
+  const flags = [
+    mismatch && !dropped ? { label: 'не под условия', why: mismatch } : null,
+    vacancy.closed
+      ? {
+          label: 'закрыта',
+          why: vacancy.closed.reason || 'источник сообщил, что вакансия закрыта',
+        }
+      : null,
+    vacancy.stale ? { label: 'давно', why: vacancy.stale } : null,
+    vacancy.hidden ? { label: 'скрыта', why: 'вы скрыли эту вакансию' } : null,
+    vacancy.outdated
+      ? { label: 'прежнее резюме', why: 'оценка сделана до правки резюме' }
+      : null,
+  ].filter((flag) => flag !== null)
+  const verdict = vacancy.triage && !dropped ? vacancy.triage : null
+  const scored = vacancy.score != null
+
   return (
-    <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
-      <div className="vrow__lead">
-        {vacancy.score != null ? (
+    <article
+      className={['vrow', dimmed && 'vrow--dim', !scored && 'vrow--bare']
+        .filter(Boolean)
+        .join(' ')}
+    >
+      {/* No column at all until scored: the verdict chip already says what
+          triage thought, and an empty column only pushed the title right. */}
+      {scored ? (
+        <div className="vrow__lead">
           <Score score={vacancy.score} verdict={vacancy.verdict} />
-        ) : (
-          <span
-            className={`vrow__pending dot${vacancy.triage && !dropped ? ` dot--${vacancy.triage.bucket}` : ''}`}
-            aria-hidden="true"
-          />
-        )}
-      </div>
+        </div>
+      ) : null}
 
       <div className="vrow__main">
         <h3 className="vrow__title">
@@ -127,50 +147,26 @@ function VacancyRowInner({
           </p>
         ) : null}
 
-        {mismatch && !dropped ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">не под условия</span> {mismatch}
+        {/* Marks of the row's state in one line. The why is on hover: written
+            out under each one, four marks made the card read like a log. */}
+        {/* The verdict leads the row: it is the first thing to read about a
+            vacancy, and its reason follows as plain text below. */}
+        {verdict || flags.length ? (
+          <p className="vrow__flags">
+            {verdict ? (
+              <span className={`chip chip--verdict chip--${verdict.bucket}`}>
+                {BUCKET_TITLES[verdict.bucket] ?? verdict.bucket}
+              </span>
+            ) : null}
+            {flags.map((flag) => (
+              <span key={flag.label} className="chip chip--flag" title={flag.why}>
+                {flag.label}
+              </span>
+            ))}
           </p>
         ) : null}
 
-        {/* Closed is marked, not hidden: what was bought for it stays
-            readable, and the reason says why applying is pointless. */}
-        {vacancy.closed ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">закрыта</span>{' '}
-            {vacancy.closed.reason || 'источник сообщил, что вакансия закрыта'}
-          </p>
-        ) : null}
-
-        {vacancy.stale ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">давно</span> {vacancy.stale}
-          </p>
-        ) : null}
-
-        {vacancy.hidden ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">скрыта</span> вы скрыли эту вакансию
-          </p>
-        ) : null}
-
-        {/* The resume changed after this score was bought: the report still
-            reads against the old profile, so it is marked, not replaced. */}
-        {vacancy.outdated ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">прежнее резюме</span> оценка сделана до правки
-            резюме
-          </p>
-        ) : null}
-
-        {vacancy.triage && !dropped ? (
-          <p className="vrow__note">
-            <span className={`tag tag--${vacancy.triage.bucket}`}>
-              {BUCKET_TITLES[vacancy.triage.bucket] ?? vacancy.triage.bucket}
-            </span>{' '}
-            {vacancy.triage.reason}
-          </p>
-        ) : null}
+        {verdict?.reason ? <p className="vrow__note">{verdict.reason}</p> : null}
 
         {footer ? <div className="vrow__footer">{footer}</div> : null}
       </div>

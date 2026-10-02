@@ -81,7 +81,7 @@ export function LoginPage() {
 
   return (
     <main className="login">
-      <Pitch />
+      <LoginHome />
 
       <section className="login__form">
         {mode === 'sent' ? (
@@ -224,30 +224,13 @@ function SwitchLink({ onClick, children }: { onClick: () => void; children: Reac
   )
 }
 
-export function Pitch() {
+/** The way back to the landing: #/ with no token is the landing (see index.html).
+ * The pitch itself lives there now, so the gate carries only the form. */
+export function LoginHome() {
   return (
-    <section className="login__pitch">
-      {/* Back to the landing: #/ with no token is the landing (see index.html). */}
-      <a className="brand login__home" href="#/" title="О сервисе">
-        <span className="brand__mark" aria-hidden="true" />
-        <span className="brand__name">career-agent</span>
-      </a>
-      <h1 className="login__title">
-        Сотни вакансий — <em>короткий список</em> тех, что стоят отклика.
-      </h1>
-      <ol className="login__steps">
-        <li>
-          <b>Ищет везде сразу.</b> Хабр Карьера, сайты компаний, geekjob и Telegram-каналы.
-        </li>
-        <li>
-          <b>Отсеивает бесплатно.</b> Каждая выброшенная вакансия — с причиной одной
-          строкой.
-        </li>
-        <li>
-          <b>Оценивает по резюме.</b> Что совпало, чего не хватает, и что с этим делать.
-        </li>
-      </ol>
-      <p className="login__promise">Отклик всегда отправляете вы сами.</p>
-    </section>
+    <a className="brand login__home" href="#/" title="О сервисе">
+      <span className="brand__mark" aria-hidden="true" />
+      <span className="brand__name">career-agent</span>
+    </a>
   )
 }

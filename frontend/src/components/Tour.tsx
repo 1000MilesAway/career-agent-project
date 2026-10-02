@@ -7,7 +7,7 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Coachmark } from './Coachmark'
-import { setTourStep, useTourStep } from './tour'
+import { setTourStep, useTourStep } from './tourStep'
 
 export function Tour({ savedCount }: { savedCount: number }) {
   const step = useTourStep()

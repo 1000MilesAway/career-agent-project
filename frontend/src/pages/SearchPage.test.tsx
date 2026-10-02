@@ -32,7 +32,6 @@ vi.mock('../api/hooks', () => ({
         found: 0,
         scored: 0,
         with_artifacts: 0,
-        free_to_reopen: 0,
         quota: { plan: 'free', paid_until: null, day: null, week: null },
       },
     },
@@ -106,7 +105,7 @@ function row(id: string, extra: Partial<FoundVacancy> = {}): FoundVacancy {
 }
 
 describe('SearchPage', () => {
-  it('условия фильтруют и найденное: строка уходит под «не под условия» с причиной', () => {
+  it('условия фильтруют и найденное: неподходящая строка уходит, ослабил условие — вернулась', () => {
     localStorage.clear()
     mocks.found.splice(
       0,
@@ -120,12 +119,10 @@ describe('SearchPage', () => {
     expect(screen.getByText('Вакансия remote')).toBeTruthy()
     expect(screen.queryByText('Вакансия office')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /показать не под условия \(1\)/ }))
-    expect(screen.getByText('Вакансия office')).toBeTruthy()
-    expect(screen.getByText('не удалённая работа')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /не под условия/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Удалёнка' }))
-    expect(screen.queryByRole('button', { name: /не под условия/ })).toBeNull()
+    expect(screen.getByText('Вакансия office')).toBeTruthy()
     mocks.found.length = 0
   })
 
@@ -172,7 +169,7 @@ describe('SearchPage', () => {
     mocks.found.length = 0
   })
 
-  it('закрытые, старые и скрытые свёрнуты под своими переключателями, а не пропали', () => {
+  it('закрытые и старые не показываются, скрытые свёрнуты под переключателем', () => {
     localStorage.clear()
     mocks.found.splice(
       0,
@@ -188,9 +185,9 @@ describe('SearchPage', () => {
     expect(screen.queryByText('Вакансия closed')).toBeNull()
     expect(screen.queryByText('Вакансия hidden')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /показать неактуальные \(2\)/ }))
-    expect(screen.getByText('Вакансия closed')).toBeTruthy()
-    expect(screen.getByText('Вакансия old')).toBeTruthy()
+    // Hidden for now by the owner's call of 2026-10-02: no toggle brings them back.
+    expect(screen.queryByText('Вакансия old')).toBeNull()
+    expect(screen.queryByRole('button', { name: /неактуальные/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /показать скрытые \(1\)/ }))
     expect(screen.getByText('Вакансия hidden')).toBeTruthy()

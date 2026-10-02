@@ -78,6 +78,7 @@
 }
 
 .status--interview,
+.status--tech_interview,
 .status--offer {
   color: var(--ok);
   border-color: color-mix(in srgb, var(--ok) 50%, transparent);

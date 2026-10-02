@@ -159,9 +159,15 @@ export function SearchPage() {
   const { counts, base, scored, misses, untriaged } = useMemo(() => {
     const shownGroups: Record<Group, boolean> = {
       kept: true,
-      dropped: showDropped,
-      mismatch: showMismatch,
-      inactive: showInactive,
+      // Dropped and inactive rows are not shown at all for now, against the
+      // «отсев никогда не молчит» rule: the owner's call of 2026-10-02, until
+      // the pipeline is redesigned (docs/decisions.md). Still counted, so the
+      // rows are one line away from coming back.
+      dropped: false,
+      // The conditions above the list are a filter like any other: to see
+      // what they leave out, the user loosens them (2026-10-02).
+      mismatch: false,
+      inactive: false,
       hidden: showHidden,
     }
     const counts: Record<Group, number> = {
@@ -189,7 +195,7 @@ export function SearchPage() {
       if (shownGroups[group]) base.push(row)
     }
     return { counts, base, scored, misses, untriaged }
-  }, [rows, conditions, showDropped, showMismatch, showInactive, showHidden])
+  }, [rows, conditions, showHidden])
 
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
@@ -430,23 +436,11 @@ export function SearchPage() {
 
   return (
     <div className="page">
-      <PageHead
-        title="Поиск"
-        lede={
-          <>
-            Хабр Карьера, сайты компаний, geekjob и Telegram-каналы — одним запуском. Лишнее
-            отсеивается бесплатно, одна вакансия из разных мест показывается один раз.
-            Модель считает только то, что прошло отбор.
-          </>
-        }
-      />
+      <PageHead title="Поиск" />
 
       <section className="card scan" aria-label="Параметры поиска">
         <div className="scan__head">
           <h2 className="scan__title">Условия</h2>
-          <span className="muted">
-            применяются сразу к найденным ниже и к следующему поиску
-          </span>
         </div>
 
         <div className="scan__grid">
@@ -552,9 +546,6 @@ export function SearchPage() {
             {rows.length ? (
               <span className="muted num">
                 {counts.kept} · оценено {scored}
-                {data.spend.free_to_reopen
-                  ? ` · ${data.spend.free_to_reopen} откроются бесплатно`
-                  : ''}
               </span>
             ) : null}
           </div>
@@ -649,32 +640,6 @@ export function SearchPage() {
               ) : null}
             </div>
             <div className="listbar__groups">
-              {counts.dropped ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('dropped')}
-                >
-                  {showDropped ? 'убрать' : 'показать'} отсеянные ({counts.dropped})
-                </button>
-              ) : null}
-              {counts.mismatch ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('mismatch')}
-                  title="Найдены раньше, но не проходят условия выше"
-                >
-                  {showMismatch ? 'убрать' : 'показать'} не под условия ({counts.mismatch})
-                </button>
-              ) : null}
-              {counts.inactive ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('inactive')}
-                  title="Закрытые у источника и слишком старые там, где источник не отвечает"
-                >
-                  {showInactive ? 'убрать' : 'показать'} неактуальные ({counts.inactive})
-                </button>
-              ) : null}
               {counts.hidden ? (
                 <button
                   className="linkish listbar__dropped"
@@ -700,8 +665,7 @@ export function SearchPage() {
                 <p>Оценённых среди них нет — снимите «только оценённые».</p>
               ) : (
                 <p>
-                  Ослабьте условия, включите другие вердикты или покажите отсеянные,
-                  неактуальные и скрытые.
+                  Ослабьте условия, включите другие вердикты или покажите скрытые.
                 </p>
               )}
             </Empty>

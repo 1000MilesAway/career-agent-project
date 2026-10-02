@@ -199,7 +199,6 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
             "found": len(found),
             "scored": scored,
             "with_artifacts": with_artifacts,
-            "free_to_reopen": scored + with_artifacts,
             # Shares of the daily and weekly quota, never money, so the screen
             # can show the ceiling before it is hit.
             "quota": quota(user),

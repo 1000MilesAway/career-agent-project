@@ -1,7 +1,8 @@
 .toasts {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  /* Above the support bubble in the same corner. */
+  bottom: 84px;
   z-index: 50;
   display: flex;
   flex-direction: column;

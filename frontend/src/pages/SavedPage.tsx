@@ -143,14 +143,6 @@ export function SavedPage() {
             role="group"
             aria-label="Этап отклика"
           >
-            <button
-              className="funnel__step"
-              aria-pressed={active === null}
-              onClick={() => setFilter(null)}
-            >
-              <span className="funnel__count">{saved.length}</span>
-              <span className="funnel__label">В работе</span>
-            </button>
             {Object.entries(data.statuses).map(([key, status]) => {
               const count = counts.get(key) ?? 0
               const classes = ['funnel__step']
@@ -278,15 +270,12 @@ export function SavedPage() {
                       {vacancy.artifacts?.tailor ? (
                         <>
                           <span className="footer__sep" aria-hidden="true" />
-                          <span className="footer__group">
-                            <span className="muted">Скачать</span>
-                            <DownloadButtons
-                              small
-                              label={`Скачать резюме под «${vacancy.title}»`}
-                              exportBase={tailoredExportBase(vacancy.id)}
-                              designerTitle={`Резюме под «${vacancy.title}»`}
-                            />
-                          </span>
+                          <DownloadButtons
+                            small
+                            label={`Скачать резюме под «${vacancy.title}»`}
+                            exportBase={tailoredExportBase(vacancy.id)}
+                            designerTitle={`Резюме под «${vacancy.title}»`}
+                          />
                         </>
                       ) : null}
                     </>

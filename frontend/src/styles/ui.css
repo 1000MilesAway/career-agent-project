@@ -450,6 +450,45 @@
   color: var(--bad);
 }
 
+/* ── Download menu ───────────────────────────────────────────────────── */
+
+.download {
+  position: relative;
+  display: inline-flex;
+}
+
+.download__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.download__item {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.download__item:hover,
+.download__item:focus-visible {
+  background: var(--sunken);
+}
+
 /* ── Chips ───────────────────────────────────────────────────────────── */
 
 .chips {

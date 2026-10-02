@@ -1,14 +1,15 @@
-/** "Оформить · PDF / DOCX / MD" — one set of buttons, used on both screens.
+/** "Скачать ▾" with PDF, DOCX and MD under it — used on both screens.
  *
  * Shared so the two places cannot disagree on what a download costs. Nothing
  * here is paid: the server renders JSON that already exists.
  *
- * The quick buttons download in the style last picked in the designer, so a
- * user who chose "Акцент" once does not have to open the designer again for
- * every vacancy.
+ * PDF opens the designer: it is the format people send, so the look is chosen
+ * on a preview before the file is made. DOCX and MD download at once, in the
+ * style last picked there, so a user who chose "Акцент" once does not have to
+ * open the designer again for every vacancy.
  */
 
-import { useState } from 'react'
+import { useState, type FocusEvent } from 'react'
 import { downloadExport, type ExportFormat, useResumeStyles } from '../api/hooks'
 import { ResumeDesigner } from './ResumeDesigner'
 import { DEFAULT_STYLE, useResumeStyleChoice } from './resumeStyleChoice'
@@ -25,12 +26,12 @@ export function DownloadButtons({
   /** The export route without the format, e.g. `/api/export/resume`. */
   exportBase: string
   small?: boolean
-  /** Screen-reader context: two identical "PDF" buttons on one page otherwise. */
+  /** Screen-reader context: two identical "Скачать" buttons on one page otherwise. */
   label?: string
   designerTitle?: string
 }) {
-  // Which format is in flight, so only that button reads as busy.
-  const [busy, setBusy] = useState<ExportFormat | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [designerOpen, setDesignerOpen] = useState(false)
   const [chosen, choose] = useResumeStyleChoice()
   const { data: styles } = useResumeStyles()
@@ -41,14 +42,26 @@ export function DownloadButtons({
   const style = !styles || styles.some((s) => s.id === chosen) ? chosen : DEFAULT_STYLE
 
   async function run(fmt: ExportFormat) {
-    setBusy(fmt)
+    setMenuOpen(false)
+    setBusy(true)
     try {
       await downloadExport(exportBase, fmt, style)
     } catch (e) {
       toast.error(e)
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
+  }
+
+  function openDesigner() {
+    setMenuOpen(false)
+    setDesignerOpen(true)
+  }
+
+  // Focus leaving the whole group closes the menu: a click elsewhere, or Tab
+  // past the last item. A dropdown left open over the list is in the way.
+  function onBlur(event: FocusEvent<HTMLSpanElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false)
   }
 
   const className = small ? 'btn btn--ghost btn--small' : 'btn btn--ghost'
@@ -56,28 +69,54 @@ export function DownloadButtons({
 
   return (
     <>
-      <button
-        className={className}
-        onClick={() => setDesignerOpen(true)}
-        aria-label={`${label} — выбрать оформление`}
-        title={
-          styleName ? `Оформление: ${styleName}. Выбрать другое` : 'Выбрать оформление'
-        }
+      <span
+        className="download"
+        onBlur={onBlur}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setMenuOpen(false)
+        }}
       >
-        Оформить
-      </button>
-      {(['pdf', 'docx', 'md'] as const).map((fmt) => (
         <button
-          key={fmt}
           className={className}
-          onClick={() => run(fmt)}
-          disabled={busy !== null}
-          aria-label={`${label} — ${LABELS[fmt]}`}
-          title={`${label} в формате ${LABELS[fmt]}`}
+          onClick={() => setMenuOpen(!menuOpen)}
+          disabled={busy}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label={label}
         >
-          {busy === fmt ? 'Готовлю…' : LABELS[fmt]}
+          {busy ? 'Готовлю…' : 'Скачать ▾'}
         </button>
-      ))}
+        {menuOpen ? (
+          <span className="download__menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="download__item"
+              onClick={openDesigner}
+              aria-label={`${label} — ${LABELS.pdf}`}
+              title={
+                styleName
+                  ? `Оформление: ${styleName}. Выбрать перед скачиванием`
+                  : undefined
+              }
+            >
+              {LABELS.pdf}
+            </button>
+            {(['docx', 'md'] as const).map((fmt) => (
+              <button
+                key={fmt}
+                type="button"
+                role="menuitem"
+                className="download__item"
+                onClick={() => run(fmt)}
+                aria-label={`${label} — ${LABELS[fmt]}`}
+              >
+                {LABELS[fmt]}
+              </button>
+            ))}
+          </span>
+        ) : null}
+      </span>
       {designerOpen ? (
         <ResumeDesigner
           open

@@ -8,7 +8,21 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
+}
+
+/* Corners rounded on the edge rows instead of `overflow: hidden` on the list:
+   clipping also cut off the download menu that opens under the last row.
+   A row sits in the list directly on search and inside .drag on the shortlist. */
+.vlist > :first-child,
+.vlist > :first-child > .vrow {
+  border-top-left-radius: calc(var(--radius) - 1px);
+  border-top-right-radius: calc(var(--radius) - 1px);
+}
+
+.vlist > :last-child,
+.vlist > :last-child > .vrow {
+  border-bottom-left-radius: calc(var(--radius) - 1px);
+  border-bottom-right-radius: calc(var(--radius) - 1px);
 }
 
 .vrow {
@@ -19,6 +33,11 @@
   padding: 16px 18px 16px 12px;
   border-bottom: 1px solid var(--line);
   transition: background 0.12s;
+}
+
+.vrow--bare {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 18px;
 }
 
 .vrow:last-child {
@@ -45,11 +64,6 @@
   display: flex;
   justify-content: center;
   padding-top: 1px;
-}
-
-/* No score yet: a dot in the triage colour, grey when not judged. */
-.vrow__pending {
-  margin-top: 9px;
 }
 
 .vrow__main {
@@ -119,6 +133,39 @@
   color: var(--ink-2);
 }
 
+.vrow__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.vrow__flags .chip--flag {
+  cursor: help;
+}
+
+/* The verdict is a chip like the marks beside it, in its own colour.
+   Scoped to the row: the shared .chip loads after this file and would
+   otherwise repaint it grey. */
+.vrow .chip--verdict {
+  --verdict: var(--ink-2);
+  color: var(--verdict);
+  border-color: color-mix(in srgb, var(--verdict) 45%, transparent);
+  background: color-mix(in srgb, var(--verdict) 10%, transparent);
+}
+
+.vrow .chip--worth {
+  --verdict: var(--ok);
+}
+
+.vrow .chip--maybe {
+  --verdict: var(--warn);
+}
+
+.vrow .chip--skip {
+  --verdict: var(--bad);
+}
+
 .vrow__footer {
   display: flex;
   flex-wrap: wrap;
@@ -170,9 +217,18 @@
     padding: 14px 14px 14px 8px;
   }
 
+  .vrow--bare {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 14px;
+  }
+
   .vrow__acts {
     grid-column: 2;
     justify-content: flex-start;
     margin-top: 8px;
+  }
+
+  .vrow--bare .vrow__acts {
+    grid-column: 1;
   }
 }

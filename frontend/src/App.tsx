@@ -20,6 +20,7 @@ import { VerifyPage } from './pages/VerifyPage'
 import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
+import { SupportBubble } from './components/SupportBubble'
 import { Skeleton } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
 import { lazyPage } from './lazyPage'
@@ -33,6 +34,15 @@ const SearchPage = lazyPage(() => import('./pages/SearchPage').then((m) => m.Sea
 const ChatPage = lazyPage(() => import('./pages/ChatPage').then((m) => m.ChatPage))
 
 export function App() {
+  return (
+    <>
+      <Screen />
+      <SupportBubble />
+    </>
+  )
+}
+
+function Screen() {
   const { token } = useAuth()
   const { pathname } = useLocation()
   // Before the token check: the link from a letter must work whether or not
@@ -84,7 +94,6 @@ function Cabinet() {
 
         <div className="side__foot">
           {data ? <QuotaMeter quota={data.spend.quota} /> : null}
-          <p className="side__promise">Отклик всегда отправляете вы сами.</p>
           {data ? (
             <>
               {/* The name opens the account: settings, Telegram, logout —
