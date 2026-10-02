@@ -139,9 +139,6 @@ async def user(session):
         is_active=True,
         # As the admin CLI makes it; a self-signup starts unconfirmed.
         email_verified_at=datetime.now(UTC),
-        # Agreed already: most tests upload a CV, which needs it. Tests about
-        # consent itself clear it.
-        consent_at=datetime.now(UTC),
     )
     session.add(account)
     await session.commit()

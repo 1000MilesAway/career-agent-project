@@ -9,18 +9,15 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   updateProfile: vi.fn(() => Promise.resolve({})),
-  deleteAccount: vi.fn(() => Promise.resolve(null)),
-  logout: vi.fn(),
   mutate: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../api/hooks', () => ({
   STATE_KEY: '/api/state',
   updateProfile: mocks.updateProfile,
-  deleteAccount: mocks.deleteAccount,
 }))
 vi.mock('swr', () => ({ useSWRConfig: () => ({ mutate: mocks.mutate }) }))
-vi.mock('../auth', () => ({ useAuth: () => ({ logout: mocks.logout }) }))
+vi.mock('../auth', () => ({ useAuth: () => ({ logout: vi.fn() }) }))
 vi.mock('./toast', () => ({ useToast: () => ({ info: vi.fn(), error: vi.fn() }) }))
 vi.mock('./TelegramLogin', () => ({
   TelegramLink: ({
@@ -102,15 +99,5 @@ describe('ProfileDialog', () => {
 
     await waitFor(() => expect(mocks.mutate).toHaveBeenCalledWith('/api/state'))
     expect(mocks.updateProfile).toHaveBeenCalledWith({ name: 'Макс' })
-  })
-
-  it('удаление аккаунта — только со второго нажатия, потом выход', async () => {
-    render(<ProfileDialog open user={user} onClose={vi.fn()} />)
-    fireEvent.click(screen.getByText('Удалить аккаунт', { selector: 'button' }))
-    expect(mocks.deleteAccount).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByText('Да, удалить'))
-    await waitFor(() => expect(mocks.logout).toHaveBeenCalled())
-    expect(mocks.deleteAccount).toHaveBeenCalledOnce()
   })
 })

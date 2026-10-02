@@ -158,12 +158,6 @@ export const setStatus = (vacancyId: string, status: string) =>
 export const updateProfile = (fields: { name: string }) =>
   api<unknown>('/api/auth/me', { method: 'PATCH', json: fields })
 
-/** Recorded once; a repeat keeps the first date. */
-export const giveConsent = () => api<unknown>('/api/auth/consent', { method: 'POST' })
-
-/** Irreversible: the account and everything in it, reports included. */
-export const deleteAccount = () => api<unknown>('/api/auth/me', { method: 'DELETE' })
-
 export function uploadResume(file: File): Promise<ResumeResponse> {
   const form = new FormData()
   form.append('file', file)

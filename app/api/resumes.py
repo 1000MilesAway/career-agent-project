@@ -68,13 +68,6 @@ async def upload(
     Parsing costs money (~0.05 RUB), so the result is stored rather than
     recomputed on every request: parsing a CV costs money.
     """
-    # A CV is personal data: none is stored, or sent to the model, before the
-    # user agreed. The cabinet asks first; this is what holds without it.
-    if user.consent_at is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Сначала дайте согласие на обработку персональных данных",
-        )
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise HTTPException(

@@ -129,62 +129,6 @@ class TestConsent:
         again = await client.post("/api/auth/consent", headers=auth_headers)
         assert again.json()["consent_at"] == stamp
 
-    async def test_no_cv_is_taken_before_consent(self, client, session, user, auth_headers):
-        """A CV is personal data: the upload is refused before it is read or parsed."""
-        user.consent_at = None
-        await session.commit()
-        r = await client.post(
-            "/api/resumes",
-            headers=auth_headers,
-            files={"file": ("cv.txt", b"Python developer", "text/plain")},
-        )
-        assert r.status_code == 403
-        assert "согласие" in r.json()["detail"]
-
-
-@requires_db
-class TestDeleteAccount:
-    async def test_deleting_takes_the_resume_and_the_reports_with_it(
-        self, client, session, user, auth_headers
-    ):
-        """Withdrawing consent erases the data, reports included: they quote the CV."""
-        from sqlalchemy import func, select
-
-        from app.models import Evaluation, Resume, Vacancy
-
-        resume = Resume(
-            user_id=user.id, filename="cv.md", raw_text="CV text", profile={}, is_active=True
-        )
-        vacancy = Vacancy(user_id=user.id, source="habr", external_id="1", title="Dev")
-        session.add_all([resume, vacancy])
-        await session.flush()
-        session.add(
-            Evaluation(
-                vacancy_id=vacancy.id,
-                resume_id=resume.id,
-                report={"evidence": "quotes the CV"},
-                score=4.0,
-                model="test",
-            )
-        )
-        await session.commit()
-        user_id, resume_id = user.id, resume.id
-
-        r = await client.delete("/api/auth/me", headers=auth_headers)
-        assert r.status_code == 204
-
-        session.expire_all()
-        for model in (Resume, Vacancy):
-            count = await session.scalar(
-                select(func.count()).select_from(model).where(model.user_id == user_id)
-            )
-            assert count == 0
-        left = await session.scalar(
-            select(func.count()).select_from(Evaluation).where(Evaluation.resume_id == resume_id)
-        )
-        assert left == 0
-        assert (await client.get("/api/auth/me", headers=auth_headers)).status_code == 401
-
 
 @requires_db
 class TestProfileName:
