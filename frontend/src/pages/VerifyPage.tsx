@@ -10,7 +10,7 @@ import { useState, useTransition } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { ErrorNote } from '../components/ui'
-import { Pitch } from './LoginPage'
+import { LoginHome } from './LoginPage'
 import './login.css'
 
 export function VerifyPage() {
@@ -36,7 +36,7 @@ export function VerifyPage() {
 
   return (
     <main className="login">
-      <Pitch />
+      <LoginHome />
       <section className="login__form">
         <h2 className="login__form-title">Подтверждение почты</h2>
         {token ? (
