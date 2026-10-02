@@ -34,7 +34,7 @@ export function SupportBubble() {
       {open ? (
         <div className="support__card" role="dialog" aria-label="Связаться с нами">
           <p className="support__title">Вопрос или идея?</p>
-          <p className="support__text">Напишите — отвечает живой человек.</p>
+          <p className="support__text">Всегда готов вам помочь или услышать ваши предложения</p>
           <a
             className="btn btn--small support__link"
             href={CONTACT}
