@@ -430,23 +430,11 @@ export function SearchPage() {
 
   return (
     <div className="page">
-      <PageHead
-        title="Поиск"
-        lede={
-          <>
-            Хабр Карьера, сайты компаний, geekjob и Telegram-каналы — одним запуском. Лишнее
-            отсеивается бесплатно, одна вакансия из разных мест показывается один раз.
-            Модель считает только то, что прошло отбор.
-          </>
-        }
-      />
+      <PageHead title="Поиск" />
 
       <section className="card scan" aria-label="Параметры поиска">
         <div className="scan__head">
           <h2 className="scan__title">Условия</h2>
-          <span className="muted">
-            применяются сразу к найденным ниже и к следующему поиску
-          </span>
         </div>
 
         <div className="scan__grid">
