@@ -1,5 +1,6 @@
 import type { FoundVacancy, TriageBucket } from '../api/types'
 import { bucketOf } from '../components/VacancyRow'
+import { formatSalary } from '../components/ui'
 
 /** Which verdicts the list shows, and which folded groups are mixed in.
  *
@@ -25,7 +26,36 @@ export interface SearchFilters {
   showInactive: boolean
   /** Hidden by the user with «Скрыть». */
   showHidden: boolean
+  /** Rows that do not meet the conditions above the list. */
+  showMismatch: boolean
+  conditions: Conditions
 }
+
+/** What the user asks of a vacancy. The same values go into the next scan's
+ *  request and filter the rows already found, so the list never shows what
+ *  the panel above it says to leave out. */
+export interface Conditions {
+  /** Monthly roubles; null — no threshold. */
+  salary: number | null
+  /** Keep rows that state no salary when a threshold is set. */
+  anySalary: boolean
+  remoteOnly: boolean
+  accreditedOnly: boolean
+  /** A source choice, not a property of a row: the employer's group is not
+   *  stored, so this one applies to the next scan only. */
+  includeGlobal: boolean
+}
+
+export const DEFAULT_CONDITIONS: Conditions = {
+  salary: null,
+  anySalary: true,
+  remoteOnly: true,
+  accreditedOnly: false,
+  includeGlobal: false,
+}
+
+const flag = (value: unknown, fallback: boolean) =>
+  typeof value === 'boolean' ? value : fallback
 
 const STORAGE_KEY = 'search-filters'
 const KNOWN: readonly BucketKey[] = ['worth', 'maybe', 'skip', null]
@@ -39,10 +69,25 @@ export const DEFAULT_FILTERS: SearchFilters = {
   showDropped: false,
   showInactive: false,
   showHidden: false,
+  showMismatch: false,
+  conditions: DEFAULT_CONDITIONS,
 }
 
-const flag = (value: unknown, fallback: boolean) =>
-  typeof value === 'boolean' ? value : fallback
+function loadConditions(value: unknown): Conditions {
+  if (typeof value !== 'object' || value === null) return DEFAULT_CONDITIONS
+  const c = value as Partial<Record<keyof Conditions, unknown>>
+  const salary =
+    typeof c.salary === 'number' && Number.isFinite(c.salary) && c.salary > 0
+      ? Math.round(c.salary)
+      : null
+  return {
+    salary,
+    anySalary: flag(c.anySalary, DEFAULT_CONDITIONS.anySalary),
+    remoteOnly: flag(c.remoteOnly, DEFAULT_CONDITIONS.remoteOnly),
+    accreditedOnly: flag(c.accreditedOnly, DEFAULT_CONDITIONS.accreditedOnly),
+    includeGlobal: flag(c.includeGlobal, DEFAULT_CONDITIONS.includeGlobal),
+  }
+}
 
 export function loadFilters(): SearchFilters {
   try {
@@ -50,8 +95,16 @@ export function loadFilters(): SearchFilters {
     if (!raw) return DEFAULT_FILTERS
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return DEFAULT_FILTERS
-    const { buckets, sort, scoredOnly, showDropped, showInactive, showHidden } =
-      parsed as Partial<Record<keyof SearchFilters, unknown>>
+    const {
+      buckets,
+      sort,
+      scoredOnly,
+      showDropped,
+      showInactive,
+      showHidden,
+      showMismatch,
+      conditions,
+    } = parsed as Partial<Record<keyof SearchFilters, unknown>>
     // A value written by an older build may name a bucket that no longer
     // exists; drop it rather than keep a filter no button can switch off.
     return {
@@ -63,6 +116,8 @@ export function loadFilters(): SearchFilters {
       showDropped: flag(showDropped, DEFAULT_FILTERS.showDropped),
       showInactive: flag(showInactive, DEFAULT_FILTERS.showInactive),
       showHidden: flag(showHidden, DEFAULT_FILTERS.showHidden),
+      showMismatch: flag(showMismatch, DEFAULT_FILTERS.showMismatch),
+      conditions: loadConditions(conditions),
     }
   } catch {
     return DEFAULT_FILTERS
@@ -92,4 +147,22 @@ export function sortRows(rows: FoundVacancy[], sort: SortKey): FoundVacancy[] {
     if (b.score != null) return 1
     return bucketRank(a) - bucketRank(b)
   })
+}
+
+/** Why a found row does not meet the conditions, or null when it does.
+ *
+ *  The same three-valued rules as the free filter on the server
+ *  (core/filters.py, PreScreen): only an explicit "no" fails — a source that
+ *  says nothing about remote work or accreditation is not punished for it.
+ *  The reason is a line the row shows, so a folded row is never unexplained. */
+export function conditionMiss(row: FoundVacancy, c: Conditions): string | null {
+  if (c.remoteOnly && row.remote === false) return 'не удалённая работа'
+  if (c.salary) {
+    const [from, to] = row.salary_range ?? [null, null]
+    const top = to ?? from
+    if (top != null && top < c.salary) return `зарплата ниже ${formatSalary(c.salary)} ₽`
+    if (top == null && !c.anySalary) return 'зарплата не указана'
+  }
+  if (c.accreditedOnly && row.accredited === false) return 'ИТ-аккредитация не подтверждена'
+  return null
 }

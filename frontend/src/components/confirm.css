@@ -1,0 +1,47 @@
+.confirm {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 24px 18px;
+  background: var(--surface);
+  color: var(--ink);
+  width: min(420px, calc(100vw - 32px));
+  box-shadow: var(--shadow-pop);
+}
+
+.confirm::backdrop {
+  background: rgb(20 19 15 / 32%);
+  backdrop-filter: blur(1px);
+}
+
+.confirm__title {
+  margin: 0 0 8px;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.confirm__body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.confirm__body p {
+  margin: 0 0 6px;
+}
+
+.confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* Colour is reserved for meaning in this palette; deleting is one. */
+.confirm__danger,
+.confirm__danger:hover:not(:disabled) {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+}

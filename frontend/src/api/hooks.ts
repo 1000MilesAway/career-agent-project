@@ -92,8 +92,9 @@ export const setHidden = (vacancyId: string, hidden: boolean) =>
 export const recheckVacancies = () =>
   api<RecheckResult>('/api/vacancies/recheck', { method: 'POST' })
 
-export const runTriage = () =>
-  api<TriageResult>('/api/vacancies/triage', { method: 'POST' })
+/** `ids` limits the paid call to the rows the user's conditions keep. */
+export const runTriage = (ids?: string[]) =>
+  api<TriageResult>('/api/vacancies/triage', { method: 'POST', json: { ids: ids ?? null } })
 
 export const clearFound = () =>
   api<{ deleted: number }>('/api/vacancies/clear', { method: 'POST' })

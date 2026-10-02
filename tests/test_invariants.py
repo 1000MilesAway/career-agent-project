@@ -505,6 +505,57 @@ class TestPaidWorkIsNotRepeated:
         assert judged_ids == [str(rows[1].id)]
 
 
+    async def test_triage_judges_only_the_rows_the_conditions_keep(
+        self, client, session, user, auth_headers, monkeypatch
+    ):
+        """A row the cabinet's conditions fold away is not sent to the model."""
+        from sqlalchemy import select
+
+        from app.api import vacancies as vacancies_api
+        from app.models import Resume
+
+        session.add(
+            Resume(
+                user_id=user.id, filename="cv.md", raw_text="x",
+                profile={"skills": ["Python"]}, archetypes={"roles": []},
+                search_profile={"queries": ["Python"]}, is_active=True,
+            )
+        )
+        await scan.persist(
+            session, user.id, "habr",
+            kept=[(posting("1"), ""), (posting("2"), "")], dropped=[],
+        )
+        await session.commit()
+        rows = list((await session.execute(select(Vacancy).order_by(Vacancy.external_id))).scalars())
+
+        judged_ids = []
+
+        class Outcome:
+            verdicts: dict = {}
+            missing: list = []
+            unknown: list = []
+
+            def counts(self):
+                return {}
+
+        def fake_triage(llm, archetypes, digests):
+            judged_ids.extend(d["id"] for d in digests)
+            return Outcome()
+
+        class StubLLM:
+            def __init__(self, *a, **kw) -> None:
+                self.ledger = kw.get("ledger")
+
+        monkeypatch.setattr(vacancies_api, "LLM", StubLLM)
+        monkeypatch.setattr(vacancies_api, "run_triage", fake_triage)
+
+        r = await client.post(
+            "/api/vacancies/triage", headers=auth_headers, json={"ids": [str(rows[1].id)]}
+        )
+        assert r.status_code == 200, r.text
+        assert judged_ids == [str(rows[1].id)]
+
+
 class TestAPaidFailureIsNotRetried:
     """The rollback after a failed job undoes `charge` too.
 

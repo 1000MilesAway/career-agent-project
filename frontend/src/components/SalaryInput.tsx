@@ -1,4 +1,4 @@
-/** Желаемая зарплата.
+/** Минимальная зарплата.
  *
  * Typed as digits, shown with thousands separators, sent as a number. A bare
  * <input type=number> gave no unit, no grouping and no idea what the number
@@ -56,38 +56,25 @@ export function SalaryInput({
     })
   }
 
-  const hint = !value ? (
-    'Без порога — покажем всё, что пройдёт фильтры по заголовку.'
-  ) : anySalary ? (
-    <>
-      Отсеем всё, где вилка ниже <b>{formatSalary(value)} ₽</b>. Вакансии без указанной
-      зарплаты останутся — их судим по заголовку.
-    </>
-  ) : (
-    <>
-      Ищем только от <b>{formatSalary(value)} ₽</b>. Вакансии без указанной зарплаты Хабр не
-      отдаст — их не будет вовсе.
-    </>
-  )
-
   return (
     <div className="salary">
-      <label className="salary__label" htmlFor="salary-input">
-        Желаемая зарплата
-      </label>
-      <div className="salary__field">
-        <input
-          id="salary-input"
-          ref={ref}
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="например, 250 000"
-          aria-describedby="salary-hint"
-          value={value === null ? '' : formatSalary(value)}
-          onChange={handleInput}
-        />
-        <span className="salary__unit">₽ в месяц</span>
+      <div className="salary__head">
+        <label className="salary__label" htmlFor="salary-input">
+          Минимальная зарплата
+        </label>
+        <div className="salary__field">
+          <input
+            id="salary-input"
+            ref={ref}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="любая"
+            value={value === null ? '' : formatSalary(value)}
+            onChange={handleInput}
+          />
+          <span className="salary__unit">₽/мес</span>
+        </div>
       </div>
 
       <div className="salary__slider">
@@ -107,7 +94,7 @@ export function SalaryInput({
             } as CSSProperties
           }
           // The left end is "no threshold", not "from 0 ₽": the same request,
-          // but the hint below then says plainly that nothing is cut.
+          // and the field then reads «любая» rather than a misleading zero.
           onChange={(event) => onChange(Number(event.target.value) || null)}
         />
         <div className="salary__ticks" aria-hidden="true">
@@ -117,21 +104,20 @@ export function SalaryInput({
         </div>
       </div>
 
+      {/* Meaningless without a threshold, so disabled rather than hidden:
+          the panel does not jump when the slider leaves zero. */}
       <label
-        className="toggle salary__any"
-        title="Хабр отдаёт только вакансии с указанной вилкой, если задан порог. С галочкой берём и те, где зарплата не указана — их оценят бесплатные фильтры по заголовку."
+        className="check salary__any"
+        title="Хабр без галочки отдаёт только вакансии с указанной вилкой, а в найденных такие строки уходят под «не под условия»"
       >
         <input
           type="checkbox"
           checked={anySalary}
+          disabled={!value}
           onChange={(event) => onAnySalaryChange(event.target.checked)}
         />
-        и без указанной зарплаты
+        оставлять вакансии без указанной зарплаты
       </label>
-
-      <p id="salary-hint" className="salary__hint muted">
-        {hint}
-      </p>
     </div>
   )
 }

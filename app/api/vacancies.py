@@ -175,11 +175,20 @@ async def check_one(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -
     return VacancyResponse.of(vacancy)
 
 
+class TriageRequest(BaseModel):
+    # The rows the cabinet still shows under the user's conditions. A row the
+    # conditions fold away is a free-stage reject in all but name, and a paid
+    # verdict on it is the money the pipeline order exists to save. Omitted —
+    # every unjudged row, as before.
+    ids: list[uuid.UUID] | None = None
+
+
 @router.post("/triage")
 async def triage(
     session: SessionDep,
     user: UserDep,
     resume: ResumeDep,
+    body: TriageRequest | None = None,
 ) -> dict[str, Any]:
     """The cheap stage: one model call over the whole batch.
 
@@ -193,20 +202,20 @@ async def triage(
     # stage alone sent the whole surviving list back through a paid call every
     # time the button was pressed. Evaluations and artifacts both refuse to be
     # bought twice; this one did not.
-    result = await session.execute(
-        select(Vacancy).where(
-            Vacancy.user_id == user.id,
-            Vacancy.stage == scan.SHORTLIST,
-            Vacancy.triage_verdict.is_(None),
-            # A vacancy known to be closed is not worth a paid verdict. It
-            # stays in the list, marked, and is left unjudged.
-            Vacancy.closed_at.is_(None),
-            # Hidden by the user: "not interested" is already a verdict, and a
-            # paid one on top of it buys nothing.
-            Vacancy.hidden_at.is_(None),
-        )
+    query = select(Vacancy).where(
+        Vacancy.user_id == user.id,
+        Vacancy.stage == scan.SHORTLIST,
+        Vacancy.triage_verdict.is_(None),
+        # A vacancy known to be closed is not worth a paid verdict. It
+        # stays in the list, marked, and is left unjudged.
+        Vacancy.closed_at.is_(None),
+        # Hidden by the user: "not interested" is already a verdict, and a
+        # paid one on top of it buys nothing.
+        Vacancy.hidden_at.is_(None),
     )
-    rows = list(result.scalars())
+    if body is not None and body.ids is not None:
+        query = query.where(Vacancy.id.in_(body.ids))
+    rows = list((await session.execute(query)).scalars())
     if not rows:
         return {"judged": 0, "missing": [], "note": "Нечего сортировать — всё уже отсеяно"}
 

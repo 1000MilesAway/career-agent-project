@@ -1,22 +1,26 @@
+.salary__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .salary__label {
-  display: block;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0.02em;
-  margin-bottom: 8px;
 }
 
-/* The number is the point of the field, so it is set large: "250 000" has
-   to read at a glance as thousands, which is what people got wrong. */
+/* Still the largest text in the panel — "250 000" has to read at a glance as
+   thousands, which is what people got wrong — but no longer a headline. */
 .salary__field {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 6px;
   border-bottom: 1.5px solid var(--line-strong);
-  padding: 0 0 6px;
+  padding: 0 0 2px;
   transition: border-color 0.15s;
-  max-width: 340px;
 }
 
 .salary__field:focus-within {
@@ -28,16 +32,15 @@
   background: none;
   padding: 0;
   font-family: var(--font-serif);
-  font-size: 30px;
+  font-size: 20px;
   font-variant-numeric: tabular-nums lining-nums;
   line-height: 1.2;
-  width: 100%;
-  min-width: 0;
-  flex: 1;
+  width: 8ch;
+  text-align: right;
 }
 
 .salary__field input::placeholder {
-  color: var(--line-strong);
+  color: var(--muted);
 }
 
 .salary__field input:focus {
@@ -45,7 +48,7 @@
 }
 
 .salary__unit {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -53,8 +56,7 @@
 /* A thin ink track with the chosen part filled: the browser's own slider is
    blue and differs on every OS, which clashed with the paper palette. */
 .salary__slider {
-  max-width: 340px;
-  margin-top: 18px;
+  margin-top: 10px;
 }
 
 .salary__slider input[type='range'] {
@@ -141,13 +143,10 @@
 }
 
 .salary__any {
-  margin-top: 14px;
+  margin-top: 10px;
+  font-size: 12.5px;
 }
 
-.salary__hint {
-  font-size: 12.5px;
-  line-height: 1.45;
-  margin: 10px 0 0;
-  min-height: 18px;
-  max-width: 46ch;
+.salary__any:has(input:disabled) {
+  opacity: 0.55;
 }

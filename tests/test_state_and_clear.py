@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
+from app.api.state import salary_band
 from app.models import Evaluation, Resume, User, Vacancy
 from app.services import scan
 from core.sources.habr_api import Posting
@@ -165,3 +166,20 @@ class TestClear:
             await session.execute(select(Vacancy).where(Vacancy.user_id == other.id))
         ).scalars().all()
         assert len(theirs) == 1
+
+
+class TestSalaryBand:
+    """The cabinet filters found rows by salary; it needs the band as numbers."""
+
+    def test_reads_a_rouble_band(self):
+        assert salary_band("150 000 — 250 000 ₽") == (150_000, 250_000)
+
+    def test_an_open_lower_end_is_none(self):
+        assert salary_band("до 300 000 ₽") == (None, 300_000)
+
+    def test_another_currency_counts_as_not_stated(self):
+        # Compared against a rouble threshold it would cut or pass at random.
+        assert salary_band("от 3000 $") == (None, None)
+
+    def test_no_text_is_not_stated(self):
+        assert salary_band(None) == (None, None)

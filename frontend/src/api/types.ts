@@ -87,6 +87,9 @@ export interface FoundVacancy {
   company: string | null
   qualification: string | null
   salary_text: string | null
+  /** `salary_text` read back as roubles a month, [from, to]; a null end is
+   *  not stated. Absent or both null — no rouble band could be read. */
+  salary_range?: [number | null, number | null] | null
   remote: boolean | null
   /** IT accreditation as the source states it; null — the source is silent. */
   accredited?: boolean | null

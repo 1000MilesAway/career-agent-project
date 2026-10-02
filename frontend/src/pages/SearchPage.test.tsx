@@ -15,6 +15,8 @@ import type { FoundVacancy, ScanJob, ScanResult } from '../api/types'
 const mocks = vi.hoisted(() => ({
   startScan: vi.fn(),
   hideVacancy: vi.fn(),
+  runTriage: vi.fn(),
+  clearFound: vi.fn(),
   found: [] as unknown[],
   scanJob: null as unknown,
 }))
@@ -42,8 +44,8 @@ vi.mock('../api/hooks', () => ({
     job?.status === 'queued' || job?.status === 'running',
   useScanJob: () => ({ job: mocks.scanJob }),
   startScan: mocks.startScan,
-  runTriage: vi.fn(),
-  clearFound: vi.fn(),
+  runTriage: mocks.runTriage,
+  clearFound: mocks.clearFound,
   saveVacancy: vi.fn(),
   hideVacancy: mocks.hideVacancy,
 }))
@@ -104,6 +106,72 @@ function row(id: string, extra: Partial<FoundVacancy> = {}): FoundVacancy {
 }
 
 describe('SearchPage', () => {
+  it('условия фильтруют и найденное: строка уходит под «не под условия» с причиной', () => {
+    localStorage.clear()
+    mocks.found.splice(
+      0,
+      mocks.found.length,
+      row('remote', { remote: true }),
+      row('office', { remote: false }),
+    )
+    render(<SearchPage />)
+
+    // «только удалёнка» включена по умолчанию.
+    expect(screen.getByText('Вакансия remote')).toBeTruthy()
+    expect(screen.queryByText('Вакансия office')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /показать не под условия \(1\)/ }))
+    expect(screen.getByText('Вакансия office')).toBeTruthy()
+    expect(screen.getByText('не удалённая работа')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'только удалёнка' }))
+    expect(screen.queryByRole('button', { name: /не под условия/ })).toBeNull()
+    mocks.found.length = 0
+  })
+
+  it('отсев моделью получает только строки, прошедшие условия', async () => {
+    localStorage.clear()
+    mocks.runTriage.mockResolvedValue({ judged: 1, missing: [] })
+    mocks.found.splice(
+      0,
+      mocks.found.length,
+      row('remote', { remote: true }),
+      row('office', { remote: false }),
+      row('judged', { triage: { bucket: 'worth', reason: '' } }),
+    )
+    render(<SearchPage />)
+
+    expect(screen.getByText('Следующий шаг — отсев моделью')).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Отсеять моделью' }))
+    })
+    expect(mocks.runTriage).toHaveBeenCalledWith(['remote'])
+    mocks.found.length = 0
+  })
+
+  it('«Очистить» сначала спрашивает и называет, что уцелеет', async () => {
+    localStorage.clear()
+    mocks.clearFound.mockResolvedValue({ deleted: 1 })
+    mocks.found.splice(0, mocks.found.length, row('a'), row('b', { saved: true }))
+    render(<SearchPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить' }))
+    expect(mocks.clearFound).not.toHaveBeenCalled()
+    expect(
+      screen.getByText('Вы собираетесь удалить все найденные вакансии, кроме избранных.'),
+    ).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена', hidden: true }))
+    expect(mocks.clearFound).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Удалить', hidden: true }))
+    })
+    expect(mocks.clearFound).toHaveBeenCalledOnce()
+    mocks.found.length = 0
+  })
+
   it('закрытые, старые и скрытые свёрнуты под своими переключателями, а не пропали', () => {
     localStorage.clear()
     mocks.found.splice(

@@ -52,15 +52,20 @@ function VacancyRowInner({
   vacancy,
   actions,
   footer,
+  mismatch,
 }: {
   vacancy: FoundVacancy
   actions: ReactNode
+  /** Why the row fails the conditions above the list, when it is shown
+   *  anyway under «не под условия». */
+  mismatch?: string | null
   /** A second line of controls under the row, for the shortlist's materials. */
   footer?: ReactNode
 }) {
   const dropped = DROPPED_STAGES.has(vacancy.stage)
   const dimmed =
     dropped ||
+    Boolean(mismatch) ||
     bucketOf(vacancy) === 'skip' ||
     Boolean(vacancy.closed || vacancy.stale || vacancy.hidden)
   const sourceLabel = SOURCE_LABELS[vacancy.source]
@@ -119,6 +124,12 @@ function VacancyRowInner({
               {vacancy.duplicate_of ? 'дубль' : 'отсеяно'}
             </span>{' '}
             {vacancy.screen_reason || 'без причины'}
+          </p>
+        ) : null}
+
+        {mismatch && !dropped ? (
+          <p className="vrow__note">
+            <span className="chip chip--flag">не под условия</span> {mismatch}
           </p>
         ) : null}
 

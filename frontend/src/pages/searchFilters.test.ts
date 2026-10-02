@@ -7,7 +7,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FoundVacancy } from '../api/types'
 import { bucketOf } from '../components/VacancyRow'
-import { DEFAULT_FILTERS, loadFilters, saveFilters, sortRows } from './searchFilters'
+import {
+  DEFAULT_CONDITIONS,
+  DEFAULT_FILTERS,
+  conditionMiss,
+  loadFilters,
+  saveFilters,
+  sortRows,
+} from './searchFilters'
 
 afterEach(() => {
   localStorage.clear()
@@ -28,6 +35,14 @@ describe('searchFilters', () => {
       showDropped: true,
       showInactive: true,
       showHidden: false,
+      showMismatch: true,
+      conditions: {
+        salary: 250_000,
+        anySalary: false,
+        remoteOnly: false,
+        accreditedOnly: true,
+        includeGlobal: true,
+      },
     } as const
     saveFilters({ ...chosen, buckets: [...chosen.buckets] })
     expect(loadFilters()).toEqual(chosen)
@@ -102,5 +117,43 @@ describe('bucketOf', () => {
   it('без оценки — вердикт triage, без обоих — null', () => {
     expect(bucketOf(vacancy({ triage: { bucket: 'maybe', reason: '' } }))).toBe('maybe')
     expect(bucketOf(vacancy({}))).toBeNull()
+  })
+})
+
+describe('conditionMiss', () => {
+  const vacancy = (fields: Partial<FoundVacancy>) =>
+    ({ remote: null, accredited: null, salary_range: null, ...fields }) as FoundVacancy
+  const at = (change: Partial<typeof DEFAULT_CONDITIONS>) => ({
+    ...DEFAULT_CONDITIONS,
+    ...change,
+  })
+
+  it('режет только явное «нет», молчание источника проходит', () => {
+    const c = at({ remoteOnly: true, accreditedOnly: true })
+    expect(conditionMiss(vacancy({}), c)).toBeNull()
+    expect(conditionMiss(vacancy({ remote: false }), c)).toBe('не удалённая работа')
+    expect(conditionMiss(vacancy({ accredited: false }), c)).toBe(
+      'ИТ-аккредитация не подтверждена',
+    )
+  })
+
+  it('вилка сравнивается по верхней границе, как в PreScreen', () => {
+    const c = at({ salary: 200_000 })
+    expect(conditionMiss(vacancy({ salary_range: [150_000, 220_000] }), c)).toBeNull()
+    expect(conditionMiss(vacancy({ salary_range: [100_000, 180_000] }), c)).toMatch(
+      /^зарплата ниже/,
+    )
+    expect(conditionMiss(vacancy({ salary_range: [180_000, null] }), c)).toMatch(
+      /^зарплата ниже/,
+    )
+  })
+
+  it('без указанной зарплаты — по галочке', () => {
+    expect(conditionMiss(vacancy({}), at({ salary: 200_000, anySalary: true }))).toBeNull()
+    expect(conditionMiss(vacancy({}), at({ salary: 200_000, anySalary: false }))).toBe(
+      'зарплата не указана',
+    )
+    // Без порога галочка ни на что не влияет.
+    expect(conditionMiss(vacancy({}), at({ salary: null, anySalary: false }))).toBeNull()
   })
 })

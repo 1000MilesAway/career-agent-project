@@ -20,6 +20,7 @@ import {
   useScanJob,
 } from '../api/hooks'
 import type { FoundVacancy, SourceScan } from '../api/types'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FilterMenu } from '../components/FilterMenu'
 import { SalaryInput } from '../components/SalaryInput'
 import {
@@ -34,8 +35,10 @@ import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
 import {
   type BucketKey,
+  type Conditions,
   type SearchFilters,
   type SortKey,
+  conditionMiss,
   loadFilters,
   saveFilters,
   sortRows,
@@ -51,13 +54,15 @@ const EMPTY_ROWS: FoundVacancy[] = []
  *  own toggle — folded, never removed: a row that disappears without a trace
  *  is the silent drop the pipeline forbids. The user's own «Скрыть» wins over
  *  everything; a closed or stale posting outranks a filter's drop, because
- *  "it is gone" matters more than "it did not fit". */
-type Group = 'kept' | 'dropped' | 'inactive' | 'hidden'
+ *  "it is gone" matters more than "it did not fit". A row the server kept
+ *  but today's conditions do not is the last fold: it carries its reason. */
+type Group = 'kept' | 'dropped' | 'mismatch' | 'inactive' | 'hidden'
 
-function groupOf(row: FoundVacancy): Group {
+function groupOf(row: FoundVacancy, miss: string | null): Group {
   if (row.hidden) return 'hidden'
   if (row.closed || row.stale) return 'inactive'
   if (DROPPED_STAGES.has(row.stage)) return 'dropped'
+  if (miss) return 'mismatch'
   return 'kept'
 }
 
@@ -85,6 +90,20 @@ function sourceLine(name: string, s: SourceScan): string {
   return `${title}: собрано ${s.collected}, прошло фильтры ${s.kept ?? 0}${dups}, новых ${s.new}${problems}`
 }
 
+function failedSources(sources: Record<string, SourceScan> | undefined): number {
+  return Object.values(sources ?? {}).filter((s) => s.error).length
+}
+
+/** "вакансия / вакансии / вакансий" for a count. */
+function vacanciesWord(n: number): string {
+  const tens = n % 100
+  const ones = n % 10
+  if (tens >= 11 && tens <= 14) return 'вакансий'
+  if (ones === 1) return 'вакансия'
+  if (ones >= 2 && ones <= 4) return 'вакансии'
+  return 'вакансий'
+}
+
 /** "28 сент., 14:05" — when the shown result was found. The result now
  *  outlives the page, so without a time it could be mistaken for a fresh one. */
 function whenText(iso: string): string {
@@ -101,12 +120,6 @@ export function SearchPage() {
   const { mutate } = useSWRConfig()
   const toast = useToast()
   const { openReport, isBusy, panel } = useDocumentPanel()
-
-  const [salary, setSalary] = useState<number | null>(null)
-  const [anySalary, setAnySalary] = useState(true)
-  const [remoteOnly, setRemoteOnly] = useState(true)
-  const [includeGlobal, setIncludeGlobal] = useState(false)
-  const [accreditedOnly, setAccreditedOnly] = useState(false)
 
   // The scan is a job on the server, not a request this page holds: the
   // page can be left and come back to, and the result is read off the job.
@@ -133,6 +146,9 @@ export function SearchPage() {
   const [showDropped, setShowDropped] = useState(initialFilters.showDropped)
   const [showInactive, setShowInactive] = useState(initialFilters.showInactive)
   const [showHidden, setShowHidden] = useState(initialFilters.showHidden)
+  const [showMismatch, setShowMismatch] = useState(initialFilters.showMismatch)
+  const [conditions, setConditions] = useState<Conditions>(initialFilters.conditions)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
   // useMemo below recompute, which is the opposite of what they are for.
@@ -141,24 +157,40 @@ export function SearchPage() {
   // One pass over the list: the split feeds the counters, the bucket filter
   // and the rendered rows alike. `base` keeps the payload's order, so a
   // toggled-in group lands where its rows were found rather than at the end.
-  const { counts, base, scored } = useMemo(() => {
+  const { counts, base, scored, misses, untriaged } = useMemo(() => {
     const shownGroups: Record<Group, boolean> = {
       kept: true,
       dropped: showDropped,
+      mismatch: showMismatch,
       inactive: showInactive,
       hidden: showHidden,
     }
-    const counts: Record<Group, number> = { kept: 0, dropped: 0, inactive: 0, hidden: 0 }
+    const counts: Record<Group, number> = {
+      kept: 0,
+      dropped: 0,
+      mismatch: 0,
+      inactive: 0,
+      hidden: 0,
+    }
     const base: FoundVacancy[] = []
+    const misses = new Map<string, string>()
+    // What «Отсеять моделью» would pay for: the server's own selection
+    // (shortlist, no verdict, not closed, not hidden) narrowed to the rows the
+    // conditions keep — a row they fold away is not worth a paid verdict.
+    const untriaged: string[] = []
     let scored = 0
     for (const row of rows) {
-      const group = groupOf(row)
+      const miss = conditionMiss(row, conditions)
+      if (miss) misses.set(row.id, miss)
+      const group = groupOf(row, miss)
       counts[group]++
       if (group === 'kept' && row.score != null) scored++
+      if (group === 'kept' && row.stage === 'shortlist' && !row.triage && row.score == null)
+        untriaged.push(row.id)
       if (shownGroups[group]) base.push(row)
     }
-    return { counts, base, scored }
-  }, [rows, showDropped, showInactive, showHidden])
+    return { counts, base, scored, misses, untriaged }
+  }, [rows, conditions, showDropped, showMismatch, showInactive, showHidden])
 
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
@@ -193,8 +225,10 @@ export function SearchPage() {
     scoredOnly,
     [...visibleBuckets].map(String).sort().join(','),
     showDropped,
+    showMismatch,
     showInactive,
     showHidden,
+    JSON.stringify(conditions),
     epoch,
   ].join('|')
   // The job turns "done" a moment before its rows arrive, so a new scan
@@ -235,8 +269,17 @@ export function SearchPage() {
       showDropped,
       showInactive,
       showHidden,
+      showMismatch,
+      conditions,
       ...change,
     })
+  }
+
+  function changeConditions(change: Partial<Conditions>) {
+    const next = { ...conditions, ...change }
+    setConditions(next)
+    setLimit(PAGE_SIZE)
+    persist({ conditions: next })
   }
 
   function toggleBucket(key: BucketKey) {
@@ -263,10 +306,12 @@ export function SearchPage() {
   function toggleGroup(group: Exclude<Group, 'kept'>) {
     const next = {
       showDropped: group === 'dropped' ? !showDropped : showDropped,
+      showMismatch: group === 'mismatch' ? !showMismatch : showMismatch,
       showInactive: group === 'inactive' ? !showInactive : showInactive,
       showHidden: group === 'hidden' ? !showHidden : showHidden,
     }
     setShowDropped(next.showDropped)
+    setShowMismatch(next.showMismatch)
     setShowInactive(next.showInactive)
     setShowHidden(next.showHidden)
     setLimit(PAGE_SIZE)
@@ -281,11 +326,11 @@ export function SearchPage() {
     try {
       const job = await startScan({
         source: 'all',
-        salary_min: salary,
-        any_salary: anySalary,
-        remote_only: remoteOnly,
-        accredited_only: accreditedOnly,
-        include_global: includeGlobal,
+        salary_min: conditions.salary,
+        any_salary: conditions.anySalary,
+        remote_only: conditions.remoteOnly,
+        accredited_only: conditions.accreditedOnly,
+        include_global: conditions.includeGlobal,
       })
       // Seeded with the queued row so polling starts without waiting a round.
       await mutate(SCAN_JOB_KEY, [job])
@@ -299,7 +344,7 @@ export function SearchPage() {
   function triage() {
     startTriage(async () => {
       try {
-        const result = await runTriage()
+        const result = await runTriage(untriaged)
         await mutate(STATE_KEY)
         setEpoch((current) => current + 1)
 
@@ -326,6 +371,7 @@ export function SearchPage() {
   }
 
   async function clear() {
+    setConfirmClear(false)
     try {
       const result = await clearFound()
       await mutate(STATE_KEY)
@@ -397,62 +443,75 @@ export function SearchPage() {
       />
 
       <section className="card scan" aria-label="Параметры поиска">
-        <SalaryInput
-          value={salary}
-          anySalary={anySalary}
-          onChange={setSalary}
-          onAnySalaryChange={setAnySalary}
-        />
+        <div className="scan__head">
+          <h2 className="scan__title">Условия</h2>
+          <span className="muted">
+            применяются сразу к найденным ниже и к следующему поиску
+          </span>
+        </div>
 
-        <div className="scan__side">
-          <p className="eyebrow">Условия</p>
-          <div className="scan__opts">
-            <label
-              className="toggle"
-              title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
-            >
-              <input
-                type="checkbox"
-                checked={remoteOnly}
-                onChange={(e) => setRemoteOnly(e.target.checked)}
-              />
-              только удалёнка
-            </label>
-            {/* Rarely changed, so folded away; the count on the button keeps
-                a narrowing filter from going unnoticed. */}
-            <FilterMenu label="Ещё" active={Number(accreditedOnly) + Number(includeGlobal)}>
-              <label className="fmenu__opt">
+        <div className="scan__grid">
+          <SalaryInput
+            value={conditions.salary}
+            anySalary={conditions.anySalary}
+            onChange={(salary) => changeConditions({ salary })}
+            onAnySalaryChange={(anySalary) => changeConditions({ anySalary })}
+          />
+
+          <div className="scan__side">
+            <div className="scan__opts">
+              <label
+                className="toggle"
+                title="Вакансии, где формат работы не указан вовсе, остаются — отсеиваются только явно офисные"
+              >
                 <input
                   type="checkbox"
-                  checked={accreditedOnly}
-                  onChange={(e) => setAccreditedOnly(e.target.checked)}
+                  checked={conditions.remoteOnly}
+                  onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
                 />
-                только ИТ-аккредитованные
-                <span className="fmenu__hint">
-                  Отсеиваются вакансии Хабра от компаний без аккредитации Минцифры. Telegram
-                  и geekjob её не указывают — их вакансии остаются.
-                </span>
+                только удалёнка
               </label>
-              <label className="fmenu__opt">
-                <input
-                  type="checkbox"
-                  checked={includeGlobal}
-                  onChange={(e) => setIncludeGlobal(e.target.checked)}
-                />
-                и зарубежные компании
-                <span className="fmenu__hint">
-                  Nebius, JetBrains, Wrike, Xsolla и другие с русскоязычными командами —
-                  вакансии обычно за рубежом и на английском.
-                </span>
-              </label>
-            </FilterMenu>
-          </div>
+              {/* Rarely changed, so folded away; the count on the button keeps
+                  a narrowing filter from going unnoticed. */}
+              <FilterMenu
+                label="Ещё"
+                active={
+                  Number(conditions.accreditedOnly) + Number(conditions.includeGlobal)
+                }
+              >
+                <label className="fmenu__opt">
+                  <input
+                    type="checkbox"
+                    checked={conditions.accreditedOnly}
+                    onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
+                  />
+                  только ИТ-аккредитованные
+                  <span className="fmenu__hint">
+                    Убираются вакансии Хабра от компаний без аккредитации Минцифры. Telegram
+                    и geekjob её не указывают — их вакансии остаются.
+                  </span>
+                </label>
+                <label className="fmenu__opt">
+                  <input
+                    type="checkbox"
+                    checked={conditions.includeGlobal}
+                    onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
+                  />
+                  искать и в зарубежных компаниях
+                  <span className="fmenu__hint">
+                    Nebius, JetBrains, Wrike, Xsolla и другие с русскоязычными командами.
+                    Это выбор источников, поэтому действует только на следующий поиск.
+                  </span>
+                </label>
+              </FilterMenu>
+            </div>
 
-          <div className="scan__go">
-            <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
-              {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
-            </button>
-            <span className="muted">бесплатно · 1–2 минуты</span>
+            <div className="scan__go">
+              <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
+                {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
+              </button>
+              <span className="muted">бесплатно · 1–2 минуты</span>
+            </div>
           </div>
         </div>
 
@@ -470,18 +529,31 @@ export function SearchPage() {
           </div>
         ) : null}
 
+        {/* Folded: the totals are what a glance needs, the per-source lines
+            only matter when a number looks wrong. A failed source is named in
+            the summary, so folding never hides an error. */}
         {scanNote && !isScanning ? (
-          <div className="scan__result" role="status">
-            <p className="scan__total">
-              {scanJob?.finished_at ? `Поиск ${whenText(scanJob.finished_at)}: ` : ''}
+          <details className="scan__result scan__report">
+            <summary role="status">
+              {scanJob?.finished_at
+                ? `Поиск ${whenText(scanJob.finished_at)}: `
+                : 'Поиск: '}
               найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
               <b className="num">{scanNote.kept ?? 0}</b>, новых{' '}
               <b className="num">{scanNote.new}</b>
-              {scanNote.duplicates
-                ? `, уже найдены в другом месте ${scanNote.duplicates}`
-                : ''}
-              .
-            </p>
+              {failedSources(scanNote.sources) ? (
+                <span className="scan__source--err">
+                  {' '}
+                  · не прочитано источников: {failedSources(scanNote.sources)}
+                </span>
+              ) : null}
+              <span className="scan__more">подробнее</span>
+            </summary>
+            {scanNote.duplicates ? (
+              <p className="scan__total">
+                Уже найдены в другом месте: {scanNote.duplicates}.
+              </p>
+            ) : null}
             <ul className="scan__sources">
               {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
                 <li key={name} className={s.error ? 'scan__source--err' : undefined}>
@@ -489,7 +561,7 @@ export function SearchPage() {
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         ) : null}
       </section>
 
@@ -506,28 +578,36 @@ export function SearchPage() {
               </span>
             ) : null}
           </div>
-          <div className="row">
-            {counts.kept ? (
-              <button
-                className="btn btn--ghost btn--small"
-                onClick={triage}
-                disabled={isTriaging}
-                title="Один прогон: разложить список на «стоит посмотреть / может быть / мимо»"
-              >
-                {isTriaging ? 'Отсеиваю…' : 'Отсеять моделью'}
-              </button>
-            ) : null}
-            {rows.length ? (
-              <button
-                className="btn btn--quiet btn--small"
-                onClick={clear}
-                title="Убрать из списка всё, кроме избранного"
-              >
-                Очистить
-              </button>
-            ) : null}
-          </div>
+          {rows.length ? (
+            <button
+              className="btn btn--quiet btn--small"
+              onClick={() => setConfirmClear(true)}
+              title="Убрать из списка всё, кроме избранного"
+            >
+              Очистить
+            </button>
+          ) : null}
         </div>
+
+        {/* The step between a free scan and paid evaluations, set apart from
+            the list controls: a small ghost button among filters read as one
+            more filter, and people evaluated unsorted lists one by one. */}
+        {untriaged.length ? (
+          <div className="triage-cta">
+            <div className="triage-cta__text">
+              <p className="triage-cta__title">Следующий шаг — отсев моделью</p>
+              <p className="muted">
+                <span className="num">{untriaged.length}</span>{' '}
+                {vacanciesWord(untriaged.length)} ещё без вердикта. Модель прочтёт их
+                карточки и разложит на «стоит посмотреть», «может быть» и «мимо» — один
+                запрос на всю пачку. Вакансии не под условия не отправляются.
+              </p>
+            </div>
+            <button className="btn triage-cta__btn" onClick={triage} disabled={isTriaging}>
+              {isTriaging ? 'Отсеиваю…' : 'Отсеять моделью'}
+            </button>
+          </div>
+        ) : null}
 
         {rows.length ? (
           <div className="listbar listbar--filters">
@@ -558,9 +638,7 @@ export function SearchPage() {
                 ) : null}
               </div>
             ) : (
-              <span className="muted">
-                Список ещё не разобран — «Отсеять моделью» разложит его по вердиктам.
-              </span>
+              <span className="muted">Список ещё не разобран моделью.</span>
             )}
             <div className="listbar__view">
               <div className="seg" role="group" aria-label="Порядок списка">
@@ -600,6 +678,15 @@ export function SearchPage() {
                   {showDropped ? 'убрать' : 'показать'} отсеянные ({counts.dropped})
                 </button>
               ) : null}
+              {counts.mismatch ? (
+                <button
+                  className="linkish listbar__dropped"
+                  onClick={() => toggleGroup('mismatch')}
+                  title="Найдены раньше, но не проходят условия выше"
+                >
+                  {showMismatch ? 'убрать' : 'показать'} не под условия ({counts.mismatch})
+                </button>
+              ) : null}
               {counts.inactive ? (
                 <button
                   className="linkish listbar__dropped"
@@ -634,8 +721,8 @@ export function SearchPage() {
                 <p>Оценённых среди них нет — снимите «только оценённые».</p>
               ) : (
                 <p>
-                  Включите другие вердикты выше или покажите отсеянные, неактуальные и
-                  скрытые.
+                  Ослабьте условия, включите другие вердикты или покажите отсеянные,
+                  неактуальные и скрытые.
                 </p>
               )}
             </Empty>
@@ -661,6 +748,7 @@ export function SearchPage() {
                 <VacancyRow
                   key={vacancy.id}
                   vacancy={vacancy}
+                  mismatch={misses.get(vacancy.id)}
                   actions={
                     <>
                       {vacancy.outdated ? (
@@ -739,6 +827,21 @@ export function SearchPage() {
           </div>
         ) : null}
       </section>
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Очистить список?"
+        confirmLabel="Удалить"
+        onConfirm={clear}
+        onCancel={() => setConfirmClear(false)}
+      >
+        <p>Вы собираетесь удалить все найденные вакансии, кроме избранных.</p>
+        <p className="muted">
+          Будет удалено:{' '}
+          <span className="num">{rows.filter((row) => !row.saved).length}</span>. Вернуть их
+          можно только новым поиском.
+        </p>
+      </ConfirmDialog>
 
       {panel}
     </div>

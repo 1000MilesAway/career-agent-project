@@ -2,14 +2,38 @@
 
 .scan {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px 32px;
-  padding: 22px 24px;
+  gap: 16px;
+  padding: 18px 24px 20px;
+}
+
+.scan__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12.5px;
+}
+
+.scan__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 18px;
+}
+
+/* Salary on the left at a fixed, modest width; switches and the launch on
+   the right. The salary used to take half the card for one number. */
+.scan__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 16px 40px;
+  align-items: start;
 }
 
 .scan__side {
   display: flex;
   flex-direction: column;
+  align-self: stretch;
 }
 
 .scan__opts {
@@ -24,7 +48,7 @@
   gap: 12px;
   flex-wrap: wrap;
   margin-top: auto;
-  padding-top: 18px;
+  padding-top: 16px;
 }
 
 .scan__btn {
@@ -98,11 +122,91 @@
   color: var(--bad);
 }
 
+/* The report is folded to its totals; the per-source lines open on demand. */
+.scan__report summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--ink);
+}
+
+.scan__report summary::-webkit-details-marker {
+  display: none;
+}
+
+.scan__more {
+  margin-left: 8px;
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.scan__more::after {
+  content: ' ▾';
+  text-decoration: none;
+  display: inline-block;
+}
+
+.scan__report[open] .scan__more::after {
+  transform: rotate(180deg);
+}
+
+.scan__report[open] summary {
+  margin-bottom: 8px;
+}
+
 @media (max-width: 760px) {
   .scan {
-    grid-template-columns: 1fr;
-    padding: 18px;
+    padding: 16px;
   }
+
+  .scan__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Triage step ─────────────────────────────────────────────────────── */
+
+/* Accent on the border and a filled button: the one place on the page that
+   says "this is the next thing to do". */
+.triage-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 14px 16px 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+.triage-cta__text {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+.triage-cta__text p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.triage-cta__text .triage-cta__title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.triage-cta__btn,
+.triage-cta__btn:hover:not(:disabled) {
+  height: 40px;
+  padding: 0 20px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* ── List header ─────────────────────────────────────────────────────── */
