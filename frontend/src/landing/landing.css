@@ -417,13 +417,6 @@ html[data-view='landing'] {
   transform: none;
 }
 
-.l-num {
-  margin: 0 0 18px;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  color: var(--accent);
-}
-
 .l-slide h2 {
   font-size: clamp(36px, 4.2vw, 64px);
   line-height: 1.05;
@@ -1316,10 +1309,6 @@ html[data-view='landing'] {
 
   .l-slide h2 br {
     display: none;
-  }
-
-  .l-num {
-    margin-bottom: 10px;
   }
 
   .l-final h2 br {
