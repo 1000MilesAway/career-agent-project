@@ -144,23 +144,25 @@
   cursor: help;
 }
 
-/* The verdict is a chip like the marks beside it, in its own colour. */
-.chip--verdict {
+/* The verdict is a chip like the marks beside it, in its own colour.
+   Scoped to the row: the shared .chip loads after this file and would
+   otherwise repaint it grey. */
+.vrow .chip--verdict {
   --verdict: var(--ink-2);
   color: var(--verdict);
   border-color: color-mix(in srgb, var(--verdict) 45%, transparent);
   background: color-mix(in srgb, var(--verdict) 10%, transparent);
 }
 
-.chip--worth {
+.vrow .chip--worth {
   --verdict: var(--ok);
 }
 
-.chip--maybe {
+.vrow .chip--maybe {
   --verdict: var(--warn);
 }
 
-.chip--skip {
+.vrow .chip--skip {
   --verdict: var(--bad);
 }
 
