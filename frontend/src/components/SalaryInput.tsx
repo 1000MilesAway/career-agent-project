@@ -108,7 +108,7 @@ export function SalaryInput({
           the panel does not jump when the slider leaves zero. */}
       <label
         className="check salary__any"
-        title="Хабр без галочки отдаёт только вакансии с указанной вилкой, а в найденных такие строки уходят под «не под условия»"
+        title="Без галочки вакансии без указанной зарплаты не показываются, а Хабр их и не отдаёт"
       >
         <input
           type="checkbox"

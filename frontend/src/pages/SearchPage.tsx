@@ -164,7 +164,9 @@ export function SearchPage() {
       // the pipeline is redesigned (docs/decisions.md). Still counted, so the
       // rows are one line away from coming back.
       dropped: false,
-      mismatch: showMismatch,
+      // The conditions above the list are a filter like any other: to see
+      // what they leave out, the user loosens them (2026-10-02).
+      mismatch: false,
       inactive: false,
       hidden: showHidden,
     }
@@ -193,7 +195,7 @@ export function SearchPage() {
       if (shownGroups[group]) base.push(row)
     }
     return { counts, base, scored, misses, untriaged }
-  }, [rows, conditions, showMismatch, showHidden])
+  }, [rows, conditions, showHidden])
 
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
@@ -638,15 +640,6 @@ export function SearchPage() {
               ) : null}
             </div>
             <div className="listbar__groups">
-              {counts.mismatch ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('mismatch')}
-                  title="Найдены раньше, но не проходят условия выше"
-                >
-                  {showMismatch ? 'убрать' : 'показать'} не под условия ({counts.mismatch})
-                </button>
-              ) : null}
               {counts.hidden ? (
                 <button
                   className="linkish listbar__dropped"

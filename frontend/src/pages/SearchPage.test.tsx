@@ -105,7 +105,7 @@ function row(id: string, extra: Partial<FoundVacancy> = {}): FoundVacancy {
 }
 
 describe('SearchPage', () => {
-  it('условия фильтруют и найденное: строка уходит под «не под условия» с причиной', () => {
+  it('условия фильтруют и найденное: неподходящая строка уходит, ослабил условие — вернулась', () => {
     localStorage.clear()
     mocks.found.splice(
       0,
@@ -119,12 +119,10 @@ describe('SearchPage', () => {
     expect(screen.getByText('Вакансия remote')).toBeTruthy()
     expect(screen.queryByText('Вакансия office')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /показать не под условия \(1\)/ }))
-    expect(screen.getByText('Вакансия office')).toBeTruthy()
-    expect(screen.getByText('не удалённая работа')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /не под условия/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Удалёнка' }))
-    expect(screen.queryByRole('button', { name: /не под условия/ })).toBeNull()
+    expect(screen.getByText('Вакансия office')).toBeTruthy()
     mocks.found.length = 0
   })
 
