@@ -310,9 +310,30 @@
   color: var(--muted);
 }
 
-.user-menu__item--nested {
-  padding-left: 20px;
-  color: var(--ink-2);
+.user-menu__subwrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The side menu: to the right of the item, bottoms aligned so it stays on
+   screen at the foot of the sidebar. The ::before strip bridges the gap, so the
+   pointer moving across does not leave the hover area. */
+.user-menu__list--side {
+  bottom: -5px;
+  left: 100%;
+  right: auto;
+  width: max-content;
+  margin-left: 6px;
+}
+
+.user-menu__list--side::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  width: 12px;
 }
 
 /* ── Narrow screens ──────────────────────────────────────────────────── */
@@ -385,6 +406,16 @@
     left: auto;
     right: 0;
     width: 240px;
+  }
+
+  /* No room to the right of the avatar: the documents unfold in place. */
+  .user-menu__list--side {
+    position: static;
+    width: auto;
+    margin: 0 0 0 10px;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
   }
 }
 

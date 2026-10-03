@@ -263,30 +263,40 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
           >
             Профиль и настройки
           </button>
-          {/* Folded: the documents are read once, the profile far more often. */}
-          <button
-            type="button"
-            role="menuitem"
-            className="user-menu__item user-menu__sub"
-            onClick={() => setLegalOpen(!legalOpen)}
-            aria-expanded={legalOpen}
+          {/* Folded into a side menu: the documents are read once, the
+              profile far more often. Opens on hover, and on click for touch. */}
+          <div
+            className="user-menu__subwrap"
+            onMouseEnter={() => setLegalOpen(true)}
+            onMouseLeave={() => setLegalOpen(false)}
           >
-            Правовая информация
-            <span aria-hidden="true">{legalOpen ? '▾' : '▸'}</span>
-          </button>
-          {legalOpen
-            ? (['terms', 'privacy'] as const).map((doc) => (
-                <NavLink
-                  key={doc}
-                  to={`/${doc}`}
-                  role="menuitem"
-                  className="user-menu__item user-menu__item--nested"
-                  onClick={() => setOpen(false)}
-                >
-                  {LEGAL_TITLES[doc]}
-                </NavLink>
-              ))
-            : null}
+            <button
+              type="button"
+              role="menuitem"
+              className="user-menu__item user-menu__sub"
+              onClick={() => setLegalOpen(!legalOpen)}
+              aria-haspopup="menu"
+              aria-expanded={legalOpen}
+            >
+              Инфо
+              <span aria-hidden="true">▸</span>
+            </button>
+            {legalOpen ? (
+              <div className="user-menu__list user-menu__list--side" role="menu">
+                {(['terms', 'privacy'] as const).map((doc) => (
+                  <NavLink
+                    key={doc}
+                    to={`/${doc}`}
+                    role="menuitem"
+                    className="user-menu__item"
+                    onClick={() => setOpen(false)}
+                  >
+                    {LEGAL_TITLES[doc]}
+                  </NavLink>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <button
