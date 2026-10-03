@@ -44,6 +44,10 @@ FRESH_FOR = {
     "telegram": timedelta(minutes=20),
     "geekjob": timedelta(minutes=30),
     "company": timedelta(hours=2),
+    # hh is read through a provider on one exit address that hh may ban, so
+    # a query goes to hh at most once a day (decided 2026-10-03). Every scan
+    # in between is answered from the pool.
+    "hh": timedelta(days=1),
 }
 
 # A posting closes as taken down after this many full reads of its feed in a

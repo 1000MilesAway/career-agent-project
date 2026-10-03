@@ -77,6 +77,7 @@ const PAGE_SIZE = 50
 
 const SOURCE_TITLES: Record<string, string> = {
   habr: 'Хабр Карьера',
+  hh: 'hh.ru',
   company: 'Сайты компаний',
   geekjob: 'geekjob',
   telegram: 'Telegram-каналы',

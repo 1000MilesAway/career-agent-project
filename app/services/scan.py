@@ -41,7 +41,7 @@ from core import tg_scan
 from core.filters import PreScreen, SearchProfile
 from core.llm import LLM, Ledger
 from core.pipeline import build_search_profile
-from core.sources import employers, geekjob, habr_api, telegram, tg_channels
+from core.sources import employers, geekjob, habr_api, hh, telegram, tg_channels
 from core.sources.habr_api import Posting
 
 from ..models import Posting as Pooled
@@ -62,6 +62,7 @@ EVALUATED = "evaluated"
 # With the preposition, which differs per source ("в Telegram", "на geekjob").
 SOURCE_LABELS = {
     "habr": "в Хабр Карьере",
+    "hh": "на hh.ru",
     "telegram": "в Telegram",
     "geekjob": "на geekjob",
     "company": "на сайте компании",
@@ -71,7 +72,16 @@ SOURCE_LABELS = {
 # vacancy becomes the original and which the duplicate: sources with real
 # fields (Habr's grade and division, an employer's own text) go first, so the
 # row the user keeps is the richest one, and a Telegram retelling points at it.
-ALL_SOURCES = ("habr", "company", "geekjob", "telegram")
+ALL_SOURCES = ("habr", "hh", "company", "geekjob", "telegram")
+
+
+def active_sources() -> tuple[str, ...]:
+    """The sources a scan of everything asks: hh only when its provider is set.
+
+    Without HH_PROVIDER_URL every scan would carry an "hh: не настроен" error
+    — on a laptop, in CI — for a source nobody switched on.
+    """
+    return tuple(s for s in ALL_SOURCES if s != "hh" or hh.configured())
 
 # Postings a scan matches: seen by some fetch this recently. One that dropped
 # off every listing it was on ages out of new matches; rows a user already
@@ -276,6 +286,18 @@ def fetch_habr(
     return Batch("habr", [Sighting(p) for p in postings])
 
 
+def fetch_hh(query: str, remote: bool = False) -> Batch:
+    """One query on hh.ru, through the hh-scrapper provider (core/sources/hh.py).
+
+    No text is stored: a card carries a snippet, not the description, and the
+    description is read when a user asks for an evaluation — one request to
+    hh for a vacancy someone wants, not one per card the filters drop.
+    """
+    postings, truncated = hh.search(query, remote=remote)
+    extra = {"truncated": [query]} if truncated else {}
+    return Batch("hh", [Sighting(p) for p in postings], extra=extra)
+
+
 def fetch_telegram(
     channels: list[str] | None, group: str | None, pages: int = TELEGRAM_PAGES
 ) -> Batch:
@@ -403,6 +425,18 @@ def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
                     [q], pages=pages, remote=profile.remote_only,
                     qualifications=profile.qualifications, salary_from=salary,
                 ),
+            )
+            for q in profile.queries
+        ])
+    if source == "hh":
+        if not profile.queries:
+            raise ValueError("в профиле поиска нет ни одного запроса")
+        if not hh.configured():
+            raise ValueError("hh.ru не подключён: не задан адрес провайдера")
+        return Plan("hh", [
+            Listing(
+                pool.listing_key(q=q.strip().casefold(), remote=profile.remote_only),
+                lambda q=q: fetch_hh(q, remote=profile.remote_only),
             )
             for q in profile.queries
         ])
@@ -698,6 +732,15 @@ async def collect_geekjob(
     return result["sources"]["geekjob"]
 
 
+async def collect_hh(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+) -> dict[str, Any]:
+    result = await collect(session, user_id, search_profile, ("hh",), raise_errors=True)
+    return result["sources"]["hh"]
+
+
 async def collect_all(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -710,7 +753,7 @@ async def collect_all(
     which would fail every source identically."""
     _profile(search_profile, "все вакансии")
     return await collect(
-        session, user_id, search_profile, ALL_SOURCES,
+        session, user_id, search_profile, active_sources(),
         Options(
             ask_habr_for_salary=ask_habr_for_salary,
             company_groups=company_groups,
@@ -784,7 +827,7 @@ async def explain_screened(
 class ScanRequest(BaseModel):
     # "all" is what the cabinet sends: one button, every source. The single
     # sources stay for the API and for debugging one board.
-    source: Literal["all", "habr", "telegram", "geekjob", "company"] = "habr"
+    source: Literal["all", "habr", "hh", "telegram", "geekjob", "company"] = "habr"
     # Depth override for a single source. None = the source's own default
     # (services/scan.py). Not shown in the cabinet: a "page" meant something
     # different per source and told the user nothing.
@@ -865,6 +908,8 @@ async def run_scan(
             session, user.id, search_profile, pages=body.pages or HABR_PAGES,
             ask_habr_for_salary=not body.any_salary,
         )
+    if body.source == "hh":
+        return await collect_hh(session, user.id, search_profile)
     if body.source == "geekjob":
         return await collect_geekjob(
             session, user.id, search_profile, pages=body.pages or GEEKJOB_PAGES,

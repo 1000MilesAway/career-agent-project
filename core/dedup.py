@@ -55,6 +55,8 @@ _HOMOGLYPHS = str.maketrans("aceopxy", "асеорху")
 _LINKS = (
     (re.compile(r"career\.habr\.com/vacancies/(\d{6,})"), "habr"),
     (re.compile(r"geekjob\.ru/vacancy/([a-f0-9]{12,32})"), "geekjob"),
+    # Regional subdomains (spb.hh.ru) end in "hh.ru/vacancy/" too.
+    (re.compile(r"hh\.ru/vacancy/(\d{5,12})"), "hh"),
 )
 
 

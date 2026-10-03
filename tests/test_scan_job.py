@@ -75,7 +75,7 @@ class TestQueueingAScan:
         r = await client.post(
             "/api/jobs",
             headers=auth_headers,
-            json={"kind": "scan", "payload": {"source": "hh"}},
+            json={"kind": "scan", "payload": {"source": "superjob"}},
         )
         assert r.status_code == 422
 

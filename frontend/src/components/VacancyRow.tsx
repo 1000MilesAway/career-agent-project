@@ -40,6 +40,7 @@ export function bucketOf(row: FoundVacancy): TriageBucket | null {
 
 /** Named in the row for every source but Habr, the default one. */
 const SOURCE_LABELS: Record<string, string> = {
+  hh: 'hh.ru',
   telegram: 'Telegram',
   geekjob: 'geekjob',
   company: 'сайт компании',

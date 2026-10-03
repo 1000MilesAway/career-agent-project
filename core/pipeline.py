@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import prompts
 from .llm import LLM, Ledger
-from .sources import geekjob
+from .sources import geekjob, hh
 from .sources.habr import fetch_vacancy, is_habr_url
 
 
@@ -84,8 +84,10 @@ def load_vacancy(source: str) -> tuple[str, dict | None]:
         if geekjob.is_geekjob_url(src):
             posting = geekjob.fetch_vacancy(src)
             return posting.as_text(), {"url": src, "title": posting.title}
+        if hh.is_hh_url(src):
+            return hh.fetch_vacancy(src)
         raise ValueError(
-            "Пока поддерживаются только ссылки на career.habr.com и geekjob.ru. "
+            "Пока поддерживаются только ссылки на career.habr.com, hh.ru и geekjob.ru. "
             "Для других сайтов вставьте текст вакансии."
         )
     return src, None
