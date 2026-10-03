@@ -131,7 +131,7 @@ export function SavedPage() {
               disabled={isRechecking}
               title="Спросить у Хабра, geekjob и Telegram, не закрыты ли вакансии. Бесплатно, модель не вызывается. Вакансии с сайтов работодателей так проверить нельзя."
             >
-              {isRechecking ? 'Проверяю…' : 'Проверить, открыты ли'}
+              {isRechecking ? 'Проверяю…' : 'Проверить актуальность'}
             </button>
           ) : null
         }
