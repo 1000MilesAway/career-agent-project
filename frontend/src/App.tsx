@@ -10,7 +10,7 @@
  * changes waiting for a decision) should stay in view while they work.
  */
 
-import { Suspense, useState, type FocusEvent, type ReactNode } from 'react'
+import { Suspense, useEffect, useState, type FocusEvent, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { isActive, useAppState, useProposals } from './api/hooks'
 import type { AppState, Quota, QuotaWindow } from './api/types'
@@ -18,7 +18,9 @@ import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
 import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
+import { pageTitle } from './pageTitle'
 import {
+  BrandMark,
   ChatIcon,
   InfoIcon,
   LogoutIcon,
@@ -59,6 +61,11 @@ export function App() {
 function Screen() {
   const { token } = useAuth()
   const { pathname } = useLocation()
+  // An effect, not React 19's hoisted <title>: index.html already has one,
+  // and the browser keeps the first <title> in the head.
+  useEffect(() => {
+    document.title = pageTitle(pathname, Boolean(token))
+  }, [pathname, token])
   // Before the token check: the link from a letter must work whether or not
   // this browser is logged in, and logged in as whom.
   if (pathname === '/verify') return <VerifyPage />
@@ -87,7 +94,7 @@ function Cabinet() {
     <div className="shell">
       <aside className="side">
         <div className="brand">
-          <span className="brand__mark" aria-hidden="true" />
+          <BrandMark />
           <span className="brand__name">career-helper</span>
         </div>
 

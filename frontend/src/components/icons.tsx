@@ -24,6 +24,22 @@ function Icon({ children }: { children: ReactNode }) {
   )
 }
 
+/** The logo: a check whose long arm turns into an arrow up. Same drawing as
+ * public/favicon.svg; colours come from CSS (.brand__mark) so it follows the
+ * theme and the landing's dark sections. */
+export const BrandMark = () => (
+  <svg className="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+    <rect width="32" height="32" rx="7" />
+    <path
+      d="M8 17l5 5L24 10M18 10h6v6"
+      fill="none"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
 export const ResumeIcon = () => (
   <Icon>
     <path d="M5 2.5h7l3.5 3.5v11.5h-10.5z" />

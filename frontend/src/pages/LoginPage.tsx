@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import useSWR from 'swr'
 import { api, fetcher } from '../api/client'
 import { useAuth } from '../auth'
+import { BrandMark } from '../components/icons'
 import { TelegramButton, useTelegramConfig } from '../components/TelegramLogin'
 import { ErrorNote } from '../components/ui'
 import './login.css'
@@ -241,7 +242,7 @@ function SwitchLink({ onClick, children }: { onClick: () => void; children: Reac
 export function LoginHome() {
   return (
     <a className="brand login__home" href="/" title="О сервисе">
-      <span className="brand__mark" aria-hidden="true" />
+      <BrandMark />
       <span className="brand__name">career-helper</span>
     </a>
   )
