@@ -65,7 +65,9 @@
   color: var(--muted);
 }
 
-.login__legal a {
+/* Doubled class: index.css loads later and its a:visited would win. */
+.login__legal.login__legal a,
+.login__legal.login__legal a:visited {
   color: inherit;
 }
 

@@ -52,7 +52,9 @@
   font-weight: 600;
 }
 
-.legal a {
+/* .page.legal for the same reason as above: a:visited would otherwise win. */
+.page.legal a,
+.page.legal a:visited {
   color: var(--accent);
 }
 

@@ -1097,12 +1097,16 @@ html[data-view='landing'] {
   color: color-mix(in srgb, var(--on-ink) 55%, transparent);
 }
 
-.l-foot a {
+/* .l scope: index.css loads after this file, and its a / a:visited would
+   repaint the links in the cabinet's link colour, unreadable on this panel. */
+.l .l-foot a,
+.l .l-foot a:visited {
   color: inherit;
+  text-decoration-color: currentColor;
   text-underline-offset: 2px;
 }
 
-.l-foot a:hover {
+.l .l-foot a:hover {
   color: var(--on-ink);
 }
 
