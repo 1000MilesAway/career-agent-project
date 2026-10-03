@@ -1,4 +1,4 @@
-/** Where a confirmation letter's link lands: /#/verify?token=…
+/** Where a confirmation letter's link lands: /verify?token=… (old letters: /#/verify, moved by index.html)
  *
  * The address is confirmed by a click here, not on page load. Mail services
  * and corporate filters open links from letters to scan them, and a scan

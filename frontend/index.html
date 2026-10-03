@@ -13,14 +13,17 @@
       The landing and the cabinet share this one page, and this script picks
       which of them shows before the first paint.
 
-      Not a separate /app path for the cabinet: Telegram's login script sends
-      origin + pathname as redirect_uri, and the bot accepts exactly
-      https://career-helper.site/ — moving the cabinet would break the login.
-      Old links keep working too: the letter's #/verify and every bookmark
-      carry a hash route, and any hash route means the cabinet.
+      The cabinet lives on plain paths (/search, /login); the root without a
+      token is the landing. nginx serves this file for every unknown path.
+      Links from before 2026-10-03 carry a hash route (/#/verify?token=… in
+      old letters, bookmarks): it is moved into the path first, so they land
+      where they used to.
     -->
     <script>
       ;(function () {
+        if (location.hash.indexOf('#/') === 0) {
+          history.replaceState(null, '', location.hash.slice(1) || '/')
+        }
         // Mirrors TOKEN_KEY in src/api/client.ts.
         var KEY = 'career-agent:token:v1'
         function pick() {
@@ -28,16 +31,16 @@
           try {
             token = localStorage.getItem(KEY)
           } catch (e) {}
-          // Cabinet routes all start with #/; the landing's own anchors
-          // (#how, #top) do not, and must not switch the page away.
-          var hash = location.hash
-          var route = hash.indexOf('#/') === 0 && hash !== '#/'
-          var landing = !token && !route
+          var landing = !token && location.pathname === '/'
           document.documentElement.dataset.view = landing ? 'landing' : 'app'
           if (!landing) window.scrollTo(0, 0)
         }
         pick()
-        addEventListener('hashchange', pick)
+        addEventListener('popstate', pick)
+        // A hash route typed into an open page: reload it as a path.
+        addEventListener('hashchange', function () {
+          if (location.hash.indexOf('#/') === 0) location.replace(location.hash.slice(1) || '/')
+        })
       })()
     </script>
     <link rel="stylesheet" href="/src/landing/landing.css" />
@@ -50,8 +53,8 @@
           <span>career-helper</span>
         </a>
         <nav class="l-head__nav">
-          <a class="l-link" href="#/login">Войти</a>
-          <a class="l-btn l-btn--small" href="#/login">Попробовать</a>
+          <a class="l-link" href="/login">Войти</a>
+          <a class="l-btn l-btn--small" href="/login">Попробовать</a>
         </nav>
       </header>
 
@@ -69,7 +72,7 @@
               неё и подготовка к интервью.
             </p>
             <div class="l-actions">
-              <a class="l-btn" href="#/login">Попробовать</a>
+              <a class="l-btn" href="/login">Попробовать</a>
               <a class="l-link l-link--arrow" href="#how">Как это работает</a>
             </div>
           </div>
@@ -333,11 +336,11 @@
             Следующая работа уже где-то опубликована. <br />
             <em>Давайте найдём её.</em>
           </h2>
-          <a class="l-btn l-btn--big" href="#/login">Попробовать</a>
+          <a class="l-btn l-btn--big" href="/login">Попробовать</a>
           <footer class="l-foot">
             © 2026 career-helper ·
-            <a href="#/terms">Пользовательское соглашение</a> ·
-            <a href="#/privacy">Политика конфиденциальности</a>
+            <a href="/terms">Пользовательское соглашение</a> ·
+            <a href="/privacy">Политика конфиденциальности</a>
           </footer>
         </section>
       </main>

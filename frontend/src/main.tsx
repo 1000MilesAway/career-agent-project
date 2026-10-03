@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { HashRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import { SWRConfig } from 'swr'
 import { App } from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -10,10 +10,9 @@ import { fetcher } from './api/client'
 import './styles/index.css'
 import './styles/ui.css'
 
-// Hash routing, not history: the cabinet is served as static files, and a
-// path route would 404 on reload unless every server in front of it rewrites
-// unknown paths to index.html. One of them is nginx in a container, the other
-// is the Vite dev server, and the hash works the same in both.
+// Path routing: both servers in front of the cabinet answer an unknown path
+// with index.html — nginx by try_files, the Vite dev server by default. Old
+// hash links are moved into the path by the script in index.html.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
@@ -27,9 +26,9 @@ createRoot(document.getElementById('root')!).render(
       >
         <ToastProvider>
           <AuthProvider>
-            <HashRouter>
+            <BrowserRouter>
               <App />
-            </HashRouter>
+            </BrowserRouter>
           </AuthProvider>
         </ToastProvider>
       </SWRConfig>

@@ -59,7 +59,14 @@
   cursor: pointer;
 }
 
+.login__switch-line {
+  margin-bottom: 0;
+  text-align: center;
+}
+
 .login__legal {
+  text-align: center;
+
   margin: 0;
   font-size: 12.5px;
   color: var(--muted);

@@ -21,7 +21,7 @@ export function Tour({ savedCount }: { savedCount: number }) {
   if (step === 'search' && pathname !== '/search')
     return (
       <Coachmark
-        target='.side__nav a[href="#/search"]'
+        target='.side__nav a[href="/search"]'
         title="Резюме готово — пора искать"
         onClose={() => setTourStep('star')}
       >

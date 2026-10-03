@@ -107,16 +107,28 @@ export function TelegramButton({
       onError(new Error('Вход через Telegram ещё загружается — нажмите через секунду'))
       return
     }
-    login.auth(
-      { client_id: config.client_id, nonce: config.nonce, lang: 'ru' },
-      (result) => {
-        if (result.id_token) onToken(result.id_token)
-        // Closing the popup is the user changing their mind, not an error.
-        else if (result.error && result.error !== 'popup_closed') {
-          onError(new Error(`Telegram не подтвердил вход: ${result.error}`))
-        }
-      },
-    )
+    // telegram-login.js sends `origin + pathname` as redirect_uri, read
+    // synchronously inside auth(), and the bot's Allowed URLs hold only the
+    // root. The cabinet now lives on paths (/login, /resume…), so the root is
+    // put in the address bar for the duration of that one call and the real
+    // address restored right after — the router never sees the change.
+    // The token itself comes back by postMessage, which checks only the origin.
+    const here = location.pathname + location.search + location.hash
+    history.replaceState(history.state, '', '/')
+    try {
+      login.auth(
+        { client_id: config.client_id, nonce: config.nonce, lang: 'ru' },
+        (result) => {
+          if (result.id_token) onToken(result.id_token)
+          // Closing the popup is the user changing their mind, not an error.
+          else if (result.error && result.error !== 'popup_closed') {
+            onError(new Error(`Telegram не подтвердил вход: ${result.error}`))
+          }
+        },
+      )
+    } finally {
+      history.replaceState(history.state, '', here)
+    }
   }
 
   return (

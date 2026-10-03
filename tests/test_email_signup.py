@@ -35,7 +35,7 @@ def outbox(monkeypatch) -> list[dict[str, str]]:
 
 
 def link_token(letter: dict[str, str]) -> str:
-    match = re.search(r"/#/verify\?token=(\S+)", letter["text"])
+    match = re.search(r"[^#]/verify\?token=(\S+)", letter["text"])
     assert match, letter["text"]
     return match.group(1)
 

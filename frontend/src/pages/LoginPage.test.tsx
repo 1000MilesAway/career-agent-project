@@ -46,15 +46,15 @@ beforeEach(() => {
 describe('LoginPage', () => {
   it('без почты на сервере регистрации нет', () => {
     mocks.signupEnabled = false
-    render(<LoginPage />)
-    expect(screen.queryByText(/Зарегистрируйтесь по почте/)).toBeNull()
+    renderLogin()
+    expect(screen.queryByRole('button', { name: 'Зарегистрироваться' })).toBeNull()
   })
 
   it('регистрация отправляет почту и пароль и говорит, куда ушло письмо', async () => {
     mocks.api.mockResolvedValue({ email: 'new@example.com' })
-    const { container } = render(<LoginPage />)
+    const { container } = renderLogin()
 
-    fireEvent.click(screen.getByText('Зарегистрируйтесь по почте'))
+    fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
     fireEvent.change(container.querySelector('input[type=email]')!, {
       target: { value: ' New@Example.com ' },
     })
@@ -106,3 +106,12 @@ describe('VerifyPage', () => {
     expect(screen.queryByRole('button', { name: 'Подтвердить почту' })).toBeNull()
   })
 })
+
+// The page links to the documents with router links, so it needs a router.
+function renderLogin() {
+  return render(
+    <MemoryRouter>
+      <LoginPage />
+    </MemoryRouter>,
+  )
+}

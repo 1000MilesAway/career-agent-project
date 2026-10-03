@@ -6,6 +6,7 @@
  */
 
 import { useState, useTransition, type FormEvent, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import useSWR from 'swr'
 import { api, fetcher } from '../api/client'
 import { useAuth } from '../auth'
@@ -191,29 +192,33 @@ export function LoginPage() {
 
             <ErrorNote error={error} />
 
-            <p className="muted" style={{ marginBottom: 0 }}>
+            <p className="muted login__switch-line">
               {mode === 'signup' ? (
                 <>
-                  Уже есть учётка?{' '}
+                  Уже есть аккаунт?{' '}
                   <SwitchLink onClick={() => switchTo('login')}>Войти</SwitchLink>
                 </>
               ) : signupEnabled ? (
                 <>
-                  Впервые здесь?{' '}
+                  Нет аккаунта?{' '}
                   <SwitchLink onClick={() => switchTo('signup')}>
-                    Зарегистрируйтесь по почте
+                    Зарегистрироваться
                   </SwitchLink>
-                  {telegram ? ' или войдите через Telegram — учётка создастся сама.' : '.'}
                 </>
               ) : (
-                'Впервые здесь? Войдите через Telegram — учётка создастся сама.'
+                'Нет аккаунта? Войдите через Telegram — он создастся сам.'
               )}
             </p>
 
-            <p className="login__legal">
-              Входя, вы принимаете <a href="#/terms">пользовательское соглашение</a> и{' '}
-              <a href="#/privacy">политику конфиденциальности</a>.
-            </p>
+            {/* At sign-up only: that is where the account, and the agreement,
+                begin. A returning user already accepted it. */}
+            {mode === 'signup' ? (
+              <p className="login__legal">
+                Регистрируясь, вы принимаете{' '}
+                <Link to="/terms">пользовательское соглашение</Link> и{' '}
+                <Link to="/privacy">политику конфиденциальности</Link>.
+              </p>
+            ) : null}
           </>
         )}
       </section>
@@ -229,11 +234,12 @@ function SwitchLink({ onClick, children }: { onClick: () => void; children: Reac
   )
 }
 
-/** The way back to the landing: #/ with no token is the landing (see index.html).
+/** The way back to the landing: / with no token is the landing (see index.html).
+ * A plain link, not a router Link: the landing is picked on page load.
  * The pitch itself lives there now, so the gate carries only the form. */
 export function LoginHome() {
   return (
-    <a className="brand login__home" href="#/" title="О сервисе">
+    <a className="brand login__home" href="/" title="О сервисе">
       <span className="brand__mark" aria-hidden="true" />
       <span className="brand__name">career-helper</span>
     </a>

@@ -177,7 +177,7 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
     else:
         user.password_hash = password_hash
 
-    link = f"{get_settings().public_url.rstrip('/')}/#/verify?token=" + create_email_token(
+    link = f"{get_settings().public_url.rstrip('/')}/verify?token=" + create_email_token(
         user.id, email, password_hash
     )
     subject, text, html_body = mail.verification_letter(link)

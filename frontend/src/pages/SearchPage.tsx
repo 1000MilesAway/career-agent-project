@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useState, useTransition } from 'react'
+import { Link } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
 import {
   SCAN_JOB_KEY,
@@ -423,9 +424,9 @@ export function SearchPage() {
         <div className="card">
           <Empty title="Сначала резюме">
             <p>По нему строятся запросы и фильтры — без него искать нечем.</p>
-            <a className="btn" href="#/resume">
+            <Link className="btn" to="/resume">
               Загрузить резюме
-            </a>
+            </Link>
           </Empty>
         </div>
       </div>
@@ -664,9 +665,7 @@ export function SearchPage() {
               {scoredOnly ? (
                 <p>Оценённых среди них нет — снимите «только оценённые».</p>
               ) : (
-                <p>
-                  Ослабьте условия, включите другие вердикты или покажите скрытые.
-                </p>
+                <p>Ослабьте условия, включите другие вердикты или покажите скрытые.</p>
               )}
             </Empty>
           </div>

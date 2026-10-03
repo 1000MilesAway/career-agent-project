@@ -15,6 +15,7 @@
  */
 
 import { useMemo, useState, useTransition } from 'react'
+import { Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useSWRConfig } from 'swr'
 import {
@@ -289,9 +290,9 @@ export function SavedPage() {
         <div className="card">
           <Empty title="Пока пусто">
             <p>Отложите вакансию звёздочкой на странице поиска — она появится здесь.</p>
-            <a className="btn btn--ghost" href="#/search">
+            <Link className="btn btn--ghost" to="/search">
               К поиску
-            </a>
+            </Link>
           </Empty>
         </div>
       )}
