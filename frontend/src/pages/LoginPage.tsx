@@ -235,7 +235,7 @@ export function LoginHome() {
   return (
     <a className="brand login__home" href="#/" title="О сервисе">
       <span className="brand__mark" aria-hidden="true" />
-      <span className="brand__name">career-agent</span>
+      <span className="brand__name">career-helper</span>
     </a>
   )
 }

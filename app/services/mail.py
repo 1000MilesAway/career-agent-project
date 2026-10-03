@@ -57,10 +57,10 @@ async def send_email(to: str, subject: str, text: str, html_body: str) -> None:
 
 def verification_letter(link: str) -> tuple[str, str, str]:
     """Subject, plain text and HTML of the address confirmation letter."""
-    subject = "Подтвердите почту для career-agent"
+    subject = "Подтвердите почту для career-helper"
     text = (
         "Здравствуйте!\n\n"
-        "Чтобы закончить регистрацию в career-agent, откройте ссылку:\n"
+        "Чтобы закончить регистрацию в career-helper, откройте ссылку:\n"
         f"{link}\n\n"
         "Ссылка действует сутки. Если вы не регистрировались, просто "
         "проигнорируйте это письмо — без подтверждения учётка не заработает.\n"
@@ -69,7 +69,7 @@ def verification_letter(link: str) -> tuple[str, str, str]:
     html_body = (
         '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">'
         "<p>Здравствуйте!</p>"
-        "<p>Чтобы закончить регистрацию в career-agent, подтвердите почту:</p>"
+        "<p>Чтобы закончить регистрацию в career-helper, подтвердите почту:</p>"
         f'<p><a href="{safe}" style="display:inline-block;padding:10px 18px;'
         'background:#1a1a1a;color:#ffffff;text-decoration:none;border-radius:6px">'
         "Подтвердить почту</a></p>"
