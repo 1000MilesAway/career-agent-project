@@ -235,6 +235,7 @@ const moscowDate = (iso: string, options: Intl.DateTimeFormatOptions): string =>
  *  that are needed rarely but must be one click away from anywhere. */
 function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () => void }) {
   const [open, setOpen] = useState(false)
+  const [legalOpen, setLegalOpen] = useState(false)
 
   // Focus leaving the menu closes it: a click elsewhere or Tab past the end.
   function onBlur(event: FocusEvent<HTMLDivElement>) {
@@ -262,18 +263,30 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
           >
             Профиль и настройки
           </button>
-          <p className="user-menu__group">Документы</p>
-          {(['terms', 'privacy'] as const).map((doc) => (
-            <NavLink
-              key={doc}
-              to={`/${doc}`}
-              role="menuitem"
-              className="user-menu__item"
-              onClick={() => setOpen(false)}
-            >
-              {LEGAL_TITLES[doc]}
-            </NavLink>
-          ))}
+          {/* Folded: the documents are read once, the profile far more often. */}
+          <button
+            type="button"
+            role="menuitem"
+            className="user-menu__item user-menu__sub"
+            onClick={() => setLegalOpen(!legalOpen)}
+            aria-expanded={legalOpen}
+          >
+            Правовая информация
+            <span aria-hidden="true">{legalOpen ? '▾' : '▸'}</span>
+          </button>
+          {legalOpen
+            ? (['terms', 'privacy'] as const).map((doc) => (
+                <NavLink
+                  key={doc}
+                  to={`/${doc}`}
+                  role="menuitem"
+                  className="user-menu__item user-menu__item--nested"
+                  onClick={() => setOpen(false)}
+                >
+                  {LEGAL_TITLES[doc]}
+                </NavLink>
+              ))
+            : null}
         </div>
       ) : null}
       <button

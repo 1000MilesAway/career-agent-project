@@ -298,12 +298,21 @@
   background: var(--sunken);
 }
 
-.user-menu__group {
-  margin: 6px 0 0;
-  padding: 6px 10px 2px;
-  border-top: 1px solid var(--line);
-  font-size: 11.5px;
+.user-menu__sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-menu__sub span {
+  font-size: 11px;
   color: var(--muted);
+}
+
+.user-menu__item--nested {
+  padding-left: 20px;
+  color: var(--ink-2);
 }
 
 /* ── Narrow screens ──────────────────────────────────────────────────── */
