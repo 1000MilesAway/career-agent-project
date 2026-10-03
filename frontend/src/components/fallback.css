@@ -1,0 +1,104 @@
+/* The screen in place of a page that could not be shown: centred, calm,
+   one action. Inside the cabinet it fills the content area; on its own it
+   fills the window and carries the brand. */
+
+.fallback {
+  display: flex;
+  flex-direction: column;
+  min-height: 80dvh;
+  padding: 40px 24px;
+}
+
+.fallback--full {
+  min-height: 100dvh;
+  padding: 40px 56px;
+  background: var(--bg);
+}
+
+.fallback__brand {
+  align-self: flex-start;
+}
+
+.fallback__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 440px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.fallback__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 20px;
+  border-radius: 50%;
+  background: var(--sunken);
+  color: var(--ink-2);
+}
+
+.fallback__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.fallback__text {
+  margin: 10px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.fallback__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.fallback__actions .btn {
+  gap: 8px;
+  text-decoration: none;
+}
+
+.fallback__details {
+  width: 100%;
+  margin-top: 28px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.fallback__details summary {
+  width: max-content;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.fallback__details pre {
+  max-height: 200px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  .fallback--full {
+    padding: 28px 20px;
+  }
+}

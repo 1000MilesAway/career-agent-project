@@ -31,8 +31,9 @@ import { DownloadButtons } from '../components/DownloadButtons'
 import { VacancyRow } from '../components/VacancyRow'
 import { CloseIcon } from '../components/icons'
 import { useToast } from '../components/toast'
-import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
+import { Empty, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
+import { StateError } from '../components/Fallback'
 import './saved.css'
 import { GRIP, useStageDrag } from './useStageDrag'
 
@@ -105,12 +106,7 @@ export function SavedPage() {
   })
   const carried = held ? saved.find((r) => r.id === held.id) : undefined
 
-  if (error)
-    return (
-      <div className="page">
-        <ErrorNote error={error} />
-      </div>
-    )
+  if (error) return <StateError error={error} />
   if (isLoading || !data)
     return (
       <div className="page">

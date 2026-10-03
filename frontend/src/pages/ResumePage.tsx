@@ -19,11 +19,12 @@ import {
 } from '../api/hooks'
 import type { ResumeProfile, ResumeVersion, SearchProfile } from '../api/types'
 import { useToast } from '../components/toast'
-import { Card, Chips, ErrorNote, PageHead, Skeleton } from '../components/ui'
+import { Card, Chips, PageHead, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
 import { ProfileEditor } from '../components/ProfileEditor'
 import { setTourStep } from '../components/tourStep'
 import { SearchProfileDiff } from '../components/SearchProfileDiff'
+import { StateError } from '../components/Fallback'
 import './resume.css'
 
 export function ResumePage() {
@@ -81,12 +82,7 @@ export function ResumePage() {
     }
   }
 
-  if (error)
-    return (
-      <div className="page">
-        <ErrorNote error={error} />
-      </div>
-    )
+  if (error) return <StateError error={error} />
   if (isLoading || !data)
     return (
       <div className="page">

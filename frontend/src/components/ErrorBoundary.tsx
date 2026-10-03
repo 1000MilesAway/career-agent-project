@@ -5,6 +5,7 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { CrashScreen } from './Fallback'
 
 interface State {
   error: Error | null
@@ -25,19 +26,6 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     const { error } = this.state
     if (!error) return this.props.children
 
-    return (
-      <main className="wrap" style={{ maxWidth: 560 }}>
-        <div className="card">
-          <h1 style={{ fontSize: 18, marginBottom: 8 }}>Интерфейс сломался</h1>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Данные на сервере не пострадали — не сработал экран.
-          </p>
-          <pre style={{ marginBottom: 12 }}>{error.message}</pre>
-          <button className="btn" onClick={() => location.reload()}>
-            Перезагрузить
-          </button>
-        </div>
-      </main>
-    )
+    return <CrashScreen error={error} />
   }
 }

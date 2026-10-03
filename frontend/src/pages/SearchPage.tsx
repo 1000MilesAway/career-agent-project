@@ -31,8 +31,9 @@ import {
 } from '../components/VacancyRow'
 import { StarIcon } from '../components/icons'
 import { useToast } from '../components/toast'
-import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
+import { Empty, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
+import { StateError } from '../components/Fallback'
 import {
   type BucketKey,
   type Conditions,
@@ -404,12 +405,7 @@ export function SearchPage() {
     }
   }
 
-  if (error)
-    return (
-      <div className="page">
-        <ErrorNote error={error} />
-      </div>
-    )
+  if (error) return <StateError error={error} />
   if (isLoading || !data)
     return (
       <div className="page">
