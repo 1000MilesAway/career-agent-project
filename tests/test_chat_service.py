@@ -20,6 +20,7 @@ from app.services import revisions
 from app.services.tracker import set_status
 from core import tools
 from tests.dbmark import requires_db
+from tests.pool_helpers import make_vacancy
 
 
 async def _user(session) -> User:
@@ -48,8 +49,8 @@ async def _resume(session, user: User, profile: dict | None = None) -> Resume:
 
 
 async def _vacancy(session, user: User, title: str = "Python разработчик") -> Vacancy:
-    vacancy = Vacancy(
-        user_id=user.id,
+    vacancy = make_vacancy(
+        user.id,
         source="habr",
         external_id=uuid.uuid4().hex[:8],
         title=title,

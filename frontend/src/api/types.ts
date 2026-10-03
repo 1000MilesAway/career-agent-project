@@ -225,8 +225,8 @@ export interface ScanResult {
   collected: number
   dropped: number
   new: number
-  /** New postings already found elsewhere — stored screened out, with the
-   * original named in the reason. */
+  /** Postings that copy a vacancy the user already has — not given a row of
+   * their own; GET /api/vacancies/screened names the original. */
   duplicates?: number
   kept?: number
   channels?: string[]
@@ -262,6 +262,8 @@ export interface Job<R = unknown> {
 }
 
 export type ScanJob = Job<ScanResult>
+
+export type TriageJob = Job<TriageResult>
 
 export interface RecheckResult {
   checked: number

@@ -14,6 +14,7 @@ import uuid
 import pytest
 
 from app.models import Application, Artifact, Evaluation, Resume, User, Vacancy
+from app.models import Posting as PooledPosting
 from app.services import scan
 from app.services.tracker import set_status
 from core.sources.habr_api import Posting
@@ -60,7 +61,8 @@ async def _user_with_resume(session) -> tuple[User, Resume]:
 class TestRejectionIsNeverSilent:
     """CLAUDE.md: «Отсев никогда не молчит»."""
 
-    async def test_a_dropped_posting_is_stored_with_its_reason(self, session):
+    async def test_a_dropped_posting_keeps_its_reason(self, session):
+        """No row per user for a drop — the reason is recomputed from the pool."""
         user, _ = await _user_with_resume(session)
 
         await scan.persist(
@@ -72,15 +74,14 @@ class TestRejectionIsNeverSilent:
         )
         await session.commit()
 
-        from sqlalchemy import select
+        profile = {"queries": ["python"], "positive": ["Python", "Бариста"],
+                   "negative": ["бариста"]}
+        screened = await scan.explain_screened(session, user.id, profile)
 
-        rows = (await session.execute(select(Vacancy).order_by(Vacancy.external_id))).scalars()
-        by_id = {v.external_id: v for v in rows}
-
-        assert by_id["2"].stage == scan.SCREENED_OUT
-        assert "бариста" in by_id["2"].screen_reason
-        # Still there: hidden-but-visible, not deleted.
-        assert by_id["2"].title == "Бариста"
+        by_title = {row["title"]: row for row in screened}
+        assert "бариста" in by_title["Бариста"]["reason"]
+        # The kept one is the user's row, not in the discard log.
+        assert "Python разработчик" not in by_title
 
     async def test_a_kept_posting_carries_no_reason(self, session):
         user, _ = await _user_with_resume(session)
@@ -419,17 +420,22 @@ class TestPaidVerdictsSurviveAFreeRescan:
         assert row.triage_verdict == "skip"
 
     async def test_a_screened_out_vacancy_is_still_re_judged(self, session):
-        """The free filters own their own verdict and may change their mind."""
+        """The free filters own their own verdict and may change their mind.
+
+        A dropped posting has no row; a row the user acted on (saved) that the
+        filters once dropped comes back to the shortlist when they keep it.
+        """
         user, _ = await _user_with_resume(session)
-        await scan.persist(
-            session, user.id, "habr", kept=[], dropped=[(posting("1"), "стоп-слово")]
-        )
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
         await session.commit()
 
         from sqlalchemy import select
 
         row = (await session.execute(select(Vacancy))).scalar_one()
-        assert row.stage == scan.SCREENED_OUT
+        row.stage = scan.SCREENED_OUT
+        row.screen_reason = "стоп-слово"
+        row.is_saved = True
+        await session.commit()
 
         await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
         await session.commit()
@@ -462,7 +468,9 @@ class TestPaidWorkIsNotRepeated:
 
         from sqlalchemy import select
 
-        rows = list((await session.execute(select(Vacancy).order_by(Vacancy.external_id))).scalars())
+        rows = list((await session.execute(
+            select(Vacancy).join(Vacancy.posting).order_by(PooledPosting.external_id)
+        )).scalars())
         rows[0].triage_verdict = "worth"
         rows[0].screen_reason = "подходит"
         await session.commit()
@@ -482,7 +490,7 @@ class TestPaidWorkIsNotRepeated:
 
             return Outcome()
 
-        from app.api import vacancies as vacancies_api
+        from app.services import triage as triage_service
 
         class StubLLM:
             """The endpoint builds a client before calling the stubbed step.
@@ -495,8 +503,8 @@ class TestPaidWorkIsNotRepeated:
             def __init__(self, *a, **kw) -> None:
                 self.ledger = kw.get("ledger")
 
-        monkeypatch.setattr(vacancies_api, "LLM", StubLLM)
-        monkeypatch.setattr(vacancies_api, "run_triage", fake_triage)
+        monkeypatch.setattr(triage_service, "LLM", StubLLM)
+        monkeypatch.setattr(triage_service, "run_triage", fake_triage)
 
         r = await client.post("/api/vacancies/triage", headers=auth_headers)
         assert r.status_code == 200, r.text
@@ -511,8 +519,8 @@ class TestPaidWorkIsNotRepeated:
         """A row the cabinet's conditions fold away is not sent to the model."""
         from sqlalchemy import select
 
-        from app.api import vacancies as vacancies_api
         from app.models import Resume
+        from app.services import triage as triage_service
 
         session.add(
             Resume(
@@ -526,7 +534,9 @@ class TestPaidWorkIsNotRepeated:
             kept=[(posting("1"), ""), (posting("2"), "")], dropped=[],
         )
         await session.commit()
-        rows = list((await session.execute(select(Vacancy).order_by(Vacancy.external_id))).scalars())
+        rows = list((await session.execute(
+            select(Vacancy).join(Vacancy.posting).order_by(PooledPosting.external_id)
+        )).scalars())
 
         judged_ids = []
 
@@ -546,8 +556,8 @@ class TestPaidWorkIsNotRepeated:
             def __init__(self, *a, **kw) -> None:
                 self.ledger = kw.get("ledger")
 
-        monkeypatch.setattr(vacancies_api, "LLM", StubLLM)
-        monkeypatch.setattr(vacancies_api, "run_triage", fake_triage)
+        monkeypatch.setattr(triage_service, "LLM", StubLLM)
+        monkeypatch.setattr(triage_service, "run_triage", fake_triage)
 
         r = await client.post(
             "/api/vacancies/triage", headers=auth_headers, json={"ids": [str(rows[1].id)]}

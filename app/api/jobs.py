@@ -19,10 +19,14 @@ from sqlalchemy import select
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Job
 from ..services.scan import ScanRequest
+from ..services.triage import TriageRequest
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
-JobKind = Literal["evaluate", "tailor", "letter", "interview", "scan"]
+JobKind = Literal["evaluate", "tailor", "letter", "interview", "scan", "triage"]
+# Kinds a user runs one at a time: a second press, or a second tab, gets the
+# job already under way instead of walking the boards or paying twice.
+ONE_AT_A_TIME = ("scan", "triage")
 ACTIVE = ("queued", "running")
 
 
@@ -74,26 +78,27 @@ async def enqueue(
     guarded in `collect_habr`.
 
     A scan is what the cabinet's search button queues: it takes up to a
-    minute, and holding the request open for it held the whole page.
+    minute, and holding the request open for it held the whole page. Triage
+    is queued for the same reason — a model call held the cabinet's
+    navigation while it ran.
     """
     payload = body.payload
-    if body.kind == "scan":
-        # Checked here, not in the worker: a bad form must answer 422 now,
-        # not a failed job a few seconds later. Stored normalised, so the
-        # worker reads exactly what was validated.
+    # Checked here, not in the worker: a bad form must answer 422 now, not a
+    # failed job a few seconds later. Stored normalised, so the worker reads
+    # exactly what was validated.
+    form = {"scan": ScanRequest, "triage": TriageRequest}.get(body.kind)
+    if form is not None:
         try:
-            payload = ScanRequest.model_validate(body.payload).model_dump()
+            payload = form.model_validate(body.payload).model_dump(mode="json")
         except ValidationError as e:
             raise RequestValidationError(e.errors()) from e
 
-        # One scan at a time. A second press (or a second tab) while one runs
-        # would walk the same boards again and write the same rows; the user
-        # gets the scan already under way instead.
+    if body.kind in ONE_AT_A_TIME:
         active = await session.execute(
             select(Job)
             .where(
                 Job.user_id == user.id,
-                Job.kind == "scan",
+                Job.kind == body.kind,
                 Job.status.in_(ACTIVE),
             )
             .order_by(Job.created_at.desc())

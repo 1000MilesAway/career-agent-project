@@ -1,8 +1,8 @@
 """One vacancy seen in several places is one vacancy.
 
 The pure half (keys, fingerprints) needs no database; the second half checks
-that persist() stores a copy screened out, with the original named, and never
-throws it away.
+that the pool links a copy to its original, that a user gets the vacancy
+once, and that the copy is still named in the discard log — never thrown away.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from app.models import Posting as PooledPosting
 from app.models import Resume, User, Vacancy
 from app.services import scan
 from core import dedup
@@ -102,9 +103,17 @@ async def _rows(session, user) -> dict[tuple[str, str], Vacancy]:
     return {(v.source, v.external_id): v for v in result.scalars()}
 
 
+async def _pooled(session) -> dict[tuple[str, str], PooledPosting]:
+    result = await session.execute(select(PooledPosting))
+    return {(p.source, p.external_id): p for p in result.scalars()}
+
+
+PROFILE = {"queries": ["python"], "positive": ["Python", "Backend"]}
+
+
 @requires_db
 class TestPersistMarksCopies:
-    async def test_the_same_vacancy_on_another_board_is_a_visible_duplicate(self, session):
+    async def test_the_same_vacancy_on_another_board_is_pooled_as_a_copy(self, session):
         user = await _user(session)
         await scan.persist(session, user.id, "habr", kept=[(posting("100"), "")], dropped=[])
         counts = await scan.persist(
@@ -113,14 +122,27 @@ class TestPersistMarksCopies:
         )
         await session.commit()
 
+        pooled = await _pooled(session)
+        assert pooled[("geekjob", "abc")].duplicate_of_id == pooled[("habr", "100")].id
+        # The user gets the vacancy once; the copy is counted, not hidden.
         rows = await _rows(session, user)
-        original, copy = rows[("habr", "100")], rows[("geekjob", "abc")]
         assert counts["duplicates"] == 1
-        assert original.stage == scan.SHORTLIST
-        # Stored, screened out, and saying which vacancy it copies.
-        assert copy.stage == scan.SCREENED_OUT
-        assert copy.duplicate_of_id == original.id
-        assert "дубль" in copy.screen_reason and "Хабр" in copy.screen_reason
+        assert rows[("habr", "100")].stage == scan.SHORTLIST
+        assert ("geekjob", "abc") not in rows
+
+    async def test_the_copy_is_named_in_the_discard_log(self, session):
+        """Not silent: the copy is listed with the vacancy it copies."""
+        user = await _user(session)
+        await scan.persist(session, user.id, "habr", kept=[(posting("100"), "")], dropped=[])
+        await scan.persist(
+            session, user.id, "geekjob",
+            kept=[(posting("abc", company="Ромашка"), "")], dropped=[],
+        )
+        await session.commit()
+
+        screened = await scan.explain_screened(session, user.id, PROFILE)
+        reasons = {row["source"]: row["reason"] for row in screened}
+        assert "дубль" in reasons["geekjob"] and "Хабр" in reasons["geekjob"]
 
     async def test_two_openings_on_one_board_are_not_duplicates(self, session):
         """Same company, same title, two ids: two teams hiring, not a copy."""
@@ -131,6 +153,7 @@ class TestPersistMarksCopies:
         )
         await session.commit()
         rows = await _rows(session, user)
+        assert len(rows) == 2
         assert all(v.stage == scan.SHORTLIST for v in rows.values())
 
     async def test_a_telegram_post_linking_to_habr_is_that_vacancy(self, session):
@@ -142,8 +165,8 @@ class TestPersistMarksCopies:
             session, user.id, "telegram", kept=[(tg, "")], dropped=[], texts={"chan/7": text}
         )
         await session.commit()
-        rows = await _rows(session, user)
-        assert rows[("telegram", "chan/7")].duplicate_of_id == rows[("habr", "1000168684")].id
+        pooled = await _pooled(session)
+        assert pooled[("telegram", "chan/7")].duplicate_of_id == pooled[("habr", "1000168684")].id
 
     async def test_a_repost_in_another_channel_is_caught_by_its_text(self, session):
         user = await _user(session)
@@ -156,8 +179,22 @@ class TestPersistMarksCopies:
             texts={"one/1": "🔥 @one\n" + body, "two/9": "#вакансия\n" + body + "\n@two"},
         )
         await session.commit()
-        rows = await _rows(session, user)
-        assert rows[("telegram", "two/9")].duplicate_of_id == rows[("telegram", "one/1")].id
+        pooled = await _pooled(session)
+        assert pooled[("telegram", "two/9")].duplicate_of_id == pooled[("telegram", "one/1")].id
+
+    async def test_a_copy_points_at_the_root_not_at_another_copy(self, session):
+        user = await _user(session)
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await scan.persist(
+            session, user.id, "geekjob", kept=[(posting("x", company="Ромашка"), "")], dropped=[]
+        )
+        await scan.persist(
+            session, user.id, "company", kept=[(posting("c", company="АО Ромашка"), "")],
+            dropped=[],
+        )
+        await session.commit()
+        pooled = await _pooled(session)
+        assert pooled[("company", "c")].duplicate_of_id == pooled[("habr", "1")].id
 
     async def test_a_dropped_original_does_not_hide_a_copy_that_passes(self, session):
         """The user never saw the dropped one; marking the copy would hide both."""
@@ -171,7 +208,25 @@ class TestPersistMarksCopies:
         await session.commit()
         rows = await _rows(session, user)
         assert rows[("geekjob", "x")].stage == scan.SHORTLIST
-        assert rows[("geekjob", "x")].duplicate_of_id is None
+
+    async def test_another_user_whose_filters_drop_the_original_sees_the_copy(self, session):
+        """Dedup is pooled, visibility is per user."""
+        first, second = await _user(session), await _user(session)
+        await scan.persist(session, first.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await scan.persist(
+            session, first.id, "geekjob", kept=[(posting("x", company="Ромашка"), "")],
+            dropped=[],
+        )
+        await scan.persist(
+            session, second.id, "habr", kept=[], dropped=[(posting("1"), "не удалённая работа")]
+        )
+        await scan.persist(
+            session, second.id, "geekjob", kept=[(posting("x", company="Ромашка"), "")],
+            dropped=[],
+        )
+        await session.commit()
+        assert ("geekjob", "x") not in await _rows(session, first)
+        assert (await _rows(session, second))[("geekjob", "x")].stage == scan.SHORTLIST
 
     async def test_a_rescan_keeps_a_duplicate_a_duplicate(self, session):
         """Otherwise the next scan queues a second triage of the same vacancy."""
@@ -180,8 +235,8 @@ class TestPersistMarksCopies:
         copy = posting("x", company="Ромашка")
         await scan.persist(session, user.id, "geekjob", kept=[(copy, "")], dropped=[])
         await session.commit()
-        await scan.persist(session, user.id, "geekjob", kept=[(copy, "")], dropped=[])
+        counts = await scan.persist(session, user.id, "geekjob", kept=[(copy, "")], dropped=[])
         await session.commit()
         rows = await _rows(session, user)
-        assert rows[("geekjob", "x")].stage == scan.SCREENED_OUT
-        assert rows[("geekjob", "x")].duplicate_of_id is not None
+        assert ("geekjob", "x") not in rows
+        assert counts["duplicates"] == 1

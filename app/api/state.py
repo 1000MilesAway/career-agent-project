@@ -14,13 +14,13 @@ from typing import Any
 
 from fastapi import APIRouter
 from sqlalchemy import select
-from sqlalchemy.orm import load_only, selectinload
+from sqlalchemy.orm import joinedload, load_only, selectinload
 
 from core.profiles import steps_as_list
 from core.sources.salary_text import parse_salary
 
 from ..core.deps import SessionDep, UserDep
-from ..models import Evaluation, Resume, Vacancy
+from ..models import Evaluation, Posting, Resume, Vacancy
 from ..services import liveness, revisions
 from ..services.spend import quota
 from ..services.tracker import STATUSES
@@ -88,24 +88,27 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
             # not here fails loudly instead of lazy-loading row by row.
             load_only(
                 Vacancy.id,
-                Vacancy.url,
-                Vacancy.title,
-                Vacancy.company,
-                Vacancy.qualification,
-                Vacancy.salary_text,
-                Vacancy.remote,
-                Vacancy.accredited,
-                Vacancy.source,
                 Vacancy.stage,
                 Vacancy.screen_reason,
                 Vacancy.triage_verdict,
                 Vacancy.is_saved,
-                Vacancy.duplicate_of_id,
-                Vacancy.closed_at,
-                Vacancy.closed_reason,
                 Vacancy.hidden_at,
-                Vacancy.published,
                 Vacancy.created_at,
+                raiseload=True,
+            ),
+            joinedload(Vacancy.posting).load_only(
+                Posting.id,
+                Posting.url,
+                Posting.title,
+                Posting.company,
+                Posting.qualification,
+                Posting.salary_text,
+                Posting.remote,
+                Posting.accredited,
+                Posting.source,
+                Posting.closed_at,
+                Posting.closed_reason,
+                Posting.published,
                 raiseload=True,
             ),
             selectinload(Vacancy.evaluations).selectinload(Evaluation.artifacts),
@@ -170,7 +173,9 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "outdated": bool(
                     evaluation and resume and evaluation.resume_id != resume.id
                 ),
-                "duplicate_of": str(v.duplicate_of_id) if v.duplicate_of_id else None,
+                # Copies of a vacancy the user already has get no row of
+                # their own any more (services/scan.py `attach`).
+                "duplicate_of": None,
                 # Closed is shown, not hidden: the report and materials the
                 # user bought stay readable, and the mark says why to stop.
                 "closed": (

@@ -5,9 +5,13 @@
 A separate process from the API, because an LLM call takes tens of seconds and
 must not occupy a request handler. Alongside the queue it runs the liveness
 sweep (services/liveness.py): free, HTTP only, and on its own task so a
-minute of page requests never delays a job the user is waiting for. Run one; two would need the claim below to
-be the only thing keeping them apart, and it is — but nothing else here has
-been tested under concurrency.
+minute of page requests never delays a job the user is waiting for.
+
+The queue is served in two lanes, each its own task: scans, and everything
+else. A scan is up to a minute of network for one user; in a single lane
+another user's paid evaluation waited behind it. Run one process; two would
+need the claim below to be the only thing keeping them apart, and it is — but
+nothing else here has been tested under concurrency.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from core.pipeline import cover_letter, evaluate, interview_prep, tailor_resume
 
 from .core.db import SessionLocal
 from .models import Artifact, Evaluation, Job, Resume, User, Vacancy
-from .services import liveness, scan
+from .services import liveness, scan, triage
 from .services.spend import charge, exhausted_reason, ledger_totals
 
 log = logging.getLogger("worker")
@@ -38,7 +42,10 @@ POLL_SECONDS = 2.0
 SWEEP_SECONDS = 300.0
 MAX_ATTEMPTS = 3
 # Kinds that fail on the first error; see `tick`.
-NOT_RETRIED = frozenset({"scan"})
+NOT_RETRIED = frozenset({"scan", "triage"})
+# The lanes: which kinds each consumer claims. A kind missing from every lane
+# would never run, so the paid lane is "everything that is not a scan".
+SCAN_KINDS = ("scan",)
 
 
 class PaidFailure(Exception):
@@ -57,19 +64,23 @@ BUILDERS = {
 }
 
 
-async def claim(session: AsyncSession) -> Job | None:
+async def claim(session: AsyncSession, scans: bool | None = None) -> Job | None:
     """Take the oldest queued job, or None.
 
-    `SKIP LOCKED` is what makes the claim safe: two workers asking at the same
-    moment get different rows instead of both running the same job and billing
-    the user twice.
+    `scans` picks the lane: True — scans only, False — everything else,
+    None — any job (tests, and a caller that wants one queue).
+
+    `SKIP LOCKED` is what makes the claim safe: two workers — or two lanes —
+    asking at the same moment get different rows instead of both running the
+    same job and billing the user twice.
     """
+    query = select(Job).where(Job.status == "queued")
+    if scans is True:
+        query = query.where(Job.kind.in_(SCAN_KINDS))
+    elif scans is False:
+        query = query.where(Job.kind.notin_(SCAN_KINDS))
     result = await session.execute(
-        select(Job)
-        .where(Job.status == "queued")
-        .order_by(Job.created_at)
-        .limit(1)
-        .with_for_update(skip_locked=True)
+        query.order_by(Job.created_at).limit(1).with_for_update(skip_locked=True)
     )
     job = result.scalar_one_or_none()
     if job is None:
@@ -190,6 +201,8 @@ async def run_job(session: AsyncSession, job: Job) -> dict:
         return await _run_artifact(session, job, user, resume, job.kind)
     if job.kind == "scan":
         return await _run_scan(session, job, user, resume)
+    if job.kind == "triage":
+        return await _run_triage(session, job, user, resume)
     raise ValueError(f"неизвестный тип задачи: {job.kind}")
 
 
@@ -205,6 +218,19 @@ async def _run_scan(
     """
     params = scan.ScanRequest.model_validate(job.payload)
     return await scan.run_scan(session, user, resume, params)
+
+
+async def _run_triage(
+    session: AsyncSession, job: Job, user: User, resume: Resume
+) -> dict:
+    """The cheap batch verdict, queued so the cabinet stays usable meanwhile.
+
+    The same `triage.run` as POST /api/vacancies/triage. Not retried: the
+    model may have been billed before a failure, and the rollback that
+    follows would undo the charge while a retry bought the tokens again.
+    """
+    params = triage.TriageRequest.model_validate(job.payload)
+    return await triage.run(session, user, resume, params.ids)
 
 
 def _error_text(error: Exception) -> str:
@@ -241,10 +267,10 @@ async def reap_orphans() -> int:
         return result.rowcount or 0
 
 
-async def tick() -> bool:
-    """One pass. Returns whether a job was picked up."""
+async def tick(scans: bool | None = None) -> bool:
+    """One pass over one lane. Returns whether a job was picked up."""
     async with SessionLocal() as session:
-        job = await claim(session)
+        job = await claim(session, scans)
         if job is None:
             return False
         # Read before the run: the rollback below expires `job`, and touching
@@ -312,6 +338,21 @@ async def sweep_loop(stopping: asyncio.Event) -> None:
             pass
 
 
+async def lane_loop(stopping: asyncio.Event, scans: bool) -> None:
+    """Serve one lane of the queue until the worker stops."""
+    while not stopping.is_set():
+        try:
+            busy = await tick(scans)
+        except Exception:
+            log.exception("worker loop error")
+            busy = False
+        if not busy:
+            try:
+                await asyncio.wait_for(stopping.wait(), timeout=POLL_SECONDS)
+            except TimeoutError:
+                pass
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log.info("worker started, polling every %.1fs", POLL_SECONDS)
@@ -328,19 +369,9 @@ async def main() -> None:
         log.warning("failed %s job(s) left running by a previous worker", reaped)
 
     sweeper = asyncio.create_task(sweep_loop(stopping))
+    lanes = [asyncio.create_task(lane_loop(stopping, scans)) for scans in (True, False)]
 
-    while not stopping.is_set():
-        try:
-            busy = await tick()
-        except Exception:
-            log.exception("worker loop error")
-            busy = False
-        if not busy:
-            try:
-                await asyncio.wait_for(stopping.wait(), timeout=POLL_SECONDS)
-            except TimeoutError:
-                pass
-
+    await asyncio.gather(*lanes)
     await sweeper
     log.info("worker stopped")
 

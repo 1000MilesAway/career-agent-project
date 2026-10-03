@@ -15,7 +15,7 @@ import type { FoundVacancy, ScanJob, ScanResult } from '../api/types'
 const mocks = vi.hoisted(() => ({
   startScan: vi.fn(),
   hideVacancy: vi.fn(),
-  runTriage: vi.fn(),
+  startTriage: vi.fn(),
   clearFound: vi.fn(),
   found: [] as unknown[],
   scanJob: null as unknown,
@@ -42,8 +42,11 @@ vi.mock('../api/hooks', () => ({
   isActive: (job: { status?: string } | null) =>
     job?.status === 'queued' || job?.status === 'running',
   useScanJob: () => ({ job: mocks.scanJob }),
+  TRIAGE_JOB_KEY: '/api/jobs?kind=triage&limit=1',
+  useTriageJob: () => ({ job: null }),
+  useTriageSettled: () => null,
   startScan: mocks.startScan,
-  runTriage: mocks.runTriage,
+  startTriage: mocks.startTriage,
   clearFound: mocks.clearFound,
   saveVacancy: vi.fn(),
   hideVacancy: mocks.hideVacancy,
@@ -128,7 +131,7 @@ describe('SearchPage', () => {
 
   it('умный отбор получает только строки, прошедшие условия', async () => {
     localStorage.clear()
-    mocks.runTriage.mockResolvedValue({ judged: 1, missing: [] })
+    mocks.startTriage.mockResolvedValue({ id: 't1', kind: 'triage', status: 'queued' })
     mocks.found.splice(
       0,
       mocks.found.length,
@@ -142,7 +145,7 @@ describe('SearchPage', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Отобрать лучшие' }))
     })
-    expect(mocks.runTriage).toHaveBeenCalledWith(['remote'])
+    expect(mocks.startTriage).toHaveBeenCalledWith(['remote'])
     mocks.found.length = 0
   })
 

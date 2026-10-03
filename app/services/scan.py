@@ -1,6 +1,6 @@
-"""Collect postings and run the free stages, then persist what survived.
+"""Collect postings into the shared pool, then match the pool to a user.
 
-The pipeline invariant from CLAUDE.md, unchanged by the move to a database:
+The pipeline invariant from CLAUDE.md, unchanged by the move to a pool:
 
     collect (free) -> free filters (free) -> already-seen (free)
       -> triage (one cheap call per batch) -> full evaluation (paid)
@@ -9,10 +9,14 @@ Nothing here calls the expensive step. Evaluation is a separate request the
 user makes per vacancy, which is what keeps a scan from spending money on a
 list nobody asked to be scored.
 
-Two demo rules that are easy to lose in a rewrite and are kept here:
+Collecting is shared: a listing some scan read within `pool.FRESH_FOR` is
+answered from `postings` without a request (docs/decisions.md, 2026-10-03).
+Matching is per user and free: the user's `PreScreen` over the pool.
 
-  - A dropped posting is stored with its reason, not discarded. `stage` and
-    `screen_reason` are the product's discard.log.
+Rules that are easy to lose in a rewrite and are kept here:
+
+  - A dropped posting is never silent. It gets no row of its own, but its
+    reason is recomputed from the pool on request (`explain_screened`).
   - `raw_text` is never overwritten on a rescan. For Telegram it is the only
     copy of the posting, and different text means a different vacancy.
 """
@@ -20,7 +24,9 @@ Two demo rules that are easy to lose in a rewrite and are kept here:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import UTC, datetime, timedelta
@@ -28,17 +34,20 @@ from typing import Any, Literal
 
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core import dedup, tg_scan
+from core import tg_scan
 from core.filters import PreScreen, SearchProfile
 from core.llm import LLM, Ledger
 from core.pipeline import build_search_profile
-from core.sources import employers, geekjob, habr_api
+from core.sources import employers, geekjob, habr_api, telegram, tg_channels
 from core.sources.habr_api import Posting
 
+from ..models import Posting as Pooled
 from ..models import Resume, User, Vacancy
+from . import pool
+from .pool import Sighting
 from .spend import charge, ensure_can_spend
 
 # Stages a vacancy can be in. Ordered by how far it got.
@@ -47,15 +56,6 @@ SCREENED_OUT = "screened_out"  # dropped by the free filters
 TRIAGED_OUT = "triaged_out"  # dropped by the cheap batch call
 SHORTLIST = "shortlist"  # survived everything free, worth paying for
 EVALUATED = "evaluated"
-
-
-def _published(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
 
 
 # How a source is named in a duplicate's reason. Russian: the user reads it.
@@ -67,103 +67,82 @@ SOURCE_LABELS = {
     "company": "на сайте компании",
 }
 
-# Telegram reposts older than this are not compared by text: a vacancy
-# reposted after a month is usually reopened, and worth a second look.
-FINGERPRINT_WINDOW_DAYS = 30
+# Order sources are written and matched in. It decides which copy of a
+# vacancy becomes the original and which the duplicate: sources with real
+# fields (Habr's grade and division, an employer's own text) go first, so the
+# row the user keeps is the richest one, and a Telegram retelling points at it.
+ALL_SOURCES = ("habr", "company", "geekjob", "telegram")
+
+# Postings a scan matches: seen by some fetch this recently. One that dropped
+# off every listing it was on ages out of new matches; rows a user already
+# has stay. Two weeks covers a Telegram post that slid off the channel's
+# first page and a Habr posting no query has returned since.
+MATCH_WINDOW = timedelta(days=14)
 
 
-class _Originals:
-    """Every visible row of the user's that a new posting could duplicate.
-
-    Loaded once per persist() and extended as rows are added, so two copies
-    arriving in the same scan are caught as well as a copy of an old row.
-
-    Only rows that are themselves visible count as originals. A row the free
-    filters dropped is no reason to hide a new copy: the copy may come from a
-    source with better fields and pass on its own merits — and marking it a
-    duplicate of something the user never saw would hide it for good.
-    """
-
-    def __init__(self, rows: list[Vacancy]) -> None:
-        self.by_key: dict[str, list[Vacancy]] = {}
-        self.by_ref: dict[tuple[str, str], Vacancy] = {}
-        self.with_fp: list[Vacancy] = []
-        for row in rows:
-            self.add(row)
-
-    def add(self, row: Vacancy) -> None:
-        if row.stage == SCREENED_OUT:
-            return
-        self.by_ref.setdefault((row.source, row.external_id), row)
-        if row.dedup_key:
-            self.by_key.setdefault(row.dedup_key, []).append(row)
-        if row.text_fp:
-            self.with_fp.append(row)
-
-    def find(self, row: Vacancy, text: str) -> Vacancy | None:
-        """The row this one copies, cheapest signal first."""
-        for ref in dedup.linked_vacancies(text):
-            original = self.by_ref.get(ref)
-            if original is not None and original is not row:
-                return original
-        # Company + title counts only ACROSS sources. Within one board two ids
-        # are two openings: a company runs "Python-разработчик" for two teams
-        # at once, and calling the second a copy would hide a real vacancy.
-        for original in self.by_key.get(row.dedup_key or "", []):
-            if original.source != row.source:
-                return original
-        if row.text_fp:
-            cutoff = datetime.now(UTC) - timedelta(days=FINGERPRINT_WINDOW_DAYS)
-            for original in self.with_fp:
-                if original is row:
-                    continue
-                if original.created_at and original.created_at < cutoff:
-                    continue
-                if dedup.similarity(row.text_fp, original.text_fp) >= dedup.SIMILARITY_THRESHOLD:
-                    return original
-        return None
-
-
-def _duplicate_reason(original: Vacancy) -> str:
+def _duplicate_reason(original: Pooled) -> str:
     label = SOURCE_LABELS.get(original.source, f"в источнике {original.source}")
     return f"дубль: уже найдена {label} — «{original.title}»"[:512]
 
 
-async def _originals(session: AsyncSession, user_id: uuid.UUID) -> _Originals:
-    result = await session.execute(
-        select(Vacancy).where(Vacancy.user_id == user_id, Vacancy.stage != SCREENED_OUT)
-    )
-    return _Originals(list(result.scalars()))
+def _match_order(row: Pooled) -> tuple[int, int, datetime]:
+    """Originals before copies, richer sources first, older first."""
+    rank = ALL_SOURCES.index(row.source) if row.source in ALL_SOURCES else len(ALL_SOURCES)
+    return (row.duplicate_of_id is not None, rank, row.created_at or datetime.now(UTC))
 
 
-async def _existing(session: AsyncSession, user_id: uuid.UUID, source: str) -> dict[str, Vacancy]:
-    """Everything already stored for this source, keyed by the source's own id."""
-    result = await session.execute(
-        select(Vacancy).where(Vacancy.user_id == user_id, Vacancy.source == source)
-    )
-    return {v.external_id: v for v in result.scalars()}
+async def attach(
+    session: AsyncSession, user_id: uuid.UUID, decided: list[tuple[Pooled, str]]
+) -> dict[str, int]:
+    """Give the user a row for each posting their free filters kept.
 
+    `decided` pairs a pooled posting with the free filters' reason — empty
+    for a keep. A dropped posting gets no row: its reason is recomputed from
+    the pool when asked (`explain_screened`), so it is not lost, only not
+    copied per user. A row the user already has is re-judged only while the
+    verdict is free (`collected`, `screened_out`) — never a paid one.
 
-def _listing_fields(posting: Posting) -> dict[str, Any]:
-    """What a rescan is allowed to refresh: listing data only.
-
-    Deliberately excludes raw_text, and excludes everything bought — score,
-    report, artifacts live on other tables precisely so a refresh cannot
-    reach them.
+    Copies of one vacancy reach the user once: a posting whose cluster the
+    user already has a visible row for is counted as a duplicate. A copy whose
+    original this user's filters drop is judged on its own merits — marking
+    it a duplicate of something the user never saw would hide it for good.
     """
-    return {
-        "url": posting.url,
-        "title": posting.title,
-        "company": posting.company,
-        "qualification": posting.qualification or None,
-        "salary_text": posting.salary_text or None,
-        "location": posting.location or None,
-        "remote": posting.remote,
-        "accredited": posting.accredited,
-        "published": _published(posting.published),
-        "divisions": posting.divisions or None,
-        "skills": posting.skills or None,
-    }
+    result = await session.execute(select(Vacancy).where(Vacancy.user_id == user_id))
+    mine = {v.posting_id: v for v in result.scalars()}
+    clusters = {v.posting.cluster_id for v in mine.values() if v.stage != SCREENED_OUT}
+
+    counts = {"new": 0, "kept": 0, "dropped": 0, "duplicates": 0}
+    for posting, reason in sorted(decided, key=lambda d: _match_order(d[0])):
+        row = mine.get(posting.id)
+        if row is not None:
+            # A free re-screen may revise its own verdict, never a paid one.
+            # TRIAGED_OUT used to be in this list: a rescan then pushed the
+            # row back to SHORTLIST and cleared `screen_reason` while
+            # `triage_verdict` stayed "skip" — a red "мимо" tag with no reason
+            # under it, and queued for another paid triage.
+            if row.stage in (COLLECTED, SCREENED_OUT):
+                row.stage = SCREENED_OUT if reason else SHORTLIST
+                row.screen_reason = reason or None
+            if reason:
+                counts["dropped"] += 1
+            else:
+                counts["kept"] += 1
+                clusters.add(posting.cluster_id)
+            continue
+        if reason:
+            counts["dropped"] += 1
+            continue
+        if posting.cluster_id in clusters:
+            counts["duplicates"] += 1
+            continue
+        row = Vacancy(id=uuid.uuid4(), user_id=user_id, posting=posting, stage=SHORTLIST)
+        session.add(row)
+        mine[posting.id] = row
+        clusters.add(posting.cluster_id)
+        counts["new"] += 1
+        counts["kept"] += 1
+    await session.flush()
+    return counts
 
 
 async def persist(
@@ -174,80 +153,25 @@ async def persist(
     dropped: list[tuple[Posting, str]],
     texts: dict[str, str] | None = None,
 ) -> dict[str, int]:
-    """Write a scan's outcome. Returns counts, not rows.
+    """Pool a fetch and attach what the given verdicts kept. Returns counts.
 
-    `texts` carries posting bodies that were collected along the way (Telegram),
-    because there is no page to fetch them from later.
+    The direct path for postings already screened by the caller; a scan goes
+    through `collect`, which screens the pool itself. `texts` carries bodies
+    collected along the way (Telegram), because there is no page to fetch
+    them from later.
     """
     texts = texts or {}
-    stored = await _existing(session, user_id, source)
-    originals = await _originals(session, user_id)
-    new_count = 0
-    duplicates = 0
-
-    for posting, reason in [(p, "") for p, _ in kept] + list(dropped):
-        is_kept = not reason
-        stage = SHORTLIST if is_kept else SCREENED_OUT
-        text = texts.get(posting.id) or ""
-
-        row = stored.get(posting.id)
-        if row is None:
-            row = Vacancy(
-                # Explicit so a copy later in this same batch can point at it
-                # before the flush assigns one.
-                id=uuid.uuid4(),
-                user_id=user_id,
-                source=source,
-                external_id=posting.id,
-                stage=stage,
-                screen_reason=reason or None,
-                # Set once. A rescan must never overwrite it.
-                raw_text=texts.get(posting.id),
-                dedup_key=dedup.posting_key(posting) or None,
-                text_fp=dedup.fingerprint(text) or None,
-                **_listing_fields(posting),
-            )
-            # Only a posting the free filters kept is checked: a dropped one
-            # already costs nothing and carries its own reason, which says
-            # more about it than "duplicate" would.
-            if is_kept:
-                original = originals.find(row, text)
-                if original is not None:
-                    row.stage = SCREENED_OUT
-                    row.screen_reason = _duplicate_reason(original)
-                    row.duplicate_of_id = original.id
-                    duplicates += 1
-            session.add(row)
-            stored[posting.id] = row
-            originals.add(row)
-            new_count += 1
-            continue
-
-        # Already known. Refresh the listing, leave everything else alone —
-        # including a stage the user has already moved past.
-        for field, value in _listing_fields(posting).items():
-            if value is not None:
-                setattr(row, field, value)
-        # A duplicate stays one on a rescan: re-screening it alone would pass
-        # it back to the shortlist and queue a second triage of a vacancy the
-        # user already has.
-        if row.duplicate_of_id is not None:
-            continue
-        # A free re-screen may revise its own verdict, never a paid one.
-        # TRIAGED_OUT used to be in this list: a rescan then pushed the row
-        # back to SHORTLIST and cleared `screen_reason` while `triage_verdict`
-        # stayed "skip" — a red "мимо" tag with no reason under it, hidden by
-        # the default bucket filter, and queued for another paid triage.
-        if row.stage in (COLLECTED, SCREENED_OUT):
-            row.stage = stage
-            row.screen_reason = reason or None
-
-    return {
-        "new": new_count,
-        "kept": len(kept) - duplicates,
-        "dropped": len(dropped),
-        "duplicates": duplicates,
-    }
+    pairs = [(p, "") for p, _ in kept] + list(dropped)
+    await pool.upsert(
+        session, source, [Sighting(p, texts.get(p.id)) for p, _ in pairs]
+    )
+    result = await session.execute(
+        select(Pooled).where(
+            Pooled.source == source, Pooled.external_id.in_([p.id for p, _ in pairs])
+        )
+    )
+    by_ext = {row.external_id: row for row in result.scalars()}
+    return await attach(session, user_id, [(by_ext[p.id], why) for p, why in pairs])
 
 
 async def ensure_search_profile(
@@ -302,29 +226,11 @@ def screen_postings(
     return kept, dropped
 
 
-@dataclass
-class Batch:
-    """One source's collect-and-screen result, before anything is written.
-
-    Split from the write so every source's network can run at once while the
-    writes stay one after another on one session (see `collect_all`).
-    """
-
-    source: str
-    collected: int
-    kept: list[tuple[Posting, str]]
-    dropped: list[tuple[Posting, str]]
-    texts: dict[str, str] = dc_field(default_factory=dict)
-    # Source-specific facts worth showing: channels read, teasers enriched,
-    # boards that failed.
-    extra: dict[str, Any] = dc_field(default_factory=dict)
-
-
 # How deep each source looks back. Not a user setting: the number meant
 # something different per source (a Habr page is 25 postings per query, a
 # Telegram page ~20 posts per channel, a geekjob page ~2 days of the feed)
 # and nobody could tell what "5" bought. Depth costs time, never money, and
-# history dedup means a regular scan only needs what appeared since the last.
+# the pool means a regular scan only needs what appeared since the last.
 HABR_PAGES = 3
 TELEGRAM_PAGES = 1
 GEEKJOB_PAGES = 5
@@ -336,143 +242,393 @@ def _profile(search_profile: dict[str, Any] | None, what: str) -> SearchProfile:
     return SearchProfile.from_dict(search_profile)
 
 
-def fetch_habr(
-    search_profile: dict[str, Any] | None,
-    pages: int = HABR_PAGES,
-    ask_habr_for_salary: bool = True,
-) -> Batch:
-    """Habr: fetch the catalogue, screen it for free. Network only, no DB.
+@dataclass
+class Batch:
+    """One listing's fetch, before anything is written. Network only, no DB.
 
-    Refuses to run without an accepted search profile. `from_dict({})` builds a
-    profile that states nothing, and nothing is not a filter: PreScreen keeps
-    every posting (its title check is skipped when `positive` is empty) and the
-    catalogue walk below would ask Habr for everything. The API refuses this
-    earlier; the guard is repeated here because the worker calls straight into
-    this path and an unfiltered scan is the one failure the free stage exists
-    to prevent.
+    Unscreened: a fetch fills the pool for everyone, and each user's filters
+    run over the pool afterwards. Split from the write so every source's
+    network can run at once while the writes stay one after another on one
+    session (see `collect`).
     """
-    profile = _profile(search_profile, "весь каталог")
-    # No empty-query fallback: "" asks Habr for the whole catalogue, which is
-    # the same unfiltered flood by another route.
-    if not profile.queries:
-        raise ValueError("в профиле поиска нет ни одного запроса")
 
-    # `salary_min` does two jobs, and they are not the same job. Sent to Habr
-    # it drops every posting that states no range at all; kept in the profile
-    # it feeds PreScreen step 6, which judges only postings that DO state one
-    # and lets the silent ones through. Clearing it for both — the old
-    # behaviour of the "искать без зарплаты" tick — meant a typed threshold
-    # filtered nothing, while the hint promised it would.
+    source: str
+    sightings: list[Sighting]
+    # Source-specific facts worth showing: channels read, boards that failed.
+    extra: dict[str, Any] = dc_field(default_factory=dict)
+
+
+def fetch_habr(
+    queries: list[str],
+    pages: int = HABR_PAGES,
+    remote: bool = False,
+    qualifications: list[str] | None = None,
+    salary_from: int | None = None,
+) -> Batch:
+    """Habr's catalogue for the given queries."""
     postings = habr_api.search_many(
-        profile.queries,
-        pages=pages,
-        remote=profile.remote_only,
-        qualifications=profile.qualifications,
-        salary_from=profile.salary_min if ask_habr_for_salary else None,
+        queries, pages=pages, remote=remote, qualifications=qualifications,
+        salary_from=salary_from,
     )
-    kept, dropped = screen_postings(postings, profile)
-    return Batch("habr", len(postings), kept, dropped)
+    return Batch("habr", [Sighting(p) for p in postings])
 
 
 def fetch_telegram(
-    search_profile: dict[str, Any] | None,
-    channels: list[str] | None = None,
-    pages: int = TELEGRAM_PAGES,
-    groups: tuple[str, ...] = ("core",),
+    channels: list[str] | None, group: str | None, pages: int = TELEGRAM_PAGES
 ) -> Batch:
-    """Telegram, reusing the shared collector.
+    """Channel pages through `t.me/s/`: the named channels, or one group's.
 
-    The posting body is captured here and stored: t.me has no page to fetch a
-    vacancy from later, so a Telegram row without its text can never be
-    evaluated. This is the one source where losing raw_text loses the vacancy.
-
-    `full_text()` rather than `.text`, so a teaser stores the description that
-    was read from its link. Storing the bare post would throw the fetched page
-    away at the last step and leave the evaluation judging four lines again.
+    The post body is stored: t.me has no page to fetch a vacancy from later,
+    so a Telegram posting without its text can never be evaluated. A teaser's
+    linked description is NOT read here — that is a request to someone else's
+    host, and it is spent on the posts some user's filters keep (`_enrich`).
     """
-    result = tg_scan.collect(
-        channels=channels, groups=groups, pages=pages, search_profile=search_profile
-    )
-    kept = [(tg_scan.as_posting(post), "") for post, _ in result["kept"]]
-    dropped = [(tg_scan.as_posting(post), why) for post, why in result["dropped"]]
-    texts = {
-        post.id: post.full_text()
-        for post, _ in result["kept"] + result["dropped"]
-        if post.text
-    }
+    names = channels or tg_channels.channel_names(groups=(group or "core",))
+    posts, problems = telegram.search_many(names, pages=pages)
+    sightings = [
+        Sighting(
+            tg_scan.as_posting(post),
+            text=post.full_text() or None,
+            segment=None if channels else group,
+            needs_text=bool(post.description_url),
+            description_url=post.description_url or None,
+        )
+        for post in posts
+    ]
     return Batch(
         "telegram",
-        result["collected"],
-        kept,
-        dropped,
-        texts,
+        sightings,
         extra={
-            "channels": result["channels"],
-            # How many teasers gave up their description. Worth reporting: a
-            # scan that read none of them is judging headlines.
-            "enriched": result.get("enriched", 0),
+            "channels": names,
             # Channels that answered but are unusable — silent, or gone.
             # Reported rather than swallowed: a scan that quietly returns
             # less is a scan nobody can debug.
-            "problems": result["problems"],
+            "problems": [{"channel": c, "why": w} for c, w in problems],
         },
     )
 
 
-def fetch_employers(
-    search_profile: dict[str, Any] | None,
-    groups: tuple[str, ...] = ("ru",),
-) -> Batch:
-    """Employers' own career sites (core/sources/employers.py).
+def fetch_employers(queries: list[str], group: str) -> Batch:
+    """One group of employers' own career sites (core/sources/employers.py).
 
-    Searchable boards are asked the profile's queries; small ATS feeds are
-    read whole and screened by the profile's keywords — so both guards below
-    are needed, one per kind of board.
-
-    Descriptions some boards do not list are fetched AFTER the free filters,
-    for the survivors only, and stored: the row's text is what the evaluation
-    reads, and a board page is not guaranteed to be there tomorrow.
+    Searchable boards are asked the queries; small ATS feeds are read whole.
+    Descriptions some boards do not list are fetched later, for the postings
+    some user's filters keep, and stored for everyone.
     """
-    profile = _profile(search_profile, "все вакансии")
-    if not profile.queries or not profile.positive:
-        raise ValueError("в профиле поиска нет запросов или ключевых слов")
+    result = employers.collect(queries, (group,))
+    sightings = [
+        Sighting(
+            p,
+            text=result.texts.get(p.id),
+            segment=group,
+            needs_text=employers.needs_description(p.id) and not result.texts.get(p.id),
+        )
+        for p in result.postings
+    ]
+    return Batch("company", sightings, extra={"problems": result.problems})
 
-    result = employers.collect(profile.queries, groups)
-    kept, dropped = screen_postings(result.postings, profile)
-    texts = dict(result.texts)
-    texts.update(employers.describe([p for p, _ in kept]))
-    return Batch(
-        "company", len(result.postings), kept, dropped, texts,
-        extra={"problems": result.problems},
-    )
 
-
-def fetch_geekjob(search_profile: dict[str, Any] | None, pages: int = GEEKJOB_PAGES) -> Batch:
-    """geekjob.ru: the newest listing pages, screened for free.
+def fetch_geekjob(pages: int = GEEKJOB_PAGES) -> Batch:
+    """geekjob.ru: the newest listing pages.
 
     geekjob has no search we may use (robots.txt closes `/json/`, where its
     search box posts), so the newest pages are read whole and PreScreen does
-    the filtering. That makes the keyword guard below matter more than for
-    Habr: with no positive keywords every card on the board would pass.
+    the filtering.
     """
-    profile = _profile(search_profile, "всю ленту")
-    if not profile.positive:
-        raise ValueError("в профиле поиска нет ключевых слов — geekjob сам не фильтрует")
-    postings = geekjob.collect(pages)
-    kept, dropped = screen_postings(postings, profile)
-    return Batch("geekjob", len(postings), kept, dropped)
+    return Batch("geekjob", [Sighting(p) for p in geekjob.collect(pages)])
 
 
-async def store(session: AsyncSession, user_id: uuid.UUID, batch: Batch) -> dict[str, Any]:
-    counts = await persist(
-        session, user_id, batch.source, batch.kept, batch.dropped, texts=batch.texts
+@dataclass
+class Listing:
+    """One request a scan may need: a Habr query, an employer group, a feed."""
+
+    key: str
+    fetch: Callable[[], Batch]
+
+
+@dataclass
+class Plan:
+    """What one source contributes to a scan, and which pooled rows it matches."""
+
+    source: str
+    listings: list[Listing]
+    # Match only postings from these segments (employer groups, channel
+    # groups). None: the source has no segments.
+    segments: tuple[str, ...] | None = None
+    # Match only these companies — Telegram channels named explicitly.
+    companies: list[str] | None = None
+
+
+@dataclass
+class Options:
+    """This scan's form settings that change what is fetched or matched."""
+
+    ask_habr_for_salary: bool = True
+    company_groups: tuple[str, ...] = ("ru",)
+    telegram_groups: tuple[str, ...] = ("core",)
+    channels: list[str] | None = None
+    pages: int | None = None
+
+
+def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
+    """The listings `source` needs for this profile. Raises on an unusable profile.
+
+    The guards are per source because the sources fail differently without
+    them: Habr asked an empty query returns its whole catalogue, a feed read
+    with no keywords passes every card.
+    """
+    if source == "habr":
+        # No empty-query fallback: "" asks Habr for the whole catalogue.
+        if not profile.queries:
+            raise ValueError("в профиле поиска нет ни одного запроса")
+        pages = options.pages or HABR_PAGES
+        # `salary_min` does two jobs, and they are not the same job. Sent to
+        # Habr it drops every posting that states no range at all; kept in the
+        # profile it feeds PreScreen, which judges only postings that DO state
+        # one and lets the silent ones through.
+        salary = profile.salary_min if options.ask_habr_for_salary else None
+        quals = sorted(profile.qualifications or [])
+        return Plan("habr", [
+            Listing(
+                pool.listing_key(
+                    q=q.strip().casefold(), pages=pages, remote=profile.remote_only,
+                    quals=quals, salary=salary,
+                ),
+                lambda q=q: fetch_habr(
+                    [q], pages=pages, remote=profile.remote_only,
+                    qualifications=profile.qualifications, salary_from=salary,
+                ),
+            )
+            for q in profile.queries
+        ])
+    if source == "company":
+        if not profile.queries or not profile.positive:
+            raise ValueError("в профиле поиска нет запросов или ключевых слов")
+        queries = sorted({q.strip().casefold() for q in profile.queries})
+        return Plan("company", [
+            Listing(
+                pool.listing_key(group=g, queries=queries),
+                lambda g=g: fetch_employers(list(profile.queries), g),
+            )
+            for g in options.company_groups
+        ], segments=options.company_groups)
+    if source == "geekjob":
+        if not profile.positive:
+            raise ValueError("в профиле поиска нет ключевых слов — geekjob сам не фильтрует")
+        pages = options.pages or GEEKJOB_PAGES
+        return Plan("geekjob", [
+            Listing(pool.listing_key(pages=pages), lambda: fetch_geekjob(pages)),
+        ])
+    if source == "telegram":
+        pages = options.pages or TELEGRAM_PAGES
+        if options.channels:
+            channels = sorted(set(options.channels))
+            return Plan("telegram", [
+                Listing(
+                    pool.listing_key(channels=channels, pages=pages),
+                    lambda: fetch_telegram(channels, None, pages),
+                ),
+            ], companies=[f"@{c}" for c in channels])
+        return Plan("telegram", [
+            Listing(
+                pool.listing_key(group=g, pages=pages),
+                lambda g=g: fetch_telegram(None, g, pages),
+            )
+            for g in options.telegram_groups
+        ], segments=options.telegram_groups)
+    raise ValueError(f"неизвестный источник: {source}")
+
+
+def _fetch_all(listings: list[Listing]) -> list[Batch]:
+    """One source's stale listings, one after another, politely spaced."""
+    out: list[Batch] = []
+    for i, listing in enumerate(listings):
+        if i:
+            time.sleep(habr_api.DELAY_SECONDS)
+        out.append(listing.fetch())
+    return out
+
+
+async def _candidates(session: AsyncSession, p: Plan, now: datetime) -> list[Pooled]:
+    """Pooled postings this source's scan matches: recent, open, in scope."""
+    query = select(Pooled).where(
+        Pooled.source == p.source,
+        Pooled.last_seen_at >= now - MATCH_WINDOW,
+        Pooled.closed_at.is_(None),
     )
-    return {"collected": batch.collected, **batch.extra, **counts}
+    if p.segments is not None:
+        # Rows pooled before segments were recorded carry none; they gain
+        # one the next time a fetch returns them.
+        query = query.where(or_(Pooled.segment.in_(p.segments), Pooled.segment.is_(None)))
+    if p.companies is not None:
+        query = query.where(Pooled.company.in_(p.companies))
+    return list((await session.execute(query)).scalars())
 
 
-# httpx.Client is synchronous, and a catalogue walk is seconds of network:
-# calling it directly would stall every other request on the event loop.
-# Hence every fetch goes through a thread.
+# Linked descriptions read per scan. Free in money — HTTP, not the model —
+# but each is a request to someone else's host, so it is capped.
+MAX_ENRICHED = tg_scan.MAX_ENRICHED
+
+
+def _read_descriptions(source: str, rows: list[tuple[str, str, str]]) -> dict[str, str]:
+    """Texts for (external_id, url, description_url) triples. Network only."""
+    if source == "telegram":
+        posts = [
+            telegram.Post(id=ext, url=url, channel="", text="", description_url=durl)
+            for ext, url, durl in rows
+        ]
+        telegram.fetch_externals(posts, limit=MAX_ENRICHED)
+        return {p.id: p.description_text for p in posts if p.description_text}
+    if source == "company":
+        stubs = [Posting(id=ext, url=url, title="", company="") for ext, url, _ in rows]
+        return employers.describe(stubs)
+    return {}
+
+
+async def _enrich(session: AsyncSession, source: str, kept: list[Pooled]) -> int:
+    """Fetch the descriptions kept postings still lack, once for everyone.
+
+    After the free filters, over the survivors only: the pipeline's rule
+    that the costly stage runs on the short list covers someone else's
+    bandwidth as much as it covers paid calls. One attempt per posting —
+    a page that failed is fetched again on evaluation, not on every scan.
+    """
+    todo = [p for p in kept if p.needs_text][:MAX_ENRICHED]
+    if not todo:
+        return 0
+    texts = await run_in_threadpool(
+        _read_descriptions,
+        source,
+        [(p.external_id, p.url or "", p.description_url or "") for p in todo],
+    )
+    for row in todo:
+        row.needs_text = False
+        text = texts.get(row.external_id)
+        if not text:
+            continue
+        if source == "telegram":
+            # A teaser gains what it links to, labelled — the one write to
+            # the text after creation (see Post.full_text).
+            row.raw_text = (
+                f"{row.raw_text or ''}\n\n"
+                f"--- Полное описание со страницы {row.description_url} ---\n{text}"
+            )
+        elif row.raw_text is None:
+            row.raw_text = text
+    return sum(1 for row in todo if texts.get(row.external_id))
+
+
+async def _match(
+    session: AsyncSession, user_id: uuid.UUID, p: Plan, profile: SearchProfile, now: datetime
+) -> dict[str, Any]:
+    rows = await _candidates(session, p, now)
+    screen = PreScreen(profile)
+    decided = []
+    for row in rows:
+        decision = screen.check(pool.as_posting(row))
+        decided.append((row, "" if decision.keep else decision.reason))
+    counts = await attach(session, user_id, decided)
+    enriched = await _enrich(session, p.source, [row for row, why in decided if not why])
+    out: dict[str, Any] = {"collected": len(rows), **counts}
+    if p.source == "telegram":
+        # How many teasers gave up their description. Worth reporting: a
+        # scan that read none of them is judging headlines.
+        out["enriched"] = enriched
+    return out
+
+
+async def collect(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    sources: tuple[str, ...] = ALL_SOURCES,
+    options: Options | None = None,
+    raise_errors: bool = False,
+) -> dict[str, Any]:
+    """Fetch what is stale, pool it, then match the pool against this user.
+
+    Stage 1-2 of the pipeline: no model is called; survivors wait as
+    `shortlist`. A listing some scan read within `pool.FRESH_FOR` is not read
+    again — the pool answers. The network runs in parallel, the writes in
+    `ALL_SOURCES` order on one session.
+
+    A source that fails does not sink the others: its error is reported by
+    name next to the counts of the ones that worked, unless `raise_errors`
+    (one source asked for by name, where the error is the answer).
+    """
+    options = options or Options()
+    profile = _profile(search_profile, "все вакансии")
+    now = datetime.now(UTC)
+
+    plans: dict[str, Plan | BaseException] = {}
+    for name in sources:
+        try:
+            plans[name] = plan(name, profile, options)
+        except ValueError as e:
+            if raise_errors:
+                raise
+            plans[name] = e
+
+    stale: dict[str, list[Listing]] = {}
+    cached: dict[str, dict[str, Any]] = {}
+    for name, p in plans.items():
+        if isinstance(p, BaseException):
+            continue
+        fresh = await pool.fresh_keys(session, name, [x.key for x in p.listings], now)
+        stale[name] = [x for x in p.listings if x.key not in fresh]
+        cached[name] = _merge_extra([f.extra or {} for f in fresh.values()])
+
+    fetched = await asyncio.gather(
+        *(run_in_threadpool(_fetch_all, stale[name]) for name in stale),
+        return_exceptions=True,
+    )
+    batches = dict(zip(stale, fetched, strict=True))
+
+    sources_out: dict[str, dict[str, Any]] = {}
+    for name in sources:
+        p = plans[name]
+        if isinstance(p, BaseException):
+            sources_out[name] = {"error": _error_text(p)}
+            continue
+        result = batches[name]
+        if isinstance(result, BaseException):
+            if raise_errors:
+                raise result
+            sources_out[name] = {"error": _error_text(result)}
+            continue
+        for listing, batch in zip(stale[name], result, strict=True):
+            await pool.upsert(session, name, batch.sightings, now)
+            await pool.mark_fetched(session, name, listing.key, now, batch.extra or None)
+        counts = await _match(session, user_id, p, profile, now)
+        extra = _merge_extra([cached[name]] + [b.extra for b in result])
+        sources_out[name] = {
+            **counts, **extra,
+            # How many of the listings came from the pool without a request.
+            "from_pool": len(p.listings) - len(stale[name]),
+            "fetched": len(stale[name]),
+        }
+
+    ok = [s for s in sources_out.values() if "error" not in s]
+    return {
+        "sources": sources_out,
+        "collected": sum(s["collected"] for s in ok),
+        "kept": sum(s["kept"] for s in ok),
+        "dropped": sum(s["dropped"] for s in ok),
+        "duplicates": sum(s["duplicates"] for s in ok),
+        "new": sum(s["new"] for s in ok),
+    }
+
+
+def _merge_extra(extras: list[dict[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for extra in extras:
+        for key, value in extra.items():
+            if isinstance(value, list):
+                out.setdefault(key, [])
+                out[key] += [v for v in value if v not in out[key]]
+            else:
+                out[key] = value
+    return out
 
 
 async def collect_habr(
@@ -482,9 +638,12 @@ async def collect_habr(
     pages: int = HABR_PAGES,
     ask_habr_for_salary: bool = True,
 ) -> dict[str, Any]:
-    """Stage 1-2 for Habr. No model is called; survivors wait as `shortlist`."""
-    batch = await run_in_threadpool(fetch_habr, search_profile, pages, ask_habr_for_salary)
-    return await store(session, user_id, batch)
+    """Habr alone. Errors are raised: the source was asked for by name."""
+    result = await collect(
+        session, user_id, search_profile, ("habr",),
+        Options(ask_habr_for_salary=ask_habr_for_salary, pages=pages), raise_errors=True,
+    )
+    return result["sources"]["habr"]
 
 
 async def collect_telegram(
@@ -495,8 +654,11 @@ async def collect_telegram(
     pages: int = TELEGRAM_PAGES,
     groups: tuple[str, ...] = ("core",),
 ) -> dict[str, Any]:
-    batch = await run_in_threadpool(fetch_telegram, search_profile, channels, pages, groups)
-    return await store(session, user_id, batch)
+    result = await collect(
+        session, user_id, search_profile, ("telegram",),
+        Options(channels=channels, pages=pages, telegram_groups=groups), raise_errors=True,
+    )
+    return result["sources"]["telegram"]
 
 
 async def collect_employers(
@@ -505,8 +667,11 @@ async def collect_employers(
     search_profile: dict[str, Any] | None,
     groups: tuple[str, ...] = ("ru",),
 ) -> dict[str, Any]:
-    batch = await run_in_threadpool(fetch_employers, search_profile, groups)
-    return await store(session, user_id, batch)
+    result = await collect(
+        session, user_id, search_profile, ("company",),
+        Options(company_groups=groups), raise_errors=True,
+    )
+    return result["sources"]["company"]
 
 
 async def collect_geekjob(
@@ -515,15 +680,10 @@ async def collect_geekjob(
     search_profile: dict[str, Any] | None,
     pages: int = GEEKJOB_PAGES,
 ) -> dict[str, Any]:
-    batch = await run_in_threadpool(fetch_geekjob, search_profile, pages)
-    return await store(session, user_id, batch)
-
-
-# Write order for a scan of everything. It decides which copy of a vacancy
-# becomes the original and which the duplicate: sources with real fields
-# (Habr's grade and division, an employer's own text) go first, so the row the
-# user keeps is the richest one, and a Telegram retelling points at it.
-ALL_SOURCES = ("habr", "company", "geekjob", "telegram")
+    result = await collect(
+        session, user_id, search_profile, ("geekjob",), Options(pages=pages), raise_errors=True,
+    )
+    return result["sources"]["geekjob"]
 
 
 async def collect_all(
@@ -532,40 +692,81 @@ async def collect_all(
     search_profile: dict[str, Any] | None,
     ask_habr_for_salary: bool = True,
     company_groups: tuple[str, ...] = ("ru",),
+    telegram_groups: tuple[str, ...] = ("core",),
 ) -> dict[str, Any]:
-    """Every source in one go: the network in parallel, the writes in order.
-
-    A source that fails does not sink the others: its error is reported by
-    name next to the counts of the ones that worked. The only error raised is
-    the missing profile, which would fail every source identically.
-    """
+    """Every source in one go. The only error raised is the missing profile,
+    which would fail every source identically."""
     _profile(search_profile, "все вакансии")
-    fetches = {
-        "habr": lambda: fetch_habr(search_profile, ask_habr_for_salary=ask_habr_for_salary),
-        "company": lambda: fetch_employers(search_profile, company_groups),
-        "geekjob": lambda: fetch_geekjob(search_profile),
-        "telegram": lambda: fetch_telegram(search_profile),
-    }
-    results = await asyncio.gather(
-        *(run_in_threadpool(fetches[name]) for name in ALL_SOURCES), return_exceptions=True
+    return await collect(
+        session, user_id, search_profile, ALL_SOURCES,
+        Options(
+            ask_habr_for_salary=ask_habr_for_salary,
+            company_groups=company_groups,
+            telegram_groups=telegram_groups,
+        ),
     )
 
-    sources: dict[str, dict[str, Any]] = {}
-    for name, result in zip(ALL_SOURCES, results, strict=True):
-        if isinstance(result, BaseException):
-            sources[name] = {"error": _error_text(result)}
-            continue
-        sources[name] = await store(session, user_id, result)
 
-    ok = [s for s in sources.values() if "error" not in s]
-    return {
-        "sources": sources,
-        "collected": sum(s["collected"] for s in ok),
-        "kept": sum(s["kept"] for s in ok),
-        "dropped": sum(s["dropped"] for s in ok),
-        "duplicates": sum(s["duplicates"] for s in ok),
-        "new": sum(s["new"] for s in ok),
-    }
+# Rows `explain_screened` returns at most. The pool is thousands of postings;
+# the reasons are read to check a filter, not to browse the whole board.
+SCREENED_SHOWN = 300
+
+
+async def explain_screened(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    limit: int = SCREENED_SHOWN,
+) -> list[dict[str, Any]]:
+    """What this user's free filters drop from the pool, each with its reason.
+
+    The discard log, computed instead of stored: the filters are free and
+    deterministic, so running them again gives the same reason the scan had.
+    Covers postings a scan would match now and the user has no row for —
+    including copies of vacancies the user already has, named as such.
+    """
+    profile = _profile(search_profile, "все вакансии")
+    now = datetime.now(UTC)
+    result = await session.execute(select(Vacancy).where(Vacancy.user_id == user_id))
+    mine = {v.posting_id: v for v in result.scalars()}
+    clusters = {v.posting.cluster_id for v in mine.values() if v.stage != SCREENED_OUT}
+
+    query = select(Pooled).where(
+        Pooled.last_seen_at >= now - MATCH_WINDOW,
+        Pooled.closed_at.is_(None),
+    ).order_by(Pooled.last_seen_at.desc())
+    rows = [r for r in (await session.execute(query)).scalars() if r.id not in mine]
+
+    originals = {}
+    copies = [r for r in rows if r.duplicate_of_id is not None]
+    if copies:
+        found = await session.execute(
+            select(Pooled).where(Pooled.id.in_({r.duplicate_of_id for r in copies}))
+        )
+        originals = {o.id: o for o in found.scalars()}
+
+    screen = PreScreen(profile)
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        decision = screen.check(pool.as_posting(row))
+        if decision.keep:
+            if row.cluster_id not in clusters or row.duplicate_of_id not in originals:
+                continue
+            reason = _duplicate_reason(originals[row.duplicate_of_id])
+        else:
+            reason = decision.reason
+        out.append({
+            "posting_id": str(row.id),
+            "source": row.source,
+            "url": row.url,
+            "title": row.title,
+            "company": row.company,
+            "salary_text": row.salary_text,
+            "reason": reason,
+        })
+        if len(out) >= limit:
+            break
+    return out
 
 
 class ScanRequest(BaseModel):
@@ -645,6 +846,7 @@ async def run_scan(
             session, user.id, search_profile,
             ask_habr_for_salary=not body.any_salary,
             company_groups=company_groups,
+            telegram_groups=tuple(body.groups),
         )
     if body.source == "habr":
         return await collect_habr(

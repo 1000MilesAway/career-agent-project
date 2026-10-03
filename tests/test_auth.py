@@ -11,6 +11,7 @@ from app.core.security import (
     verify_password,
 )
 from tests.dbmark import requires_db
+from tests.pool_helpers import make_vacancy
 
 # asyncio_mode is "auto" in pyproject, so async tests need no marker; the
 # synchronous ones above must not carry a module-level asyncio mark.
@@ -141,7 +142,7 @@ class TestDeleteAccount:
         from app.models import Resume, User, Vacancy
 
         session.add(Resume(user_id=user.id, filename="cv.pdf", raw_text="Иван", profile={}))
-        session.add(Vacancy(user_id=user.id, source="habr", external_id="1", title="Python"))
+        session.add(make_vacancy(user.id, source="habr", external_id="1", title="Python"))
         await session.commit()
         user_id = user.id
 

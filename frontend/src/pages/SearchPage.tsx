@@ -5,20 +5,23 @@
  * is no button that skips one.
  */
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
 import {
   SCAN_JOB_KEY,
   STATE_KEY,
+  TRIAGE_JOB_KEY,
   clearFound,
   isActive,
-  runTriage,
   hideVacancy,
   saveVacancy,
   startScan,
+  startTriage,
   useAppState,
   useScanJob,
+  useTriageJob,
+  useTriageSettled,
 } from '../api/hooks'
 import type { FoundVacancy, SourceScan } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -130,10 +133,15 @@ export function SearchPage() {
   const isScanning = isQueueing || isActive(scanJob)
   const scanNote = scanJob?.status === 'done' ? scanJob.result : null
   const scanError = scanJob?.status === 'failed' ? scanJob.error : null
-  const [isTriaging, startTriage] = useTransition()
+  // Triage is a job as well: the button only queues it, and the cabinet
+  // shell reports the verdicts wherever the user is by then.
+  const { job: triageJob } = useTriageJob()
+  const [isQueueingTriage, setQueueingTriage] = useState(false)
+  const isTriaging = isQueueingTriage || isActive(triageJob)
+  const triageSettled = useTriageSettled()
   const [limit, setLimit] = useState(PAGE_SIZE)
-  // Bumped to take the order anew: by «Пересортировать», and after a triage
-  // or a clear — actions that reshape the whole list on the user's request.
+  // Bumped to take the order anew: by «Пересортировать», and after a clear
+  // (a finished triage does the same through `triageSettled`) — actions that reshape the whole list on the user's request.
   const [epoch, setEpoch] = useState(0)
 
   // Read once on mount; every change below writes it back, so a reload
@@ -237,6 +245,9 @@ export function SearchPage() {
     showHidden,
     JSON.stringify(conditions),
     epoch,
+    // A finished triage reshapes the list like a clear does — once its
+    // verdicts are in the rows (see useTriageSettled).
+    triageSettled,
   ].join('|')
   // The job turns "done" a moment before its rows arrive, so a new scan
   // retakes the order only once the rows it found are actually here.
@@ -348,33 +359,17 @@ export function SearchPage() {
     }
   }
 
-  function triage() {
-    startTriage(async () => {
-      try {
-        const result = await runTriage(untriaged)
-        await mutate(STATE_KEY)
-        setEpoch((current) => current + 1)
-
-        if (result.note) {
-          toast.info(result.note)
-          return
-        }
-        toast.info(`Умный отбор: разобрано ${result.judged}.`)
-        // A short reply leaves postings unjudged. They are reported, never
-        // backfilled as "skip": an unjudged vacancy is not a rejected one.
-        if (result.missing?.length) {
-          toast.error(`Без вердикта осталось ${result.missing.length}.`)
-        }
-        // Ids the model invented. Saying so makes a broken prompt look broken.
-        if (result.unknown?.length) {
-          toast.error(
-            `Модель вернула ${result.unknown.length} чужих id — вердикты по ним отброшены.`,
-          )
-        }
-      } catch (e) {
-        toast.error(e)
-      }
-    })
+  async function triage() {
+    setQueueingTriage(true)
+    try {
+      const job = await startTriage(untriaged)
+      // Seeded with the queued row so polling starts without waiting a round.
+      await mutate(TRIAGE_JOB_KEY, [job])
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setQueueingTriage(false)
+    }
   }
 
   async function clear() {

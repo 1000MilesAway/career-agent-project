@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.models import ChatMessage, Evaluation, Proposal, Resume, Vacancy
 from tests.dbmark import requires_db
+from tests.pool_helpers import make_vacancy
 
 
 @pytest.fixture
@@ -94,8 +95,8 @@ async def _active(session, user) -> Resume:
 
 
 async def _vacancy(session, user) -> Vacancy:
-    vacancy = Vacancy(
-        user_id=user.id,
+    vacancy = make_vacancy(
+        user.id,
         source="habr",
         external_id=uuid.uuid4().hex[:8],
         title="Python разработчик",

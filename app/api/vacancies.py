@@ -8,20 +8,18 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from core.llm import LLM, Ledger
 from core.sources import geekjob
-from core.triage import build_archetypes, run_triage
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Vacancy
 from ..services import liveness, scan
-from ..services.spend import charge, ensure_can_spend
+from ..services import triage as triage_service
 from ..services.tracker import STATUSES, set_status
+from ..services.triage import TriageRequest
 
 router = APIRouter(prefix="/api/vacancies", tags=["vacancies"])
 
@@ -44,7 +42,6 @@ class VacancyResponse(BaseModel):
     score: float | None
     verdict: str | None
     status: str | None
-    duplicate_of_id: uuid.UUID | None = None
     closed_at: datetime | None = None
     closed_reason: str | None = None
     checked_at: datetime | None = None
@@ -71,7 +68,6 @@ class VacancyResponse(BaseModel):
             score=evaluation.score if evaluation else None,
             verdict=evaluation.verdict if evaluation else None,
             status=v.application.status if v.application else None,
-            duplicate_of_id=v.duplicate_of_id,
             closed_at=v.closed_at,
             closed_reason=v.closed_reason,
             checked_at=v.checked_at,
@@ -136,6 +132,25 @@ async def listing(
     return [VacancyResponse.of(v) for v in result.scalars()]
 
 
+@router.get("/screened")
+async def screened(
+    session: SessionDep,
+    user: UserDep,
+    resume: ResumeDep,
+    limit: int = Query(scan.SCREENED_SHOWN, ge=1, le=scan.SCREENED_SHOWN),
+) -> list[dict[str, Any]]:
+    """What the free filters drop from the shared pool, each with its reason.
+
+    The discard log. Dropped postings no longer get a row per user, so the
+    reason is recomputed here — free and deterministic, the same one the
+    scan had. Free: no model, no network.
+    """
+    try:
+        return await scan.explain_screened(session, user.id, resume.search_profile, limit)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
 async def _owned(session: SessionDep, user: UserDep, vacancy_id: uuid.UUID) -> Vacancy:
     """One vacancy belonging to this user, or 404.
 
@@ -175,14 +190,6 @@ async def check_one(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -
     return VacancyResponse.of(vacancy)
 
 
-class TriageRequest(BaseModel):
-    # The rows the cabinet still shows under the user's conditions. A row the
-    # conditions fold away is a free-stage reject in all but name, and a paid
-    # verdict on it is the money the pipeline order exists to save. Omitted —
-    # every unjudged row, as before.
-    ids: list[uuid.UUID] | None = None
-
-
 @router.post("/triage")
 async def triage(
     session: SessionDep,
@@ -190,82 +197,16 @@ async def triage(
     resume: ResumeDep,
     body: TriageRequest | None = None,
 ) -> dict[str, Any]:
-    """The cheap stage: one model call over the whole batch.
+    """The cheap stage, holding the request open until the model answers.
 
-    Judges listing data only — no page is fetched. Nothing is deleted: every
-    verdict is written back with its reason, and postings the model failed to
-    judge go to `missing` and stay visible. Silently dropping an unjudged
-    vacancy is the worst bug this pipeline can have, so it is not done.
+    The cabinet does not call this any more: it queues a `triage` job
+    (POST /api/jobs), which the worker runs with the same `triage.run`.
+    Kept for the API, where waiting on the answer is the point.
     """
-    # Only the unjudged. A verdict survives in `triage_verdict` after the
-    # batch runs, but a "worth"/"maybe" row stays in SHORTLIST — selecting by
-    # stage alone sent the whole surviving list back through a paid call every
-    # time the button was pressed. Evaluations and artifacts both refuse to be
-    # bought twice; this one did not.
-    query = select(Vacancy).where(
-        Vacancy.user_id == user.id,
-        Vacancy.stage == scan.SHORTLIST,
-        Vacancy.triage_verdict.is_(None),
-        # A vacancy known to be closed is not worth a paid verdict. It
-        # stays in the list, marked, and is left unjudged.
-        Vacancy.closed_at.is_(None),
-        # Hidden by the user: "not interested" is already a verdict, and a
-        # paid one on top of it buys nothing.
-        Vacancy.hidden_at.is_(None),
-    )
-    if body is not None and body.ids is not None:
-        query = query.where(Vacancy.id.in_(body.ids))
-    rows = list((await session.execute(query)).scalars())
-    if not rows:
-        return {"judged": 0, "missing": [], "note": "Нечего сортировать — всё уже отсеяно"}
-
-    ensure_can_spend(user)
-
-    ledger = Ledger()
-    llm = LLM(ledger=ledger)
-
-    archetypes = resume.archetypes
-    if not archetypes:
-        archetypes = await run_in_threadpool(build_archetypes, llm, resume.profile)
-        resume.archetypes = archetypes
-
-    digests = [
-        {
-            "id": str(v.id),
-            "title": v.title,
-            "company": v.company,
-            "qualification": v.qualification,
-            "salary_text": v.salary_text,
-            "divisions": v.divisions,
-            "skills": v.skills,
-        }
-        for v in rows
-    ]
-    outcome = await run_in_threadpool(run_triage, llm, archetypes, digests)
-
-    by_id = {str(v.id): v for v in rows}
-    for vid, verdict in outcome.verdicts.items():
-        row = by_id.get(vid)
-        if row is None:
-            continue
-        row.triage_verdict = verdict["bucket"]
-        row.screen_reason = verdict.get("reason") or None
-        if verdict["bucket"] == "skip":
-            row.stage = scan.TRIAGED_OUT
-
-    await charge(session, user, ledger)
+    ids = body.ids if body is not None else None
+    result = await triage_service.run(session, user, resume, ids)
     await session.commit()
-
-    return {
-        "judged": len(outcome.verdicts),
-        "counts": outcome.counts(),
-        # Postings the model returned no verdict for. Shown, never backfilled
-        # as "skip": an unjudged vacancy is not a rejected one.
-        "missing": outcome.missing,
-        # Ids the model invented, which are not ours. Reported so a broken
-        # prompt looks broken instead of looking like a short answer.
-        "unknown": outcome.unknown,
-    }
+    return result
 
 
 @router.post("/{vacancy_id}/save", response_model=VacancyResponse)

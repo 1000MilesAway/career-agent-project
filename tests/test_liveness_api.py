@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
+from app.models import Posting as PooledPosting
 from app.models import Resume, User, Vacancy
 from app.services import scan
 from core import liveness
@@ -176,8 +177,11 @@ class TestGeekjobScan:
 
         rows = {v.external_id: v for v in (await session.execute(select(Vacancy))).scalars()}
         assert rows["a1"].stage == scan.SHORTLIST
-        # The drop keeps its reason, as every free drop does.
-        assert rows["b2"].stage == scan.SCREENED_OUT and rows["b2"].screen_reason
+        # The drop gets no row, but keeps its reason, as every free drop does.
+        assert "b2" not in rows
+        r = await client.get("/api/vacancies/screened", headers=auth_headers)
+        [drop] = [row for row in r.json() if row["url"].endswith("/b2")]
+        assert drop["reason"]
 
     async def test_a_broken_parser_is_an_error_not_an_empty_scan(
         self, client, auth_headers, session, user, monkeypatch
@@ -230,8 +234,11 @@ class TestCompanyScan:
 
         rows = {v.external_id: v for v in (await session.execute(select(Vacancy))).scalars()}
         assert rows["yandex/yandex/1"].raw_text == "полное описание yandex/yandex/1"
-        assert rows["yandex/yandex/2"].stage == scan.SCREENED_OUT
-        assert rows["yandex/yandex/2"].raw_text is None
+        pooled = {
+            p.external_id: p for p in (await session.execute(select(PooledPosting))).scalars()
+        }
+        assert pooled["yandex/yandex/2"].raw_text is None
+        assert "yandex/yandex/2" not in rows
 
 
 @requires_db
@@ -255,7 +262,7 @@ class TestSweep:
             await scan.persist(session, user.id, "habr", kept=[(posting, "")], dropped=[])
             await session.commit()
             row = (await session.execute(
-                select(Vacancy).where(Vacancy.external_id == ext)
+                select(Vacancy).join(Vacancy.posting).where(PooledPosting.external_id == ext)
             )).scalar_one()
             for key, value in extra.items():
                 setattr(row, key, value)
@@ -285,10 +292,10 @@ class TestSweep:
 
 
 class TestStale:
-    def _row(self, url: str, days: int) -> Vacancy:
+    def _row(self, url: str, days: int) -> PooledPosting:
         from datetime import UTC, datetime, timedelta
 
-        return Vacancy(url=url, published=datetime.now(UTC) - timedelta(days=days))
+        return PooledPosting(url=url, published=datetime.now(UTC) - timedelta(days=days))
 
     def test_an_old_employer_posting_is_stale(self):
         from app.services.liveness import stale_reason

@@ -66,7 +66,8 @@ async def _vacancy_text(vacancy: Vacancy) -> str:
             detail=f"Не удалось получить текст вакансии: {e}",
         ) from e
 
-    vacancy.raw_text = text
+    # On the shared posting: the next user to evaluate it reads it from here.
+    vacancy.posting.raw_text = text
     return text
 
 

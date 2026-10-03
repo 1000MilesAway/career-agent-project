@@ -95,9 +95,9 @@
 | `core/calibrate.py` | проверка, соблюдает ли скоринг свои правила; бесплатно, без модели |
 | `core/proposals.py` | слой подтверждений |
 | **`app/`** | **продукт**: FastAPI + Postgres, с пользователями. Только JSON |
-| `app/models.py` | 7 таблиц; инварианты пайплайна закреплены структурой |
+| `app/models.py` | таблицы; инварианты пайплайна закреплены структурой. Вакансии: общий пул `postings` + личные `vacancies` |
 | `app/api/` | роутеры: auth, resumes, vacancies, evaluations, artifacts, jobs, health |
-| `app/services/` | связка ядра с БД: `scan.py`, `tracker.py`, `spend.py` |
+| `app/services/` | связка ядра с БД: `pool.py` (общий пул и кэш листингов), `scan.py`, `triage.py`, `tracker.py`, `spend.py` |
 | `app/worker.py` | воркер очереди на таблице `jobs` |
 | `app/cli.py` | админские команды; главная — завести пользователя |
 | **`frontend/`** | **кабинет**: React SPA (Vite + TypeScript), свой образ с nginx |
@@ -217,7 +217,7 @@ git-статуса в начале сессии этого не показыва
 
 ```bash
 uv sync --group dev                  # зависимости из uv.lock
-uv run pytest                        # тесты (601 шт., ключ API не нужен)
+uv run pytest                        # тесты (819 шт., ключ API не нужен)
 uv run ruff check .                  # линтер
 uv run ruff check --fix .            # линтер с автоправкой
 ```
@@ -254,7 +254,7 @@ uv run python -m app.cli calibrate --source golden  # размеченный н�
 cd frontend
 npm ci                  # зависимости из package-lock.json
 npm run dev             # http://127.0.0.1:5173, /api проксируется на 8000
-npm test                # 30 тестов интерфейса, сети не требуют
+npm test                # 116 тестов интерфейса, сети не требуют
 npm run typecheck       # все три проекта TS, включая тесты
 npm run lint            # oxlint
 npm run build           # сборка в dist/ (в git не кладётся)
@@ -375,6 +375,10 @@ cd /home/vpn/career-ops && node scan.mjs --dry-run
 - **Источники:** career.habr.com (публичный JSON API + страница вакансии) и
   Telegram-каналы через `t.me/s/`. Чаты недоступны в принципе — у групп нет превью
   (302), это не блокировка. hh.ru с сервера отдаёт 403; вопрос официального API открыт.
+- **Вакансии — общий пул** (2026-10-03): `postings` одна на всех, у
+  пользователя — только личная строка `vacancies`. Листинг, прочитанный
+  недавно, из сети не запрашивается; отсеянное не хранится, причина
+  вычисляется (`GET /api/vacancies/screened`).
 - **MVP-продукт:** веб-кабинет (React SPA) + FastAPI. Вход по email и паролю или
   через Telegram — первый вход создаёт учётку без email и пароля (2026-09-30).
   Учётку по email заводит админ CLI-командой или сам пользователь регистрацией

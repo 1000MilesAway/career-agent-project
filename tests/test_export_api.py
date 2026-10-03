@@ -17,6 +17,7 @@ from io import BytesIO
 
 from app.models import Artifact, Evaluation, Resume, User, Vacancy
 from tests.dbmark import requires_db
+from tests.pool_helpers import make_vacancy
 
 PROFILE = {
     "name": "Иванов Иван",
@@ -57,8 +58,8 @@ async def _resume(session, user: User) -> Resume:
 
 
 async def _vacancy_with_tailored(session, user: User, resume: Resume) -> Vacancy:
-    vacancy = Vacancy(
-        user_id=user.id,
+    vacancy = make_vacancy(
+        user.id,
         source="habr",
         external_id="1",
         title="Backend-разработчик",
@@ -320,8 +321,8 @@ class TestTailoredExport:
         self, client, session, user, auth_headers
     ):
         await _resume(session, user)
-        vacancy = Vacancy(
-            user_id=user.id,
+        vacancy = make_vacancy(
+            user.id,
             source="habr",
             external_id="2",
             title="Без материалов",

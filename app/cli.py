@@ -35,7 +35,7 @@ from core import calibrate
 
 from .core.db import SessionLocal
 from .core.security import hash_password
-from .models import Evaluation, User, Vacancy
+from .models import Evaluation, Posting, User, Vacancy
 
 
 def _generate_password() -> str:
@@ -213,8 +213,9 @@ async def _stored_rows(email: str | None) -> list[dict]:
         # An evaluation carries no user of its own — it reaches one through the
         # vacancy it judged, which is where ownership lives.
         query = (
-            select(Evaluation.report, Vacancy.title, User.email)
+            select(Evaluation.report, Posting.title, User.email)
             .join(Vacancy, Evaluation.vacancy_id == Vacancy.id)
+            .join(Posting, Vacancy.posting_id == Posting.id)
             .join(User, Vacancy.user_id == User.id)
             .order_by(Evaluation.created_at)
         )

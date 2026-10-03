@@ -6,7 +6,7 @@ where they get lost:
 
   - What the user paid for is never silently overwritten. In the demo a rescan
     refreshed listing fields but left score, report and artifacts alone. Here
-    that separation is structural: listing data lives on `vacancies`,
+    that separation is structural: listing data lives on `postings`,
     everything bought lives on `evaluations` and `artifacts`, and refreshing
     one cannot touch the other.
   - A rejection is never silent. `vacancies.screen_reason` holds why a posting
@@ -34,6 +34,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -166,29 +167,42 @@ class Resume(Base, TimestampMixin):
     )
 
 
-class Vacancy(Base, TimestampMixin):
-    """A posting, as collected. Holds listing data only — nothing bought.
+class Posting(Base, TimestampMixin):
+    """A vacancy as a source published it. One row for everyone.
 
-    `external_id` is the source's own id (Habr's numeric id, a Telegram post
-    id). Unique per user, which is what makes a rescan an update instead of a
-    duplicate, and why the demo's `found.merge()` keyed on it.
+    The shared half of what used to be one per-user table: listing data, the
+    posting's text and whether it is still open are facts about the posting,
+    not about whoever found it, so they are fetched, checked and stored once.
+    What a user decided or bought lives on `vacancies`, which points here —
+    a refresh of this row cannot reach any of it.
+
+    `(source, external_id)` is the source's own id (Habr's numeric id, a
+    Telegram post id), which is what makes a second sighting an update rather
+    than a second row. See docs/decisions.md, 2026-10-03 (shared pool).
     """
 
-    __tablename__ = "vacancies"
+    __tablename__ = "postings"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
 
-    source: Mapped[str] = mapped_column(String(32), nullable=False)  # habr | telegram | text | url
+    source: Mapped[str] = mapped_column(String(32), nullable=False)  # habr | telegram | ...
     external_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Which part of a source it came from, where the user chooses parts: an
+    # employer board's group ("ru" / "global"), a Telegram channel's group
+    # ("core" / "adjacent"). Matching reads only the parts this scan asked for.
+    segment: Mapped[str | None] = mapped_column(String(32))
     url: Mapped[str | None] = mapped_column(String(1024))
 
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     company: Mapped[str | None] = mapped_column(String(255))
     qualification: Mapped[str | None] = mapped_column(String(32))
     salary_text: Mapped[str | None] = mapped_column(String(255))
+    # The band as numbers, so the free filters can judge a stored posting
+    # again without the source: a profile change re-matches the pool, and the
+    # pool has no page to re-read. Same meaning as `Posting.salary_*` in core.
+    salary_from: Mapped[int | None] = mapped_column(Integer)
+    salary_to: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str | None] = mapped_column(String(8))
     location: Mapped[str | None] = mapped_column(String(255))
     remote: Mapped[bool | None] = mapped_column(Boolean)
     # Russian IT accreditation as the source states it; None = not stated.
@@ -198,10 +212,102 @@ class Vacancy(Base, TimestampMixin):
     skills: Mapped[list[str] | None] = mapped_column(JSONB)
 
     # The posting's own text. For Telegram this is the ONLY copy: t.me has no
-    # page to re-fetch, so a lost text means an unevaluatable vacancy. It is
-    # never overwritten by a rescan — dedup there runs on the text itself, so
-    # different text is a different vacancy, not an update to this one.
+    # page to re-fetch, so a lost text means an unevaluatable vacancy. Never
+    # overwritten by a later sighting — dedup there runs on the text itself,
+    # so different text is a different posting, not an update to this one.
+    # The one write after creation is `needs_text` below being served.
     raw_text: Mapped[str | None] = mapped_column(Text)
+    # The text still lacks the description the posting links to: a Telegram
+    # teaser whose page was not read yet, a board that lists no descriptions.
+    # Fetched once a user's free filters keep the posting — someone else's
+    # bandwidth is spent on survivors only — and then for everyone.
+    needs_text: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    # Where that description lives, for a Telegram teaser.
+    description_url: Mapped[str | None] = mapped_column(String(1024))
+
+    # The same vacancy seen elsewhere first (core/dedup.py). Points at the
+    # root of the cluster, never at another copy. Who sees which copy is
+    # decided per user at match time: a copy whose original that user's
+    # filters drop is judged on its own, so it is never hidden for good.
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("postings.id", ondelete="SET NULL")
+    )
+    # company|title, and a SimHash of the text for Telegram reposts.
+    dedup_key: Mapped[str | None] = mapped_column(String(255))
+    text_fp: Mapped[str | None] = mapped_column(String(16))
+
+    # When a fetch last returned it. Matching reads postings seen recently;
+    # one that dropped off every listing ages out of new matches.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Whether the posting is still open (core/liveness.py). `closed_at` is set
+    # only on positive evidence — a 404/410 or the page's archive banner; an
+    # unreachable page leaves it alone. Checked once for everyone.
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_reason: Mapped[str | None] = mapped_column(String(255))
+
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_postings_source_ext"),
+        Index("ix_postings_source_seen", "source", "last_seen_at"),
+        Index("ix_postings_dedup_key", "dedup_key"),
+    )
+
+    @property
+    def cluster_id(self) -> uuid.UUID:
+        """The original this posting copies, or itself."""
+        return self.duplicate_of_id or self.id
+
+
+class SourceFetch(Base):
+    """When one listing was last read from a source, for everyone.
+
+    The cache that makes the pool save requests: a scan asks only for the
+    listings nobody read recently and matches the rest from `postings`. `key`
+    names the listing (a Habr query with its parameters, an employer group
+    with its queries, a Telegram channel group); `extra` keeps what the fetch
+    reported — channels read, boards that failed — so a scan answered from
+    the cache reports the same problems as the scan that paid for the fetch.
+    """
+
+    __tablename__ = "source_fetches"
+
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column(String(512), primary_key=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    extra: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class Vacancy(Base, TimestampMixin):
+    """One user's view of a posting: how far it got for them, and their calls.
+
+    Nothing about the posting itself is stored here — it is read through
+    `posting`, which is shared. Everything bought hangs off this row
+    (`evaluations`, `application`), so it stays the user's alone.
+
+    A row exists only for a posting that passed this user's free filters, or
+    that the user acted on. What the free filters dropped is not stored per
+    user: the filters are deterministic and free, so the reason is computed
+    from the pool when asked (`GET /api/vacancies/screened`) — the discard log
+    without a copy of the pool per user. `screened_out` survives only on rows
+    the user acted on before their profile stopped matching them.
+    """
+
+    __tablename__ = "vacancies"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Joined on every load: almost every reader shows the posting's fields,
+    # and a lazy load in async code is an error, not a slow query.
+    posting_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("postings.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # How far the posting got, and why it stopped. `screen_reason` is the
     # product's version of career-ops' discard.log: a dropped vacancy stays
@@ -209,25 +315,6 @@ class Vacancy(Base, TimestampMixin):
     stage: Mapped[str] = mapped_column(String(32), default="collected", nullable=False)
     screen_reason: Mapped[str | None] = mapped_column(String(512))
     triage_verdict: Mapped[str | None] = mapped_column(String(16))  # worth | maybe | skip
-
-    # The same vacancy seen elsewhere first (core/dedup.py). A duplicate is
-    # stored screened out with the original named in `screen_reason`, so it
-    # costs no triage and no evaluation but stays visible — never dropped.
-    # `dedup_key` is company|title; `text_fp` a SimHash of the text, for
-    # Telegram reposts whose wrappers differ.
-    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("vacancies.id", ondelete="SET NULL")
-    )
-    dedup_key: Mapped[str | None] = mapped_column(String(255))
-    text_fp: Mapped[str | None] = mapped_column(String(16))
-
-    # Whether the posting is still open (core/liveness.py). `closed_at` is set
-    # only on positive evidence — a 404/410 or the page's archive banner;
-    # an unreachable page leaves it alone. A closed row keeps everything the
-    # user bought for it and stays visible, marked.
-    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    closed_reason: Mapped[str | None] = mapped_column(String(255))
 
     # "Not interested" from the user. A person's call, like `is_saved`, and
     # like every drop it is reversible and visible: the list folds hidden rows
@@ -240,6 +327,7 @@ class Vacancy(Base, TimestampMixin):
     saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="vacancies")
+    posting: Mapped[Posting] = relationship(lazy="joined", innerjoin=True)
     evaluations: Mapped[list[Evaluation]] = relationship(
         back_populates="vacancy", cascade="all, delete-orphan"
     )
@@ -248,10 +336,30 @@ class Vacancy(Base, TimestampMixin):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "source", "external_id", name="uq_vacancies_user_source_ext"),
+        UniqueConstraint("user_id", "posting_id", name="uq_vacancies_user_posting"),
         Index("ix_vacancies_user_stage", "user_id", "stage"),
-        Index("ix_vacancies_user_dedup_key", "user_id", "dedup_key"),
     )
+
+    # The posting's fields, read through. Read-only on purpose: a write to
+    # one of these from user code would change the posting for everyone, so
+    # code that means to do that says `vacancy.posting.<field>`.
+    source = property(lambda self: self.posting.source)
+    external_id = property(lambda self: self.posting.external_id)
+    url = property(lambda self: self.posting.url)
+    title = property(lambda self: self.posting.title)
+    company = property(lambda self: self.posting.company)
+    qualification = property(lambda self: self.posting.qualification)
+    salary_text = property(lambda self: self.posting.salary_text)
+    location = property(lambda self: self.posting.location)
+    remote = property(lambda self: self.posting.remote)
+    accredited = property(lambda self: self.posting.accredited)
+    published = property(lambda self: self.posting.published)
+    divisions = property(lambda self: self.posting.divisions)
+    skills = property(lambda self: self.posting.skills)
+    raw_text = property(lambda self: self.posting.raw_text)
+    checked_at = property(lambda self: self.posting.checked_at)
+    closed_at = property(lambda self: self.posting.closed_at)
+    closed_reason = property(lambda self: self.posting.closed_reason)
 
 
 class Evaluation(Base, TimestampMixin):

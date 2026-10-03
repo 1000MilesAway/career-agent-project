@@ -19,6 +19,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from app.models import Posting as PooledPosting
 from app.models import Vacancy
 from app.services import scan
 from core.sources import telegram
@@ -74,7 +75,9 @@ PROFILE = {"queries": ["python"], "positive": ["python", "backend"]}
 async def _stored_text(session, user_id: uuid.UUID) -> str | None:
     row = (
         await session.execute(
-            select(Vacancy).where(Vacancy.user_id == user_id, Vacancy.source == "telegram")
+            select(Vacancy)
+            .join(Vacancy.posting)
+            .where(Vacancy.user_id == user_id, PooledPosting.source == "telegram")
         )
     ).scalars().first()
     return row.raw_text if row else None
@@ -82,6 +85,29 @@ async def _stored_text(session, user_id: uuid.UUID) -> str | None:
 
 @requires_db
 class TestDescriptionReachesStorage:
+    async def test_the_description_is_read_once_for_everyone(
+        self, session, user, stub_collector, monkeypatch
+    ):
+        """The second user's scan finds the description already in the pool."""
+        from app.models import User
+
+        stub_collector([teaser()])
+        await scan.collect_telegram(session, user.id, PROFILE, channels=["chan"])
+
+        other = User(email="other@example.com", password_hash="x")
+        session.add(other)
+        await session.flush()
+
+        def must_not_fetch(*a, **kw):
+            raise AssertionError("описание уже в пуле — повторный запрос")
+
+        monkeypatch.setattr(telegram, "fetch_externals", must_not_fetch)
+        monkeypatch.setattr(telegram, "search_many", must_not_fetch)
+        result = await scan.collect_telegram(session, other.id, PROFILE, channels=["chan"])
+
+        assert result["new"] == 1
+        assert "Backend-разработка от 5 лет" in await _stored_text(session, other.id)
+
     async def test_the_linked_description_is_stored(self, session, user, stub_collector):
         """Storing post.text instead would throw the fetched page away here."""
         stub_collector([teaser()])

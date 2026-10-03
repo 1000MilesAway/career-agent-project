@@ -41,7 +41,8 @@ Browser (React SPA) ──JSON/HTTPS──▶ FastAPI (REST) ──▶ Postgres
 
 - `users` — email, password_hash, consent_at, plan, limits, is_active, created_at.
 - `resumes` — user_id, source_file, raw_text, profile_json (структурированный профиль), is_active.
-- `vacancies` — user_id, source (text/screenshot/url/hh_api), raw_text, url, title, company, parsed_json.
+- `postings` — общий пул вакансий: source, external_id, поля листинга, raw_text, дедуп, живость (с 2026-10-03, см. `docs/decisions.md`).
+- `vacancies` — личная строка пользователя: user_id, posting_id, stage, вердикты, избранное, скрытие.
 - `evaluations` — vacancy_id, resume_id, report_json, score, verdict, model, tokens_in/out, cost.
 - `artifacts` — evaluation_id, kind (tailored_resume/cover_letter/interview_prep), content_json, pdf_path.
 - `applications` — vacancy_id, status, status_history_json, next_followup_at.

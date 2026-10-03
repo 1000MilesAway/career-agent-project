@@ -22,9 +22,9 @@ import type {
   ResumeProfile,
   ResumeResponse,
   ScanJob,
+  TriageJob,
   SearchProfile,
   SearchProfileProposal,
-  TriageResult,
 } from './types'
 
 export const STATE_KEY = '/api/state'
@@ -63,19 +63,44 @@ export interface ScanParams {
  */
 export const SCAN_JOB_KEY = '/api/jobs?kind=scan&limit=1'
 
-const SCAN_POLL_MS = 2000
+const JOB_POLL_MS = 2000
 
 export const isActive = (job: Pick<Job, 'status'> | null | undefined): boolean =>
   job?.status === 'queued' || job?.status === 'running'
 
-export function useScanJob(enabled = true) {
-  const swr = useSWR<ScanJob[]>(enabled ? SCAN_JOB_KEY : null, fetcher, {
+function useLatestJob<J extends Job>(key: string, enabled: boolean) {
+  const swr = useSWR<J[]>(enabled ? key : null, fetcher, {
     // Polled only while one runs: an idle cabinet asks nothing.
-    refreshInterval: (rows) => (isActive(rows?.[0]) ? SCAN_POLL_MS : 0),
+    refreshInterval: (rows) => (isActive(rows?.[0]) ? JOB_POLL_MS : 0),
     dedupingInterval: 1000,
   })
   return { ...swr, job: swr.data?.[0] ?? null }
 }
+
+export const useScanJob = (enabled = true) => useLatestJob<ScanJob>(SCAN_JOB_KEY, enabled)
+
+/** The latest «умный отбор». A job for the same reason a scan is one: a model
+ * call awaited inside a transition held the cabinet's navigation with it. */
+export const TRIAGE_JOB_KEY = '/api/jobs?kind=triage&limit=1'
+
+export const useTriageJob = (enabled = true) =>
+  useLatestJob<TriageJob>(TRIAGE_JOB_KEY, enabled)
+
+/** When the last finished triage's verdicts reached the list.
+ *
+ * Set by the watcher after the state is refetched, not when the job turns
+ * done: the job finishes a moment before its verdicts arrive, and the search
+ * page retakes its order on this mark — too early, and it would sort the old
+ * rows. Local to the browser: SWR's cache with no fetcher.
+ */
+export const TRIAGE_SETTLED_KEY = 'local:triage-settled'
+
+export function useTriageSettled(): string | null {
+  return useSWR<string | null>(TRIAGE_SETTLED_KEY, null).data ?? null
+}
+
+export const markTriageSettled = (finishedAt: string | null) =>
+  mutate(TRIAGE_SETTLED_KEY, finishedAt, { revalidate: false })
 
 /** Queue a scan. A scan already running is returned instead of a second one. */
 export const startScan = (params: ScanParams) =>
@@ -92,9 +117,13 @@ export const setHidden = (vacancyId: string, hidden: boolean) =>
 export const recheckVacancies = () =>
   api<RecheckResult>('/api/vacancies/recheck', { method: 'POST' })
 
-/** `ids` limits the paid call to the rows the user's conditions keep. */
-export const runTriage = (ids?: string[]) =>
-  api<TriageResult>('/api/vacancies/triage', { method: 'POST', json: { ids: ids ?? null } })
+/** Queue a triage. `ids` limits the paid call to the rows the user's
+ * conditions keep. One already running is returned instead of a second. */
+export const startTriage = (ids?: string[]) =>
+  api<TriageJob>('/api/jobs', {
+    method: 'POST',
+    json: { kind: 'triage', payload: { ids: ids ?? null } },
+  })
 
 export const clearFound = () =>
   api<{ deleted: number }>('/api/vacancies/clear', { method: 'POST' })

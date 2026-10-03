@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.api.state import salary_band
 from app.models import Evaluation, Resume, User, Vacancy
+from app.models import Posting as PooledPosting
 from app.services import scan
 from core.sources.habr_api import Posting
 from tests.dbmark import requires_db
@@ -65,8 +66,13 @@ class TestState:
     async def test_a_dropped_vacancy_stays_visible_with_its_reason(
         self, client, session, user, auth_headers
     ):
-        """Rejection never goes silent — that rule outlives the storage change."""
-        await _resume_for(session, user)
+        """Rejection never goes silent — that rule outlives the storage change.
+
+        The drop is not a row of the user's any more; the discard log
+        recomputes it from the pool with the user's own filters.
+        """
+        resume = await _resume_for(session, user)
+        resume.search_profile = {"queries": ["python"], "positive": ["Python"]}
         await scan.persist(
             session,
             user.id,
@@ -77,9 +83,13 @@ class TestState:
         await session.commit()
 
         found = (await client.get("/api/state", headers=auth_headers)).json()["found"]
-        dropped = [f for f in found if f["stage"] == scan.SCREENED_OUT]
-        assert len(dropped) == 1
-        assert "бариста" in dropped[0]["screen_reason"]
+        assert [f["title"] for f in found] == ["Python разработчик"]
+
+        r = await client.get("/api/vacancies/screened", headers=auth_headers)
+        assert r.status_code == 200, r.text
+        [dropped] = r.json()
+        assert dropped["title"] == "Бариста"
+        assert dropped["reason"]
 
     async def test_the_quota_travels_with_the_state_as_shares(
         self, client, auth_headers
@@ -122,7 +132,7 @@ class TestClear:
         )
         await session.commit()
 
-        rows = (await session.execute(select(Vacancy).order_by(Vacancy.external_id))).scalars().all()
+        rows = (await session.execute(select(Vacancy).join(Vacancy.posting).order_by(PooledPosting.external_id))).scalars().all()
         keeper = rows[0]
         keeper.is_saved = True
         session.add(

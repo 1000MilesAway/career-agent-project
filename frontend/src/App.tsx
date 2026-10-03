@@ -35,6 +35,7 @@ import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
 import { SupportBubble } from './components/SupportBubble'
 import { Skeleton } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
+import { useTriageWatcher } from './components/useTriageWatcher'
 import { useTheme, type Theme } from './components/theme'
 import { lazyPage } from './lazyPage'
 import './App.css'
@@ -73,9 +74,10 @@ function Cabinet() {
   const { data: proposals } = useProposals()
   const savedCount = data?.found.filter((row) => row.saved).length ?? 0
   const pendingCount = proposals?.length ?? 0
-  // Here, not on the search page: a scan runs on the server and the user is
-  // free to leave the page while it does.
+  // Here, not on the search page: a scan and a triage run on the server and
+  // the user is free to leave the page while they do.
   const scanning = isActive(useScanWatcher())
+  const triaging = isActive(useTriageWatcher())
 
   // Without a CV the scan refuses to work, so that is where a new account
   // starts. Once one is loaded, search is the page people come back to.
@@ -90,7 +92,7 @@ function Cabinet() {
         </div>
 
         <nav className="side__nav" aria-label="Разделы">
-          <NavItem to="/search" icon={<SearchIcon />} busy={scanning}>
+          <NavItem to="/search" icon={<SearchIcon />} busy={scanning || triaging}>
             Поиск
           </NavItem>
           <NavItem to="/saved" icon={<StarIcon />} count={savedCount}>
