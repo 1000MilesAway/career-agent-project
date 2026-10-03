@@ -10,13 +10,14 @@
  * changes waiting for a decision) should stay in view while they work.
  */
 
-import { Suspense, useState, type ReactNode } from 'react'
+import { Suspense, useState, type FocusEvent, type ReactNode } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { isActive, useAppState, useProposals } from './api/hooks'
-import type { Quota, QuotaWindow } from './api/types'
+import type { AppState, Quota, QuotaWindow } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
+import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
 import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
@@ -48,6 +49,8 @@ function Screen() {
   // Before the token check: the link from a letter must work whether or not
   // this browser is logged in, and logged in as whom.
   if (pathname === '/verify') return <VerifyPage />
+  if (!token && pathname === '/terms') return <LegalScreen doc="terms" />
+  if (!token && pathname === '/privacy') return <LegalScreen doc="privacy" />
   if (!token) return <LoginPage />
   return <Cabinet />
 }
@@ -96,19 +99,7 @@ function Cabinet() {
           {data ? <QuotaMeter quota={data.spend.quota} /> : null}
           {data ? (
             <>
-              {/* The name opens the account: settings, Telegram, logout —
-                  all rarely used, so none of it sits in the sidebar itself. */}
-              <button
-                type="button"
-                className="side__user"
-                onClick={() => setProfileOpen(true)}
-                title="Профиль и настройки"
-                aria-label={`Профиль: ${displayName(data.user)}`}
-                aria-haspopup="dialog"
-              >
-                <Avatar user={data.user} />
-                <span className="side__name">{displayName(data.user)}</span>
-              </button>
+              <UserMenu user={data.user} onProfile={() => setProfileOpen(true)} />
               <ProfileDialog
                 open={profileOpen}
                 user={data.user}
@@ -134,6 +125,8 @@ function Cabinet() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/saved" element={<SavedPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/terms" element={<LegalPage doc="terms" />} />
+            <Route path="/privacy" element={<LegalPage doc="privacy" />} />
             <Route path="*" element={<Navigate to={home} replace />} />
           </Routes>
         </Suspense>
@@ -237,3 +230,67 @@ function QuotaBar({
 /** Dates on the Moscow clock: that is where the quota periods turn over. */
 const moscowDate = (iso: string, options: Intl.DateTimeFormatOptions): string =>
   new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', ...options })
+
+/** The name in the corner opens a short menu: the account, and the documents
+ *  that are needed rarely but must be one click away from anywhere. */
+function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () => void }) {
+  const [open, setOpen] = useState(false)
+
+  // Focus leaving the menu closes it: a click elsewhere or Tab past the end.
+  function onBlur(event: FocusEvent<HTMLDivElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+  }
+
+  return (
+    <div
+      className="user-menu"
+      onBlur={onBlur}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') setOpen(false)
+      }}
+    >
+      {open ? (
+        <div className="user-menu__list" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            className="user-menu__item"
+            onClick={() => {
+              setOpen(false)
+              onProfile()
+            }}
+          >
+            Профиль и настройки
+          </button>
+          <p className="user-menu__group">Документы</p>
+          {(['terms', 'privacy'] as const).map((doc) => (
+            <NavLink
+              key={doc}
+              to={`/${doc}`}
+              role="menuitem"
+              className="user-menu__item"
+              onClick={() => setOpen(false)}
+            >
+              {LEGAL_TITLES[doc]}
+            </NavLink>
+          ))}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="side__user"
+        onClick={() => setOpen(!open)}
+        title="Профиль и документы"
+        aria-label={`Меню: ${displayName(user)}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <Avatar user={user} />
+        <span className="side__name">{displayName(user)}</span>
+        <span className="side__caret" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+    </div>
+  )
+}

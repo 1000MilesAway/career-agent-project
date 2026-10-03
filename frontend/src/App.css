@@ -255,6 +255,57 @@
   white-space: nowrap;
 }
 
+.side__caret {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* The menu opens upwards: the button is the last thing in the sidebar. */
+.user-menu {
+  position: relative;
+}
+
+.user-menu__list {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: -8px;
+  right: -8px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+
+.user-menu__item {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.user-menu__item:hover,
+.user-menu__item:focus-visible {
+  background: var(--sunken);
+}
+
+.user-menu__group {
+  margin: 6px 0 0;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
 /* ── Narrow screens ──────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
@@ -282,6 +333,7 @@
   .brand__name,
   .meter,
   .side__name,
+  .side__caret,
   .side__user::before {
     display: none;
   }
@@ -315,6 +367,15 @@
     margin: 0;
     padding: 3px;
     border-radius: 50%;
+  }
+
+  /* In the top bar the avatar sits at the right edge: open down and leftwards. */
+  .user-menu__list {
+    top: calc(100% + 8px);
+    bottom: auto;
+    left: auto;
+    right: 0;
+    width: 240px;
   }
 }
 

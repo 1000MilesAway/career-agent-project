@@ -1097,6 +1097,15 @@ html[data-view='landing'] {
   color: color-mix(in srgb, var(--on-ink) 55%, transparent);
 }
 
+.l-foot a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+
+.l-foot a:hover {
+  color: var(--on-ink);
+}
+
 /* ---------- keyframes ---------- */
 
 @keyframes l-rise {

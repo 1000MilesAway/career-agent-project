@@ -209,6 +209,11 @@ export function LoginPage() {
                 'Впервые здесь? Войдите через Telegram — учётка создастся сама.'
               )}
             </p>
+
+            <p className="login__legal">
+              Входя, вы принимаете <a href="#/terms">пользовательское соглашение</a> и{' '}
+              <a href="#/privacy">политику конфиденциальности</a>.
+            </p>
           </>
         )}
       </section>

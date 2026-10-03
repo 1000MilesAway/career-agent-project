@@ -1,0 +1,70 @@
+/* The agreement and the policy: long text set for reading, not scanning. */
+
+.legal-screen {
+  min-height: 100dvh;
+  padding: 40px 56px 0;
+}
+
+.legal-screen .page {
+  padding: 32px 0 96px;
+}
+
+/* .page.legal: ui.css loads after this file and its .page would win. */
+.page.legal {
+  max-width: 72ch;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.legal__edition {
+  margin: 8px 0 28px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.legal__section {
+  margin-bottom: 24px;
+}
+
+.legal__section h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.legal__section p,
+.legal__section ul {
+  margin: 0 0 10px;
+}
+
+.legal__section ul {
+  padding-left: 20px;
+}
+
+.legal__section li + li {
+  margin-top: 4px;
+}
+
+.legal__section b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.legal a {
+  color: var(--accent);
+}
+
+.legal__other {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .legal-screen {
+    padding: 28px 20px 0;
+  }
+}
