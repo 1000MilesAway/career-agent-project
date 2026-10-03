@@ -229,6 +229,8 @@ export interface ScanResult {
    * their own; GET /api/vacancies/screened names the original. */
   duplicates?: number
   kept?: number
+  /** Listings answered from a stale pool; a background refresh re-reads them. */
+  deferred?: number
   channels?: string[]
   /** Telegram names the channel, employer boards the board. */
   problems?: { channel?: string; board?: string; why: string }[]

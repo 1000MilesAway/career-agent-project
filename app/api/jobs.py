@@ -24,6 +24,9 @@ from ..services.triage import TriageRequest
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 JobKind = Literal["evaluate", "tailor", "letter", "interview", "scan", "triage"]
+# What the cabinet may read back. "refresh" is queued by the worker after a
+# scan answered from a stale pool, never by a user.
+ListedKind = Literal[JobKind, "refresh"]
 # Kinds a user runs one at a time: a second press, or a second tab, gets the
 # job already under way instead of walking the boards or paying twice.
 ONE_AT_A_TIME = ("scan", "triage")
@@ -134,7 +137,7 @@ async def read(job_id: uuid.UUID, session: SessionDep, user: UserDep) -> JobResp
 async def listing(
     session: SessionDep,
     user: UserDep,
-    kind: JobKind | None = Query(None),
+    kind: ListedKind | None = Query(None),
     limit: int = Query(50, ge=1, le=50),
 ) -> list[JobResponse]:
     """Newest first. `?kind=scan&limit=1` is what the cabinet polls while a

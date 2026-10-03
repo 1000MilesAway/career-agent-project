@@ -10,6 +10,7 @@ import type { ScanJob } from '../api/types'
 
 const mocks = vi.hoisted(() => ({
   job: null as unknown,
+  refresh: null as unknown,
   mutate: vi.fn(),
   info: vi.fn(),
   error: vi.fn(),
@@ -17,9 +18,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../api/hooks', () => ({
   STATE_KEY: '/api/state',
+  REFRESH_JOB_KEY: '/api/jobs?kind=refresh&limit=1',
   isActive: (job: { status?: string } | null) =>
     job?.status === 'queued' || job?.status === 'running',
   useScanJob: () => ({ job: mocks.job }),
+  useRefreshJob: () => ({ job: mocks.refresh }),
 }))
 
 vi.mock('swr', () => ({ useSWRConfig: () => ({ mutate: mocks.mutate }) }))
@@ -47,6 +50,7 @@ function job(status: ScanJob['status'], extra: Partial<ScanJob> = {}): ScanJob {
 describe('useScanWatcher', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.refresh = null
   })
 
   it('закончившийся поиск обновляет список и говорит, сколько нового', () => {
@@ -79,5 +83,47 @@ describe('useScanWatcher', () => {
 
     expect(mocks.info).not.toHaveBeenCalled()
     expect(mocks.mutate).not.toHaveBeenCalled()
+  })
+
+  it('поиск из устаревшего пула обещает обновление и запрашивает его', () => {
+    mocks.job = job('running')
+    const { rerender } = renderHook(() => useScanWatcher())
+    mocks.job = job('done', { result: { collected: 10, dropped: 5, new: 2, deferred: 4 } })
+    rerender()
+
+    expect(mocks.mutate).toHaveBeenCalledWith('/api/jobs?kind=refresh&limit=1')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Поиск закончен: новых вакансий 2. Источники обновляются в фоне — свежие вакансии появятся сами.',
+    )
+  })
+
+  it('закончившееся обновление дописывает список и говорит о новых', () => {
+    const { rerender } = renderHook(() => useScanWatcher())
+    mocks.refresh = job('running', { id: 'r1', kind: 'refresh' })
+    rerender()
+    mocks.refresh = job('done', {
+      id: 'r1',
+      kind: 'refresh',
+      result: { collected: 10, dropped: 5, new: 3 },
+    })
+    rerender()
+
+    expect(mocks.mutate).toHaveBeenCalledWith('/api/state')
+    expect(mocks.info).toHaveBeenCalledWith('Источники обновлены: ещё новых вакансий 3.')
+  })
+
+  it('обновление без новых вакансий не шумит', () => {
+    const { rerender } = renderHook(() => useScanWatcher())
+    mocks.refresh = job('running', { id: 'r1', kind: 'refresh' })
+    rerender()
+    mocks.refresh = job('done', {
+      id: 'r1',
+      kind: 'refresh',
+      result: { collected: 10, dropped: 10, new: 0 },
+    })
+    rerender()
+
+    expect(mocks.mutate).toHaveBeenCalledWith('/api/state')
+    expect(mocks.info).not.toHaveBeenCalled()
   })
 })

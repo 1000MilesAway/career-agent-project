@@ -235,3 +235,43 @@ class TestThePoolSavesRequests:
 
         assert await titles(first) == ["Python разработчик"]
         assert await titles(second) == ["Go разработчик"]
+
+    async def test_a_deferred_scan_answers_a_stale_listing_from_the_pool(
+        self, session, monkeypatch
+    ):
+        """The cabinet's scan does not wait for the boards; the refresh does."""
+        from datetime import timedelta
+
+        from app.models import SourceFetch
+
+        user = await _user(session)
+        calls: list[str] = []
+        fakes(
+            monkeypatch, calls,
+            habr=batch("habr", Posting(id="1", url="u", title="Python", company="A")),
+        )
+        await scan.collect_all(session, user.id, PROFILE)
+        await session.commit()
+        for fetch in (await session.execute(select(SourceFetch))).scalars():
+            fetch.fetched_at -= timedelta(hours=3)
+        await session.commit()
+
+        calls.clear()
+        result = await scan.collect_all(session, user.id, PROFILE, defer_stale=True)
+        assert calls == []
+        assert result["deferred"] == 4
+        assert result["sources"]["habr"]["kept"] == 1
+
+        result = await scan.collect_all(session, user.id, PROFILE)
+        assert sorted(calls) == ["company", "geekjob", "habr", "telegram"]
+        assert result["deferred"] == 0
+
+    async def test_a_listing_never_read_is_fetched_even_when_deferring(
+        self, session, monkeypatch
+    ):
+        user = await _user(session)
+        calls: list[str] = []
+        fakes(monkeypatch, calls)
+        result = await scan.collect_all(session, user.id, PROFILE, defer_stale=True)
+        assert sorted(calls) == ["company", "geekjob", "habr", "telegram"]
+        assert result["deferred"] == 0

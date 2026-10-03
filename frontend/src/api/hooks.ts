@@ -79,6 +79,13 @@ function useLatestJob<J extends Job>(key: string, enabled: boolean) {
 
 export const useScanJob = (enabled = true) => useLatestJob<ScanJob>(SCAN_JOB_KEY, enabled)
 
+/** The background re-read of listings a scan answered from a stale pool.
+ * Queued by the worker, not by the cabinet; same result shape as a scan. */
+export const REFRESH_JOB_KEY = '/api/jobs?kind=refresh&limit=1'
+
+export const useRefreshJob = (enabled = true) =>
+  useLatestJob<ScanJob>(REFRESH_JOB_KEY, enabled)
+
 /** The latest «умный отбор». A job for the same reason a scan is one: a model
  * call awaited inside a transition held the cabinet's navigation with it. */
 export const TRIAGE_JOB_KEY = '/api/jobs?kind=triage&limit=1'

@@ -395,6 +395,10 @@ class Options:
     telegram_groups: tuple[str, ...] = ("core",)
     channels: list[str] | None = None
     pages: int | None = None
+    # Answer from the pool now and leave stale listings to a background
+    # refresh (the worker's "refresh" job). A listing the pool has never read
+    # is still fetched: there is nothing to answer it with.
+    defer_stale: bool = False
 
 
 def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
@@ -609,13 +613,20 @@ async def collect(
             plans[name] = e
 
     stale: dict[str, list[Listing]] = {}
+    deferred: dict[str, int] = {}
     cached: dict[str, dict[str, Any]] = {}
     for name, p in plans.items():
         if isinstance(p, BaseException):
             continue
-        fresh = await pool.fresh_keys(session, name, [x.key for x in p.listings], now)
-        stale[name] = [x for x in p.listings if x.key not in fresh]
-        cached[name] = _merge_extra([f.extra or {} for f in fresh.values()])
+        known = await pool.known_keys(session, name, [x.key for x in p.listings])
+        # What the pool answers for: fresh listings, plus stale ones when
+        # their re-read is left to the background refresh.
+        reused = {
+            k: f for k, f in known.items() if options.defer_stale or pool.is_fresh(f, now)
+        }
+        stale[name] = [x for x in p.listings if x.key not in reused]
+        deferred[name] = sum(1 for f in reused.values() if not pool.is_fresh(f, now))
+        cached[name] = _merge_extra([f.extra or {} for f in reused.values()])
 
     fetched = await asyncio.gather(
         *(run_in_threadpool(_fetch_all, stale[name]) for name in stale),
@@ -652,6 +663,9 @@ async def collect(
             # How many of the listings came from the pool without a request.
             "from_pool": len(p.listings) - len(stale[name]),
             "fetched": len(stale[name]),
+            # Of those, how many are past their freshness and wait for the
+            # background refresh.
+            "deferred": deferred[name],
         }
 
     ok = [s for s in sources_out.values() if "error" not in s]
@@ -662,6 +676,7 @@ async def collect(
         "dropped": sum(s["dropped"] for s in ok),
         "duplicates": sum(s["duplicates"] for s in ok),
         "new": sum(s["new"] for s in ok),
+        "deferred": sum(s["deferred"] for s in ok),
     }
 
 
@@ -748,6 +763,7 @@ async def collect_all(
     ask_habr_for_salary: bool = True,
     company_groups: tuple[str, ...] = ("ru",),
     telegram_groups: tuple[str, ...] = ("core",),
+    defer_stale: bool = False,
 ) -> dict[str, Any]:
     """Every source in one go. The only error raised is the missing profile,
     which would fail every source identically."""
@@ -758,6 +774,7 @@ async def collect_all(
             ask_habr_for_salary=ask_habr_for_salary,
             company_groups=company_groups,
             telegram_groups=telegram_groups,
+            defer_stale=defer_stale,
         ),
     )
 
@@ -881,7 +898,11 @@ def with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[st
 
 
 async def run_scan(
-    session: AsyncSession, user: User, resume: Resume, body: ScanRequest
+    session: AsyncSession,
+    user: User,
+    resume: Resume,
+    body: ScanRequest,
+    defer_stale: bool = False,
 ) -> dict[str, Any]:
     """One scan as the user asked for it: profile, this run's form, the sources.
 
@@ -890,6 +911,11 @@ async def run_scan(
     owns the transaction. Raises ValueError for an unusable profile and lets a
     single board's network or markup failure through; a scan of everything
     reports those per source instead.
+
+    `defer_stale` answers a scan of everything from the pool and reports how
+    many listings were past their freshness (`deferred`); the worker reads
+    those in a follow-up job. A single source asked for by name is always
+    read now — that request is for debugging one board, not for speed.
     """
     search_profile = await ensure_search_profile(session, user, resume)
     search_profile = with_overrides(search_profile, body)
@@ -902,6 +928,7 @@ async def run_scan(
             ask_habr_for_salary=not body.any_salary,
             company_groups=company_groups,
             telegram_groups=tuple(body.groups),
+            defer_stale=defer_stale,
         )
     if body.source == "habr":
         return await collect_habr(

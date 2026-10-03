@@ -177,3 +177,61 @@ class TestOrphans:
         async with worker_db() as s:
             statuses = sorted((await s.execute(select(Job.status))).scalars())
         assert statuses == ["done", "failed"]
+
+
+def _answer(deferred: int):
+    async def fake_all(session_, user_id, search_profile, **kw):
+        fake_all.calls.append(kw.get("defer_stale"))
+        return {"sources": {}, "collected": 0, "kept": 0, "dropped": 0,
+                "duplicates": 0, "new": 0, "deferred": deferred}
+
+    fake_all.calls = []
+    return fake_all
+
+
+@requires_db
+class TestStaleListingsAreRefreshedBehindTheScan:
+    async def test_a_stale_pool_queues_one_refresh(
+        self, client, auth_headers, resume, worker_db, monkeypatch
+    ):
+        fake = _answer(deferred=3)
+        monkeypatch.setattr(scan, "collect_all", fake)
+
+        for _ in range(2):
+            await client.post(
+                "/api/jobs", headers=auth_headers, json={"kind": "scan", "payload": FORM}
+            )
+            await worker.tick(scans=True)
+        assert fake.calls == [True, True]
+
+        rows = (await client.get("/api/jobs?kind=refresh", headers=auth_headers)).json()
+        assert [r["status"] for r in rows] == ["queued"]
+
+        assert await worker.tick(scans=True) is True
+        assert fake.calls == [True, True, False]
+        rows = (await client.get("/api/jobs?kind=refresh", headers=auth_headers)).json()
+        assert [r["status"] for r in rows] == ["done"]
+        # A refresh does not queue another refresh.
+        assert await worker.tick(scans=True) is False
+
+    async def test_a_fresh_pool_queues_nothing(
+        self, client, auth_headers, resume, worker_db, monkeypatch
+    ):
+        monkeypatch.setattr(scan, "collect_all", _answer(deferred=0))
+        await client.post(
+            "/api/jobs", headers=auth_headers, json={"kind": "scan", "payload": FORM}
+        )
+        await worker.tick(scans=True)
+        rows = (await client.get("/api/jobs?kind=refresh", headers=auth_headers)).json()
+        assert rows == []
+
+    async def test_a_scan_goes_ahead_of_a_queued_refresh(
+        self, session, user, resume, worker_db
+    ):
+        session.add(Job(user_id=user.id, kind="refresh", payload={}))
+        await session.commit()
+        session.add(Job(user_id=user.id, kind="scan", payload={}))
+        await session.commit()
+        async with worker_db() as s:
+            job = await worker.claim(s, scans=True)
+        assert job.kind == "scan"

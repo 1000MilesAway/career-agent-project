@@ -42,10 +42,11 @@ POLL_SECONDS = 2.0
 SWEEP_SECONDS = 300.0
 MAX_ATTEMPTS = 3
 # Kinds that fail on the first error; see `tick`.
-NOT_RETRIED = frozenset({"scan", "triage"})
+NOT_RETRIED = frozenset({"scan", "refresh", "triage"})
 # The lanes: which kinds each consumer claims. A kind missing from every lane
 # would never run, so the paid lane is "everything that is not a scan".
-SCAN_KINDS = ("scan",)
+# "refresh" re-reads the listings a scan answered from a stale pool.
+SCAN_KINDS = ("scan", "refresh")
 
 
 class PaidFailure(Exception):
@@ -70,6 +71,9 @@ async def claim(session: AsyncSession, scans: bool | None = None) -> Job | None:
     `scans` picks the lane: True — scans only, False — everything else,
     None — any job (tests, and a caller that wants one queue).
 
+    A queued refresh yields to any scan: someone is watching the scan, while
+    a refresh only tops up a list the user already has.
+
     `SKIP LOCKED` is what makes the claim safe: two workers — or two lanes —
     asking at the same moment get different rows instead of both running the
     same job and billing the user twice.
@@ -80,7 +84,9 @@ async def claim(session: AsyncSession, scans: bool | None = None) -> Job | None:
     elif scans is False:
         query = query.where(Job.kind.notin_(SCAN_KINDS))
     result = await session.execute(
-        query.order_by(Job.created_at).limit(1).with_for_update(skip_locked=True)
+        query.order_by(Job.kind == "refresh", Job.created_at)
+        .limit(1)
+        .with_for_update(skip_locked=True)
     )
     job = result.scalar_one_or_none()
     if job is None:
@@ -192,14 +198,14 @@ async def run_job(session: AsyncSession, job: Job) -> dict:
     # the account still had money must not run after it ran out. Raised as a
     # plain error rather than an HTTPException — nobody is holding a request.
     reason = exhausted_reason(user)
-    if reason is not None and job.kind != "scan":
+    if reason is not None and job.kind not in SCAN_KINDS:
         raise ValueError(reason)
 
     if job.kind == "evaluate":
         return await _run_evaluate(session, job, user, resume)
     if job.kind in BUILDERS:
         return await _run_artifact(session, job, user, resume, job.kind)
-    if job.kind == "scan":
+    if job.kind in SCAN_KINDS:
         return await _run_scan(session, job, user, resume)
     if job.kind == "triage":
         return await _run_triage(session, job, user, resume)
@@ -215,9 +221,31 @@ async def _run_scan(
     the scan here so a minute of network does not hold the page, and two
     copies of the dispatch would drift. The profile is derived first when the
     CV has none (see `scan.ensure_search_profile`).
+
+    A "scan" answers from the pool, stale listings included, so the user sees
+    a result in seconds instead of after a minute of boards; the stale ones
+    are queued as a "refresh" behind it, which reads them and matches again.
+    Reading them first made every scan after a half-hour pause a full minute.
     """
     params = scan.ScanRequest.model_validate(job.payload)
-    return await scan.run_scan(session, user, resume, params)
+    refresh = job.kind == "refresh"
+    result = await scan.run_scan(session, user, resume, params, defer_stale=not refresh)
+    if not refresh and result.get("deferred"):
+        await _queue_refresh(session, job)
+    return result
+
+
+async def _queue_refresh(session: AsyncSession, job: Job) -> None:
+    """One refresh per user at a time: a queued one already covers the next."""
+    active = await session.execute(
+        select(Job.id).where(
+            Job.user_id == job.user_id,
+            Job.kind == "refresh",
+            Job.status.in_(("queued", "running")),
+        )
+    )
+    if active.first() is None:
+        session.add(Job(user_id=job.user_id, kind="refresh", payload=dict(job.payload)))
 
 
 async def _run_triage(

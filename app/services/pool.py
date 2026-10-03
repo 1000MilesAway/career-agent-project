@@ -72,17 +72,21 @@ def listing_key(**parts: Any) -> str:
     return "sha256:" + hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def fresh_keys(
-    session: AsyncSession, source: str, keys: list[str], now: datetime
+async def known_keys(
+    session: AsyncSession, source: str, keys: list[str]
 ) -> dict[str, SourceFetch]:
-    """The keys of `source` some scan read recently enough to reuse."""
+    """The keys of `source` some scan has ever read, fresh or not."""
     if not keys:
         return {}
     result = await session.execute(
         select(SourceFetch).where(SourceFetch.source == source, SourceFetch.key.in_(keys))
     )
-    cutoff = now - FRESH_FOR.get(source, timedelta(minutes=30))
-    return {f.key: f for f in result.scalars() if f.fetched_at > cutoff}
+    return {f.key: f for f in result.scalars()}
+
+
+def is_fresh(fetch: SourceFetch, now: datetime) -> bool:
+    """Read recently enough that a scan reuses it without a request."""
+    return fetch.fetched_at > now - FRESH_FOR.get(fetch.source, timedelta(minutes=30))
 
 
 async def mark_fetched(
