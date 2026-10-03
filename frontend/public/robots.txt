@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /api/
+Disallow: /docs
+Disallow: /redoc
+Disallow: /openapi.json
+
+Sitemap: https://career-helper.site/sitemap.xml

@@ -15,6 +15,8 @@ RUN npm ci
 
 COPY tsconfig*.json vite.config.ts index.html ./
 COPY src/ ./src/
+# robots.txt and sitemap.xml: Vite copies public/ to the root of dist as is.
+COPY public/ ./public/
 RUN npm run build
 
 FROM nginx:1.27-alpine
