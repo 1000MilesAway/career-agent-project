@@ -5,13 +5,19 @@ what happens when that reply is imperfect, because a batch call routinely comes
 back short and the failure must never be silent.
 """
 
+import json
+
+import pytest
+
 from core.triage import (
+    BATCH_SIZE,
     MAYBE,
     SKIP,
     WORTH,
     apply_verdicts,
     parse_verdicts,
     posting_digest,
+    run_triage,
 )
 
 
@@ -108,3 +114,43 @@ class TestApplyVerdicts:
         res = parse_verdicts({"verdicts": [verdict("1", SKIP)]}, rows)
         apply_verdicts(rows, res)
         assert rows[0]["report"] == {"score": 4.5}
+
+
+class FakeLLM:
+    """Answers each batch from its digests; a batch holding a `broken` title fails."""
+
+    def __init__(self, broken: frozenset[str] = frozenset()) -> None:
+        self.broken = broken
+        self.calls: list[list[dict]] = []
+
+    def complete_json(self, step, system, user, temperature):
+        digests = json.loads(user.split("):\n", 1)[1])
+        self.calls.append(digests)
+        if any(d["title"] in self.broken for d in digests):
+            raise RuntimeError("модель не вернула валидный JSON на шаге triage")
+        return {"verdicts": [verdict(d["id"]) for d in digests]}
+
+
+class TestRunTriage:
+    def test_a_long_shortlist_is_split_into_batches(self):
+        rows = [row(f"uuid-{i}", title=f"t{i}") for i in range(BATCH_SIZE * 2 + 5)]
+        llm = FakeLLM()
+        result = run_triage(llm, {}, rows)
+        assert sorted(len(c) for c in llm.calls) == [5, BATCH_SIZE, BATCH_SIZE]
+        assert set(result.verdicts) == {r["id"] for r in rows}
+        assert result.missing == []
+
+    def test_the_model_sees_short_numbers_not_uuids(self):
+        llm = FakeLLM()
+        run_triage(llm, {}, [row("d5f266b6-bc3a"), row("23d19438-dddc")])
+        assert [d["id"] for d in llm.calls[0]] == ["1", "2"]
+
+    def test_a_broken_batch_goes_to_missing_not_to_skip(self):
+        rows = [row(f"uuid-{i}", title=f"t{i}") for i in range(BATCH_SIZE + 3)]
+        result = run_triage(FakeLLM(broken=frozenset({"t0"})), {}, rows)
+        assert set(result.missing) == {r["id"] for r in rows[:BATCH_SIZE]}
+        assert set(result.verdicts) == {r["id"] for r in rows[BATCH_SIZE:]}
+
+    def test_every_batch_broken_is_an_error(self):
+        with pytest.raises(RuntimeError):
+            run_triage(FakeLLM(broken=frozenset({"t"})), {}, [row("a", title="t")])

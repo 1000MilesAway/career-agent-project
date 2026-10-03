@@ -1,4 +1,4 @@
-"""The cheap stage: one model call over the user's unjudged shortlist.
+"""The cheap stage: batched model calls over the user's unjudged shortlist.
 
 Shared by POST /api/vacancies/triage and the jobs worker, so the button and
 the API cannot drift on what a triage means. The cabinet queues it as a job:

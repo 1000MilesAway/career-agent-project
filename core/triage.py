@@ -1,4 +1,4 @@
-"""Second screen: one cheap model call over the whole batch.
+"""Second screen: a few cheap model calls over the whole shortlist.
 
 The free filters read keywords and fields; the full evaluation reads the whole
 posting and costs 0.17 RUB each. Between them sits this — career-ops calls it
@@ -19,6 +19,7 @@ Two rules carried over from theirs, both deliberate:
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -110,12 +111,23 @@ def parse_verdicts(raw: dict, rows: list[dict]) -> TriageResult:
     return result
 
 
-def run_triage(llm: LLM, archetypes: dict, rows: list[dict]) -> TriageResult:
-    """One call for the whole batch. Free filters have already run."""
-    if not rows:
-        return TriageResult()
+# Postings per model call. The whole shortlist in one call (230 on
+# 2026-10-03) outgrew max_tokens: the reply was cut mid-JSON and the job
+# failed outright. Forty keep a reply around 3k tokens, far from the limit.
+BATCH_SIZE = 40
+# Batches run side by side; the prefix (prompt + archetypes) is shared and
+# cached, so splitting costs little and parallel calls keep the wait short.
+PARALLEL_CALLS = 4
 
-    digests = [posting_digest(r) for r in rows if r.get("id")]
+
+def _judge_batch(llm: LLM, archetypes: dict, rows: list[dict]) -> TriageResult:
+    """One call over one batch, with the ids swapped for short numbers.
+
+    A UUID is ~25 output tokens the model must copy back verbatim per verdict;
+    a number is one or two, and cannot be miscopied into a near-miss id.
+    """
+    local = {str(n): str(r["id"]) for n, r in enumerate(rows, 1)}
+    digests = [posting_digest({**r, "id": n}) for n, r in zip(local, rows, strict=True)]
     user = (
         f"Целевые роли кандидата:\n{json.dumps(archetypes, ensure_ascii=False, indent=2)}\n\n"
         f"Вакансии ({len(digests)}):\n{json.dumps(digests, ensure_ascii=False, indent=2)}"
@@ -126,7 +138,45 @@ def run_triage(llm: LLM, archetypes: dict, rows: list[dict]) -> TriageResult:
         user=user,
         temperature=0.1,
     )
-    return parse_verdicts(raw, rows)
+    short = parse_verdicts(raw, [{"id": n} for n in local])
+    return TriageResult(
+        verdicts={local[n]: v for n, v in short.verdicts.items()},
+        missing=[local[n] for n in short.missing],
+        unknown=short.unknown,
+    )
+
+
+def run_triage(llm: LLM, archetypes: dict, rows: list[dict]) -> TriageResult:
+    """Judge the shortlist in batches. Free filters have already run.
+
+    A batch whose reply is still unreadable after the retry does not sink the
+    others: its postings go to `missing`, shown and unjudged. Only when every
+    batch failed is the error raised — then there is nothing to show but it.
+    """
+    rows = [r for r in rows if r.get("id")]
+    if not rows:
+        return TriageResult()
+
+    batches = [rows[i : i + BATCH_SIZE] for i in range(0, len(rows), BATCH_SIZE)]
+    with ThreadPoolExecutor(max_workers=PARALLEL_CALLS) as pool:
+        futures = [pool.submit(_judge_batch, llm, archetypes, b) for b in batches]
+
+    result = TriageResult()
+    errors: list[Exception] = []
+    for batch, future in zip(batches, futures, strict=True):
+        try:
+            part = future.result()
+        except RuntimeError as e:
+            errors.append(e)
+            result.missing += [str(r["id"]) for r in batch]
+            continue
+        result.verdicts.update(part.verdicts)
+        result.missing += part.missing
+        result.unknown += part.unknown
+    if len(errors) == len(batches):
+        raise errors[0]
+    result.missing.sort()
+    return result
 
 
 def apply_verdicts(rows: list[dict], result: TriageResult) -> list[dict]:
