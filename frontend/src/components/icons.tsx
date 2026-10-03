@@ -65,6 +65,47 @@ export const LogoutIcon = () => (
   </Icon>
 )
 
+/** A plain cog: a ring with eight square teeth. */
+export const SettingsIcon = () => (
+  <Icon>
+    <circle cx="10" cy="10" r="5" />
+    <circle cx="10" cy="10" r="1.8" />
+    <path
+      strokeWidth="2.6"
+      strokeLinecap="butt"
+      d="M15 10h2.5M13.5 13.5l1.8 1.8M10 15v2.5M6.5 13.5l-1.8 1.8M5 10H2.5M6.5 6.5L4.7 4.7M10 5V2.5M13.5 6.5l1.8-1.8"
+    />
+  </Icon>
+)
+
+export const SunIcon = () => (
+  <Icon>
+    <circle cx="10" cy="10" r="3.2" />
+    <path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M4.7 15.3 6 14M14 6l1.3-1.3" />
+  </Icon>
+)
+
+export const MoonIcon = () => (
+  <Icon>
+    <path d="M16 12.2A6.5 6.5 0 0 1 7.8 4a6.5 6.5 0 1 0 8.2 8.2z" />
+  </Icon>
+)
+
+/** «Как в системе»: a screen. */
+export const AutoThemeIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="14" height="10" rx="1.5" />
+    <path d="M7.5 17h5M10 14v3" />
+  </Icon>
+)
+
+export const InfoIcon = () => (
+  <Icon>
+    <circle cx="10" cy="10" r="7.5" />
+    <path d="M10 9v5M10 6.2v.1" />
+  </Icon>
+)
+
 export const CloseIcon = () => (
   <Icon>
     <path d="M5 5l10 10M15 5L5 15" />

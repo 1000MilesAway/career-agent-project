@@ -18,12 +18,24 @@ import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
 import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
-import { ChatIcon, LogoutIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
+import {
+  ChatIcon,
+  InfoIcon,
+  LogoutIcon,
+  MoonIcon,
+  SettingsIcon,
+  SunIcon,
+  AutoThemeIcon,
+  ResumeIcon,
+  SearchIcon,
+  StarIcon,
+} from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
 import { SupportBubble } from './components/SupportBubble'
 import { Skeleton } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
+import { useTheme, type Theme } from './components/theme'
 import { lazyPage } from './lazyPage'
 import './App.css'
 
@@ -256,12 +268,13 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
           <button
             type="button"
             role="menuitem"
-            className="user-menu__item"
+            className="user-menu__item user-menu__item--icon"
             onClick={() => {
               setOpen(false)
               onProfile()
             }}
           >
+            <SettingsIcon />
             Профиль и настройки
           </button>
           {/* Folded into a side menu: the documents are read once, the
@@ -274,13 +287,16 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
             <button
               type="button"
               role="menuitem"
-              className="user-menu__item user-menu__sub"
+              className="user-menu__item user-menu__item--icon user-menu__sub"
               onClick={() => setLegalOpen(!legalOpen)}
               aria-haspopup="menu"
               aria-expanded={legalOpen}
             >
+              <InfoIcon />
               Инфо
-              <span aria-hidden="true">▸</span>
+              <span className="user-menu__arrow" aria-hidden="true">
+                ▸
+              </span>
             </button>
             {legalOpen ? (
               <div className="user-menu__list user-menu__list--side" role="menu">
@@ -298,11 +314,12 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
               </div>
             ) : null}
           </div>
+          <ThemeSwitch />
           {/* Last and set apart: the one item that ends the session. */}
           <button
             type="button"
             role="menuitem"
-            className="user-menu__item user-menu__logout"
+            className="user-menu__item user-menu__item--icon user-menu__logout"
             onClick={logout}
           >
             <LogoutIcon />
@@ -325,6 +342,42 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
           ▾
         </span>
       </button>
+    </div>
+  )
+}
+
+const THEMES: { value: Theme; label: string; icon: ReactNode }[] = [
+  { value: 'auto', label: 'Как в системе', icon: <AutoThemeIcon /> },
+  { value: 'light', label: 'Светлая', icon: <SunIcon /> },
+  { value: 'dark', label: 'Тёмная', icon: <MoonIcon /> },
+]
+
+/** Three icons in a row rather than a submenu: the choice is seen at a glance
+ *  and made in one click, and the menu stays open to show the result. */
+function ThemeSwitch() {
+  const [theme, setTheme] = useTheme()
+  return (
+    <div className="user-menu__theme" role="group" aria-label="Тема">
+      <span>Тема</span>
+      <span className="theme-switch">
+        {THEMES.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={
+              option.value === theme
+                ? 'theme-switch__btn theme-switch__btn--on'
+                : 'theme-switch__btn'
+            }
+            onClick={() => setTheme(option.value)}
+            aria-pressed={option.value === theme}
+            aria-label={option.label}
+            title={option.label}
+          >
+            {option.icon}
+          </button>
+        ))}
+      </span>
     </div>
   )
 }

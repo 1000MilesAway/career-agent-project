@@ -66,6 +66,34 @@
   }
 }
 
+/* The same palette when the viewer picked dark in the menu, whatever the
+   system says. Kept in step with the block above by hand: CSS has no way to
+   share one declaration block between a media query and a selector. */
+:root[data-theme='dark'] {
+  --bg: #131310;
+  --surface: #1c1b17;
+  --sunken: #25241f;
+  --ink: #eeebe3;
+  --ink-2: #c9c5ba;
+  --muted: #8f8b80;
+  --line: #2f2d27;
+  --line-strong: #45423a;
+  --accent: #f08a4b;
+  --ok: #6cc28c;
+  --warn: #e0a84e;
+  --bad: #ec7b66;
+  --on-ink: #151410;
+  --shadow-pop: 0 1px 2px rgb(0 0 0 / 30%), 0 10px 30px rgb(0 0 0 / 40%);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }

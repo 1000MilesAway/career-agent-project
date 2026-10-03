@@ -24,6 +24,14 @@
         if (location.hash.indexOf('#/') === 0) {
           history.replaceState(null, '', location.hash.slice(1) || '/')
         }
+        // The theme picked in the account menu (src/components/theme.ts),
+        // set before the first paint so a dark page does not flash white.
+        try {
+          var theme = localStorage.getItem('career-agent:theme')
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme
+          }
+        } catch (e) {}
         // Mirrors TOKEN_KEY in src/api/client.ts.
         var KEY = 'career-agent:token:v1'
         function pick() {
@@ -39,7 +47,8 @@
         addEventListener('popstate', pick)
         // A hash route typed into an open page: reload it as a path.
         addEventListener('hashchange', function () {
-          if (location.hash.indexOf('#/') === 0) location.replace(location.hash.slice(1) || '/')
+          if (location.hash.indexOf('#/') === 0)
+            location.replace(location.hash.slice(1) || '/')
         })
       })()
     </script>

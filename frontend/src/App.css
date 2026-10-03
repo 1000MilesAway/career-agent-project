@@ -298,14 +298,22 @@
   background: var(--sunken);
 }
 
-.user-menu__sub {
+/* An icon before the label; all three items line up on it. */
+.user-menu__item--icon {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
 
-.user-menu__sub span {
+.user-menu__item--icon svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
+.user-menu__arrow {
+  margin-left: auto;
   font-size: 11px;
   color: var(--muted);
 }
@@ -426,17 +434,53 @@
 }
 
 .user-menu__logout {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin-top: 4px;
   border-top: 1px solid var(--line);
   border-radius: 0 0 6px 6px;
   padding-top: 9px;
 }
 
-.user-menu__logout svg {
-  width: 15px;
-  height: 15px;
+.user-menu__theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.theme-switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--sunken);
+}
+
+.theme-switch__btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
   color: var(--muted);
+  cursor: pointer;
+}
+
+.theme-switch__btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.theme-switch__btn:hover {
+  color: var(--ink);
+}
+
+.theme-switch__btn--on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 15%);
 }
