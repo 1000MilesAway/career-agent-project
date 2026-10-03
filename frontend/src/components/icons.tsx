@@ -65,16 +65,13 @@ export const LogoutIcon = () => (
   </Icon>
 )
 
-/** A plain cog: a ring with eight square teeth. */
+// The cog from Lucide (ISC), drawn on 24 and scaled to this 20-unit grid.
 export const SettingsIcon = () => (
   <Icon>
-    <circle cx="10" cy="10" r="5" />
-    <circle cx="10" cy="10" r="1.8" />
-    <path
-      strokeWidth="2.6"
-      strokeLinecap="butt"
-      d="M15 10h2.5M13.5 13.5l1.8 1.8M10 15v2.5M6.5 13.5l-1.8 1.8M5 10H2.5M6.5 6.5L4.7 4.7M10 5V2.5M13.5 6.5l1.8-1.8"
-    />
+    <g transform="scale(0.8333)" strokeWidth="1.9">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </g>
   </Icon>
 )
 
