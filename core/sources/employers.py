@@ -77,6 +77,28 @@ class Collected:
     # Boards that failed. Reported, never swallowed: a scan that quietly
     # returns less is indistinguishable from a quiet market.
     problems: list[dict[str, str]] = field(default_factory=list)
+    # Feeds read whole this time (`board_key`s): every opening the board
+    # lists was returned, so a posting of that board missing from the result
+    # is a posting the company took down. See `FEED_KINDS`.
+    complete: list[str] = field(default_factory=list)
+    # Feeds cut short by a page cap: their silence about a posting proves
+    # nothing, so they are kept out of `complete`.
+    truncated: list[str] = field(default_factory=list)
+
+
+# Boards whose fetch returns the company's whole list, not the answer to a
+# query. Only for these does "not in the feed" mean "taken down": a
+# searchable board (Sber, Yandex, VK) leaves out whatever the query missed.
+FEED_KINDS = frozenset({"huntflow", "greenhouse", "lever", "ashby"})
+
+
+def board_key(posting_id: str) -> str:
+    """The board a posting id belongs to: `kind/slug` of `kind/slug/native`."""
+    return "/".join(posting_id.split("/", 2)[:2])
+
+
+def is_feed_posting(posting_id: str) -> bool:
+    return posting_id.split("/", 1)[0] in FEED_KINDS
 
 
 def load(path: Path | None = None) -> list[Board]:
@@ -355,8 +377,10 @@ def fetch_huntflow(board: Board, queries: list[str], client: httpx.Client, out: 
         ]
         # `total` is the number of PAGES, not of vacancies.
         if page >= int(data.get("total") or 1):
-            break
+            return
         time.sleep(DELAY_SECONDS)
+    # Out of pages before the board was: the rest of it was never seen.
+    out.truncated.append(f"{board.kind}/{board.slug or board.kind}")
 
 
 def describe_huntflow(board: Board, native: str, client: httpx.Client) -> str:
@@ -530,10 +554,22 @@ def collect(
                 out.problems.append({"board": board.name, "why": f"неизвестный тип {board.kind}"})
                 continue
             before = len(out.postings)
+            key = f"{board.kind}/{board.slug or board.kind}"
             try:
                 fetcher(board, queries, client, out)
             except (httpx.HTTPError, ValueError) as e:
                 out.problems.append({"board": board.name, "why": f"{type(e).__name__}: {e}"[:200]})
+            else:
+                # An empty answer is not counted as complete: a feed that
+                # suddenly lists nothing is likelier a changed API than a
+                # company that closed every opening at once, and treating it
+                # as complete would start closing the whole board.
+                if (
+                    board.kind in FEED_KINDS
+                    and key not in out.truncated
+                    and len(out.postings) > before
+                ):
+                    out.complete.append(key)
             # Several queries hit the same vacancy; keep the first sighting.
             fresh = []
             for posting in out.postings[before:]:

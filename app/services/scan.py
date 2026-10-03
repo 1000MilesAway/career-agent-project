@@ -256,6 +256,9 @@ class Batch:
     sightings: list[Sighting]
     # Source-specific facts worth showing: channels read, boards that failed.
     extra: dict[str, Any] = dc_field(default_factory=dict)
+    # Employer feeds this fetch read whole: what they did not return is gone
+    # from the company's site (`pool.mark_absent`).
+    complete: list[str] = dc_field(default_factory=list)
 
 
 def fetch_habr(
@@ -325,7 +328,9 @@ def fetch_employers(queries: list[str], group: str) -> Batch:
         )
         for p in result.postings
     ]
-    return Batch("company", sightings, extra={"problems": result.problems})
+    return Batch(
+        "company", sightings, extra={"problems": result.problems}, complete=result.complete
+    )
 
 
 def fetch_geekjob(pages: int = GEEKJOB_PAGES) -> Batch:
@@ -596,10 +601,17 @@ async def collect(
                 raise result
             sources_out[name] = {"error": _error_text(result)}
             continue
+        gone = 0
         for listing, batch in zip(stale[name], result, strict=True):
             await pool.upsert(session, name, batch.sightings, now)
             await pool.mark_fetched(session, name, listing.key, now, batch.extra or None)
+            gone += await pool.mark_absent(
+                session, name, batch.complete, {s.posting.id for s in batch.sightings}, now
+            )
         counts = await _match(session, user_id, p, profile, now)
+        if name == "company":
+            # Postings this read found taken down from the companies' sites.
+            counts["closed"] = gone
         extra = _merge_extra([cached[name]] + [b.extra for b in result])
         sources_out[name] = {
             **counts, **extra,

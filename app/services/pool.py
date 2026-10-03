@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -45,6 +45,14 @@ FRESH_FOR = {
     "geekjob": timedelta(minutes=30),
     "company": timedelta(hours=2),
 }
+
+# A posting closes as taken down after this many full reads of its feed in a
+# row without it, spread over at least this long. Both, because reads are
+# not evenly spaced: two users' scans can read the same feed a minute apart,
+# and three misses in ten minutes are one glitch seen three times.
+ABSENT_READS = 3
+ABSENT_FOR = timedelta(days=1)
+ABSENT_REASON = "снята с сайта компании: нет в ленте вакансий"
 
 # Telegram reposts older than this are not compared by text: a vacancy
 # reposted after a month is usually reopened, and worth a second look.
@@ -265,6 +273,7 @@ async def upsert(
             if row.raw_text is None and sighting.text:
                 row.raw_text = sighting.text
             row.last_seen_at = now
+            _seen_again(row)
             continue
 
         row = Pooled(
@@ -294,3 +303,60 @@ async def upsert(
 
     await session.flush()
     return {"new": new}
+
+
+def _seen_again(row: Pooled) -> None:
+    """A sighting clears the absence count, and reopens what absence closed.
+
+    Only what absence closed: a 404 or an archive banner is evidence of its
+    own, and a listing that still carries the posting does not overrule it.
+    """
+    if row.closed_at is not None and (row.closed_reason or "").startswith(ABSENT_REASON):
+        row.closed_at = None
+        row.closed_reason = None
+    row.missed_reads = 0
+    row.missing_since = None
+
+
+async def mark_absent(
+    session: AsyncSession,
+    source: str,
+    boards: list[str],
+    seen: set[str],
+    now: datetime | None = None,
+) -> int:
+    """Count a full read of `boards` against the postings it did not return.
+
+    `boards` are feeds read whole (`employers.board_key`), `seen` the external
+    ids that read returned. A posting of one of those boards missing from it
+    gains a miss; after `ABSENT_READS` misses over at least `ABSENT_FOR` it is
+    closed with the reason saying why. Returns how many were closed now.
+
+    This is the one closing signal the employer sources have — their pages
+    cannot be asked — and it is still positive evidence: the company's own
+    list, read in full, no longer has the posting. Age is not used.
+    """
+    if not boards:
+        return 0
+    now = now or datetime.now(UTC)
+    result = await session.execute(
+        select(Pooled).where(
+            Pooled.source == source,
+            Pooled.closed_at.is_(None),
+            or_(*(Pooled.external_id.startswith(f"{b}/") for b in boards)),
+        )
+    )
+    closed = 0
+    for row in result.scalars():
+        if row.external_id in seen:
+            continue
+        row.missed_reads += 1
+        row.missing_since = row.missing_since or now
+        if row.missed_reads >= ABSENT_READS and now - row.missing_since >= ABSENT_FOR:
+            row.closed_at = now
+            row.closed_reason = (
+                f"{ABSENT_REASON} {row.missed_reads} обхода подряд "
+                f"с {row.missing_since:%d.%m}"
+            )[:255]
+            closed += 1
+    return closed

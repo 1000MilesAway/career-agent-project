@@ -106,6 +106,10 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 Posting.remote,
                 Posting.accredited,
                 Posting.source,
+                # Read by `liveness.stale_reason`: an employer feed posting is
+                # judged by when a read last saw it, not by its age.
+                Posting.external_id,
+                Posting.last_seen_at,
                 Posting.closed_at,
                 Posting.closed_reason,
                 Posting.published,

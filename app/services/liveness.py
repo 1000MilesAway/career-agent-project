@@ -13,8 +13,11 @@ Three places ask:
 Liveness is a fact about the posting, so it is checked and stored once in the
 shared pool: a posting five users have is one request, not five.
 
-Sources with no page to ask (employer boards) are never closed here. Their only signal is age, and age is not evidence of closing — see
-`stale_reason`, which marks such a row old without closing it.
+Sources with no page to ask (employer boards) are never closed here. A
+feed read whole closes its postings by their absence from it
+(`pool.mark_absent`); a searchable board has only age, and age is not
+evidence of closing — see `stale_reason`, which marks such a row old
+without closing it.
 
 A closed vacancy is marked, never deleted or hidden: it keeps its report and
 materials, and the list shows it greyed with the reason. "Unknown" changes
@@ -32,6 +35,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import liveness
+from core.sources import employers
 
 from ..models import Posting, Vacancy
 from .scan import EVALUATED, SCREENED_OUT, SHORTLIST, TRIAGED_OUT
@@ -53,6 +57,9 @@ CHECKABLE_SOURCES = ("habr", "geekjob", "telegram", "url")
 # A posting older than this, from a source that cannot be asked, is shown as
 # old. Not closed: nothing says it is, and closing is reserved for evidence.
 STALE_AFTER = timedelta(days=30)
+# An employer feed posting no read has returned for this long counts as old:
+# nobody scanned that feed since, so its absence was never checked either.
+UNSEEN_AFTER = timedelta(days=7)
 
 
 def _apply(posting: Posting, verdict: liveness.Liveness, now: datetime) -> None:
@@ -142,10 +149,21 @@ def stale_reason(vacancy: Vacancy | Posting, now: datetime | None = None) -> str
 
     Only for sources `core.liveness` cannot read: a checkable row has a real
     answer in `closed_at`, and age must not overrule it.
+
+    An employer feed read whole has a real answer too — the company's list
+    either still carries the posting or, after enough reads without it, the
+    posting is closed (`pool.mark_absent`). So for a feed posting age is not
+    the question; how long ago a read last saw it is.
     """
+    now = now or datetime.now(UTC)
+    if vacancy.source == "company" and employers.is_feed_posting(vacancy.external_id):
+        posting = vacancy if isinstance(vacancy, Posting) else vacancy.posting
+        unseen = now - posting.last_seen_at
+        if unseen <= UNSEEN_AFTER:
+            return None
+        return f"не встречалась в ленте компании {unseen.days} дн., давно не проверялась"
     if vacancy.published is None or liveness.can_check(vacancy.url):
         return None
-    now = now or datetime.now(UTC)
     age = now - vacancy.published
     if age <= STALE_AFTER:
         return None

@@ -117,6 +117,60 @@ class TestCollect:
         assert len(ids) == len(set(ids)) == 2
 
 
+class TestCompleteFeeds:
+    """Which boards were read whole — the only ones whose silence means "gone"."""
+
+    def test_feeds_are_complete_searchable_boards_are_not(self, client):
+        out = employers.collect(["python"], ("ru", "global"), BOARDS, client)
+        assert sorted(out.complete) == [
+            "ashby/gismart", "greenhouse/wrike", "huntflow/limehr", "lever/xsolla",
+        ]
+
+    def test_a_failed_feed_is_not_complete(self, monkeypatch):
+        monkeypatch.setattr(employers, "DELAY_SECONDS", 0)
+
+        def handler(request):
+            if request.url.host == "api.lever.co":
+                return httpx.Response(503)
+            return router(request)
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        out = employers.collect(["python"], ("global",), BOARDS, http)
+        assert "lever/xsolla" not in out.complete
+
+    def test_an_empty_feed_is_not_complete(self, monkeypatch):
+        """A feed that suddenly lists nothing is likelier a broken API."""
+        monkeypatch.setattr(employers, "DELAY_SECONDS", 0)
+
+        def handler(request):
+            if request.url.host == "boards-api.greenhouse.io":
+                return httpx.Response(200, json={"jobs": []})
+            return router(request)
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        out = employers.collect(["python"], ("global",), BOARDS, http)
+        assert "greenhouse/wrike" not in out.complete
+
+    def test_a_feed_cut_by_the_page_cap_is_not_complete(self, monkeypatch):
+        monkeypatch.setattr(employers, "DELAY_SECONDS", 0)
+        monkeypatch.setattr(employers, "HUNTFLOW_MAX_PAGES", 1)
+
+        def handler(request):
+            if request.url.host == "limehr.huntflow.io" and request.url.path == "/api/vacancy":
+                return httpx.Response(200, json={**js("huntflow_list.json"), "total": 3})
+            return router(request)
+
+        http = httpx.Client(transport=httpx.MockTransport(handler))
+        out = employers.collect(["python"], ("ru",), BOARDS, http)
+        assert "huntflow/limehr" not in out.complete
+        assert out.truncated == ["huntflow/limehr"]
+
+    def test_board_key_and_feed_postings(self):
+        assert employers.board_key("greenhouse/wrike/123") == "greenhouse/wrike"
+        assert employers.is_feed_posting("lever/xsolla/abc-1")
+        assert not employers.is_feed_posting("sber/sber/77")
+
+
 class TestAdapters:
     def test_sber_text_has_the_sections(self):
         posting, text = employers.sber_posting(

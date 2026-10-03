@@ -251,6 +251,15 @@ class Posting(Base, TimestampMixin):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_reason: Mapped[str | None] = mapped_column(String(255))
 
+    # An employer's feed read whole without this posting in it: how many
+    # such reads in a row, and since when. Enough of them, long enough, is
+    # the company taking the posting down (services/pool.py `mark_absent`);
+    # a sighting resets both. Only feeds count — see employers.FEED_KINDS.
+    missed_reads: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    missing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     __table_args__ = (
         UniqueConstraint("source", "external_id", name="uq_postings_source_ext"),
         Index("ix_postings_source_seen", "source", "last_seen_at"),
