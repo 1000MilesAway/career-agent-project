@@ -32,27 +32,20 @@
   padding: 0 8px;
 }
 
-/* A square with a notch: the mark is a checked box, which is what the
-   product does to a list of vacancies. */
+/* The logo (<BrandMark />): a check that turns into an arrow up — the
+   product picks from a list of vacancies, and the pick moves you forward. */
 .brand__mark {
   width: 20px;
   height: 20px;
-  border-radius: 5px;
-  background: var(--ink);
-  position: relative;
   flex: none;
 }
 
-.brand__mark::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: 5px;
-  width: 8px;
-  height: 5px;
-  border: solid var(--accent);
-  border-width: 0 0 2px 2px;
-  transform: rotate(-45deg);
+.brand__mark rect {
+  fill: var(--ink);
+}
+
+.brand__mark path {
+  stroke: var(--accent);
 }
 
 .brand__name {

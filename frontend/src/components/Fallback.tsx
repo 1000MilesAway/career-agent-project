@@ -12,7 +12,7 @@ import { useState, type ReactNode } from 'react'
 import { useSWRConfig } from 'swr'
 import { ApiError } from '../api/client'
 import { STATE_KEY } from '../api/hooks'
-import { TelegramIcon } from './icons'
+import { BrandMark, TelegramIcon } from './icons'
 import './fallback.css'
 
 const SUPPORT = 'https://t.me/e1337_u53r'
@@ -37,7 +37,7 @@ function Fallback({
     <main className={full ? 'fallback fallback--full' : 'fallback'} role="alert">
       {full ? (
         <span className="brand fallback__brand">
-          <span className="brand__mark" aria-hidden="true" />
+          <BrandMark />
           <span className="brand__name">career-helper</span>
         </span>
       ) : null}
