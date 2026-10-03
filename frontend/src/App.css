@@ -172,6 +172,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* The account's divider sits 8px above the button, inside the foot's gap:
+     without this it hugs the week bar. */
+  margin-bottom: 10px;
   font-size: 13px;
 }
 
