@@ -18,7 +18,7 @@ import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
 import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
-import { ChatIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
+import { ChatIcon, LogoutIcon, ResumeIcon, SearchIcon, StarIcon } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
 import { SupportBubble } from './components/SupportBubble'
@@ -236,6 +236,7 @@ const moscowDate = (iso: string, options: Intl.DateTimeFormatOptions): string =>
 function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () => void }) {
   const [open, setOpen] = useState(false)
   const [legalOpen, setLegalOpen] = useState(false)
+  const { logout } = useAuth()
 
   // Focus leaving the menu closes it: a click elsewhere or Tab past the end.
   function onBlur(event: FocusEvent<HTMLDivElement>) {
@@ -297,6 +298,16 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
               </div>
             ) : null}
           </div>
+          {/* Last and set apart: the one item that ends the session. */}
+          <button
+            type="button"
+            role="menuitem"
+            className="user-menu__item user-menu__logout"
+            onClick={logout}
+          >
+            <LogoutIcon />
+            Выйти
+          </button>
         </div>
       ) : null}
       <button

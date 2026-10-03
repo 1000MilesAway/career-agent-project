@@ -424,3 +424,19 @@
     display: none;
   }
 }
+
+.user-menu__logout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+  padding-top: 9px;
+}
+
+.user-menu__logout svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
