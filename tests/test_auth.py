@@ -131,6 +131,42 @@ class TestConsent:
 
 
 @requires_db
+class TestDeleteAccount:
+    async def test_deleting_takes_the_resume_and_vacancies_with_it(
+        self, client, session, user, auth_headers
+    ):
+        """The right to erasure: nothing of the account is left behind."""
+        from sqlalchemy import func, select
+
+        from app.models import Resume, User, Vacancy
+
+        session.add(Resume(user_id=user.id, filename="cv.pdf", raw_text="Иван", profile={}))
+        session.add(Vacancy(user_id=user.id, source="habr", external_id="1", title="Python"))
+        await session.commit()
+        user_id = user.id
+
+        r = await client.delete("/api/auth/me", headers=auth_headers)
+
+        assert r.status_code == 204
+        session.expunge_all()
+        for column in (User.id, Resume.user_id, Vacancy.user_id):
+            count = await session.scalar(select(func.count()).where(column == user_id))
+            assert count == 0, column
+        assert (await client.get("/api/auth/me", headers=auth_headers)).status_code == 401
+
+    async def test_an_admin_cannot_delete_themselves_from_the_cabinet(
+        self, client, session, user, auth_headers
+    ):
+        user.is_admin = True
+        await session.commit()
+
+        r = await client.delete("/api/auth/me", headers=auth_headers)
+
+        assert r.status_code == 403
+        assert (await client.get("/api/auth/me", headers=auth_headers)).status_code == 200
+
+
+@requires_db
 class TestProfileName:
     async def test_a_new_account_has_no_name(self, client, auth_headers):
         """The cabinet falls back to the email; a made-up name would be wrong."""

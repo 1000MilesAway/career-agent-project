@@ -38,9 +38,10 @@
   margin-top: 18px;
 }
 
-/* Colour is reserved for meaning in this palette; deleting is one. */
-.confirm__danger,
-.confirm__danger:hover:not(:disabled) {
+/* Colour is reserved for meaning in this palette; deleting is one.
+   Scoped to .confirm: ui.css loads after this file and its .btn won. */
+.confirm .confirm__danger,
+.confirm .confirm__danger:hover:not(:disabled) {
   background: var(--bad);
   border-color: var(--bad);
   color: #fff;

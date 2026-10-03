@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from ..core import telegram_login
@@ -253,6 +253,32 @@ async def give_consent(user: UserDep, session: SessionDep) -> UserResponse:
         user.consent_at = datetime.now(UTC)
         await session.commit()
     return UserResponse.of(user)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(user: UserDep, session: SessionDep) -> None:
+    """Delete the account and everything in it: the right to erasure.
+
+    One cascading delete, as decided 2026-09-22 for «удалить аккаунт /
+    отозвать согласие»: every table hangs off `users.id` with ON DELETE
+    CASCADE, so resumes, vacancies, evaluations (their reports quote the CV),
+    documents, jobs and the chat go with the row. Losing the bought reports is
+    the point of the operation, not a side effect.
+
+    An admin is refused: the owner's account runs the service, and one
+    mis-click in the cabinet must not take it down. Admins are removed from
+    the CLI.
+    """
+    if user.is_admin:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Учётку администратора из кабинета не удалить",
+        )
+    # SQL, not session.delete(): the ORM would lazy-load every relationship
+    # to delete it by hand, which async SQLAlchemy refuses. The database's
+    # own cascades do the same work in one statement.
+    await session.execute(delete(User).where(User.id == user.id))
+    await session.commit()
 
 
 class TelegramConfig(BaseModel):

@@ -108,3 +108,8 @@
     padding: 16px;
   }
 }
+
+/* Red as a warning of what it does; the real stop is the dialog behind it. */
+.account__delete {
+  color: var(--bad);
+}

@@ -11,7 +11,9 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from 'reac
 import { useSWRConfig } from 'swr'
 import { STATE_KEY, updateProfile } from '../api/hooks'
 import type { AppState } from '../api/types'
+import { api } from '../api/client'
 import { useAuth } from '../auth'
+import { ConfirmDialog } from './ConfirmDialog'
 import { CloseIcon, LogoutIcon } from './icons'
 import { TelegramLink } from './TelegramLogin'
 import { useToast } from './toast'
@@ -108,11 +110,7 @@ export function ProfileDialog({
 
         <section className="account__section">
           <p className="eyebrow">Персональные данные</p>
-          <p className="muted">
-            {user.consent_at
-              ? `Согласие на обработку дано ${formatDate(user.consent_at)}`
-              : 'Согласие ещё не дано — его спросят при загрузке резюме.'}
-          </p>
+          <DeleteAccount />
         </section>
       </div>
 
@@ -165,10 +163,51 @@ function NameForm({ saved }: { saved: string }) {
   )
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+/** «Удалить данные»: the account and everything in it, after a warning that
+ *  says exactly what goes. The server deletes in one cascade; on success the
+ *  token is worthless, so the cabinet logs out at once. */
+function DeleteAccount() {
+  const [asking, setAsking] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const { logout } = useAuth()
+  const toast = useToast()
+
+  function onConfirm() {
+    startTransition(async () => {
+      try {
+        await api('/api/auth/me', { method: 'DELETE' })
+        logout()
+      } catch (e) {
+        setAsking(false)
+        toast.error(e)
+      }
+    })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn--ghost btn--small account__delete"
+        onClick={() => setAsking(true)}
+        disabled={isPending}
+      >
+        {isPending ? 'Удаляю…' : 'Удалить данные'}
+      </button>
+      <ConfirmDialog
+        open={asking}
+        title="Удалить все данные?"
+        confirmLabel="Удалить навсегда"
+        onConfirm={onConfirm}
+        onCancel={() => setAsking(false)}
+      >
+        <p>
+          Будут удалены учётная запись и все персональные данные: резюме, найденные и
+          сохранённые вакансии, оценки и отчёты, подготовленные резюме и письма, переписка с
+          помощником.
+        </p>
+        <p>Восстановить их будет нельзя. Оставшийся срок подписки тоже пропадёт.</p>
+      </ConfirmDialog>
+    </>
+  )
 }
