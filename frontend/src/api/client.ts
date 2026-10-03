@@ -76,9 +76,14 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     body = form
   }
 
+  const sentToken = Boolean(headers.Authorization)
   const response = await fetch(path, { method, headers, body, signal })
 
-  if (response.status === 401) {
+  // A 401 on a request that carried a token means the session is over. One
+  // without a token is a failed login: logging out is moot, and replacing
+  // the server's «Неверный email или пароль» with «войти заново» told the
+  // user nothing about the password they had just typed.
+  if (response.status === 401 && sentToken) {
     setToken(null)
     throw new ApiError('Нужно войти заново', 401)
   }

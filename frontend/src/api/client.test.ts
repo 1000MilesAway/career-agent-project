@@ -36,6 +36,14 @@ describe('api', () => {
     expect(getToken()).toBeNull()
   })
 
+  it('на неудачном входе показывает ответ сервера, а не «войти заново»', async () => {
+    respond(401, { detail: 'Неверный email или пароль' })
+
+    await expect(api('/api/auth/login', { method: 'POST', json: {} })).rejects.toThrow(
+      'Неверный email или пароль',
+    )
+  })
+
   // FastAPI кладёт сообщение в detail строкой, а для 422 — списком объектов.
   // Список, отрендеренный как есть, давал пользователю "[object Object]".
   it('разворачивает detail-список валидации в читаемый текст', async () => {
