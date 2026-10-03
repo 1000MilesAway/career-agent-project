@@ -35,16 +35,19 @@
   gap: 12px;
 }
 
+/* Telegram's own blue: the button is recognised by its colour before its text. */
 .login__telegram .tg-login {
   height: 44px;
   justify-content: center;
   gap: 8px;
+  border-color: transparent;
+  background: #2aabee;
+  color: #fff;
 }
 
-.login__or {
-  align-self: center;
-  font-size: 13px;
-  color: var(--ink-2);
+.login__telegram .tg-login:hover:not(:disabled) {
+  background: #229ed9;
+  color: #fff;
 }
 
 /* A text link that switches the form; a button, because it navigates nowhere. */

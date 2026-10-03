@@ -178,19 +178,30 @@ export function LoginPage() {
             {/* Logs into the linked account, or creates one on the first visit. */}
             {telegram ? (
               <div className="login__telegram">
-                <span className="login__or">или</span>
                 <TelegramButton
                   config={telegram}
                   onToken={onTelegram}
                   onError={setError}
                   disabled={isPending}
                 >
-                  Войти через Telegram
+                  {mode === 'signup'
+                    ? 'Зарегистрироваться через Telegram'
+                    : 'Войти через Telegram'}
                 </TelegramButton>
               </div>
             ) : null}
 
             <ErrorNote error={error} />
+
+            {/* At sign-up only: that is where the account, and the agreement,
+                begin. A returning user already accepted it. */}
+            {mode === 'signup' ? (
+              <p className="login__legal">
+                Регистрируясь, вы принимаете{' '}
+                <Link to="/terms">пользовательское соглашение</Link> и{' '}
+                <Link to="/privacy">политику конфиденциальности</Link>.
+              </p>
+            ) : null}
 
             <p className="muted login__switch-line">
               {mode === 'signup' ? (
@@ -209,16 +220,6 @@ export function LoginPage() {
                 'Нет аккаунта? Войдите через Telegram — он создастся сам.'
               )}
             </p>
-
-            {/* At sign-up only: that is where the account, and the agreement,
-                begin. A returning user already accepted it. */}
-            {mode === 'signup' ? (
-              <p className="login__legal">
-                Регистрируясь, вы принимаете{' '}
-                <Link to="/terms">пользовательское соглашение</Link> и{' '}
-                <Link to="/privacy">политику конфиденциальности</Link>.
-              </p>
-            ) : null}
           </>
         )}
       </section>
