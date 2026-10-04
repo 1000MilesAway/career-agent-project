@@ -118,7 +118,6 @@ export function SavedPage() {
     <div className="page">
       <PageHead
         title="Избранное"
-        lede="Вакансии, которые вы отложили. Здесь готовятся материалы к отклику и отмечается, на каком вы этапе. Очистка поиска их не трогает."
         actions={
           saved.length ? (
             <button

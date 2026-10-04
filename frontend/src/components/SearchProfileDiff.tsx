@@ -91,11 +91,6 @@ export function SearchProfileDiff({
     <Card title="Предложение модели">
       {changed ? (
         <>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Модель предлагает изменить профиль поиска. Ничего не сохранится, пока вы не
-            примете.
-          </p>
-
           <div className="table-scroll">
             <table>
               <thead>

@@ -55,12 +55,12 @@ const proposal: ChatProposal = {
 }
 
 describe('ChatPage', () => {
-  it('пустой разговор объясняет, что делать, и не выглядит поломкой', () => {
+  it('пустой разговор предлагает, с чего начать, и не выглядит поломкой', () => {
     mocks.messages = []
     mocks.proposals = []
     render(<ChatPage />)
 
-    expect(screen.getByText(/вы подтверждаете сами/)).toBeTruthy()
+    expect(screen.getByText(/Можно начать/)).toBeTruthy()
   })
 
   it('сообщения показаны в том порядке, в котором пришли', () => {

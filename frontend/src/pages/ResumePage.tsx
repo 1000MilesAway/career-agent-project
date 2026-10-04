@@ -118,7 +118,6 @@ export function ResumePage() {
             <span className="drop__title">
               {data.has_resume ? 'Заменить файл' : 'Перетащите файл сюда'}
             </span>
-            <span className="drop__hint">или нажмите, чтобы выбрать</span>
           </>
         )}
       </label>
@@ -143,10 +142,7 @@ export function ResumePage() {
   if (!data.has_resume || !data.profile) {
     return (
       <div className="page">
-        <PageHead
-          title="Моё резюме"
-          lede="С него всё начинается: по резюме строятся запросы, фильтры и оценка каждой вакансии."
-        />
+        <PageHead title="Моё резюме" />
         <div className="card resume-first">{uploader}</div>
       </div>
     )
@@ -156,7 +152,6 @@ export function ResumePage() {
     <div className="page">
       <PageHead
         title="Моё резюме"
-        lede="Так модель прочитала ваше резюме. Каждая оценка строится на этом — если что-то не так, поправьте вручную или через помощника."
         actions={
           <DownloadButtons exportBase={profileExportBase} small label="Скачать резюме" />
         }
@@ -197,10 +192,6 @@ export function ResumePage() {
             </button>
           }
         >
-          <p className="muted" style={{ marginTop: 0, marginBottom: 18 }}>
-            По этим спискам идёт бесплатный отсев. Фильтр, которого не видно, — это фильтр,
-            который нельзя исправить.
-          </p>
           <SearchProfileView profile={data.search_profile} />
         </Card>
       ) : null}

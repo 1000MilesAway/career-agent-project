@@ -112,20 +112,17 @@ export function ProfileEditor({
 
       <Area
         label="О себе"
-        hint="уходит работодателю в файле резюме"
         value={draft.summary}
         rows={4}
         onChange={(v) => set('summary', v)}
       />
       <Area
         label="Направления"
-        hint="по одному в строке"
         value={draft.directions}
         onChange={(v) => set('directions', v)}
       />
       <Area
         label="Навыки"
-        hint="по одному в строке"
         value={draft.skills}
         rows={6}
         onChange={(v) => set('skills', v)}
@@ -166,7 +163,6 @@ export function ProfileEditor({
             />
             <Area
               label="Достижения"
-              hint="по одному в строке, с цифрами, если есть"
               value={job.achievements}
               rows={4}
               onChange={(v) => setJob(index, { achievements: v })}
@@ -214,22 +210,12 @@ export function ProfileEditor({
 
       <Area
         label="Образование"
-        hint="по одному в строке"
         value={draft.education}
         onChange={(v) => set('education', v)}
       />
-      <Area
-        label="Языки"
-        hint="по одному в строке"
-        value={draft.languages}
-        onChange={(v) => set('languages', v)}
-      />
+      <Area label="Языки" value={draft.languages} onChange={(v) => set('languages', v)} />
 
       <div className="editor__actions">
-        <p className="muted">
-          Сохранение создаёт новую версию, прежняя остаётся в истории. Оценки, сделанные по
-          прежней, получат пометку «прежнее резюме».
-        </p>
         <div className="row">
           <button className="btn" type="submit" disabled={isSaving || !dirty}>
             {isSaving ? 'Сохраняю…' : 'Сохранить'}
@@ -277,23 +263,18 @@ function Text({
 
 function Area({
   label,
-  hint,
   value,
   onChange,
   rows = 3,
 }: {
   label: string
-  hint?: string
   value: string
   onChange: (value: string) => void
   rows?: number
 }) {
   return (
     <label className="editor__field">
-      <span className="eyebrow">
-        {label}
-        {hint ? <span className="editor__hint"> · {hint}</span> : null}
-      </span>
+      <span className="eyebrow">{label}</span>
       <textarea
         className="input editor__area"
         value={value}

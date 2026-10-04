@@ -132,7 +132,6 @@ export function ChatPage() {
     <div className="page chatpage">
       <PageHead
         title="Помощник"
-        lede="Расскажите то, чего нет в резюме, или спросите про найденные вакансии. Всё, что помощник предложит записать, вы подтверждаете сами."
         actions={
           hasMessages ? (
             <button className="btn btn--quiet btn--small" onClick={clear}>
@@ -267,7 +266,6 @@ export function ChatPage() {
             {isSending ? '…' : 'Отправить'}
           </button>
         </div>
-        <p className="chat__hint">Enter — отправить, Shift+Enter — новая строка</p>
       </div>
     </div>
   )
