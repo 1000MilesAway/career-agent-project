@@ -145,6 +145,10 @@ def changes(resume: Resume, parent: Resume | None) -> list[str]:
             out.append(f"{label}: {old.get(key) or '—'} → {new.get(key) or '—'}")
     if new.get("summary") != old.get("summary"):
         out.append("изменён абзац «О себе»")
+    new_city = (new.get("preferences") or {}).get("city")
+    old_city = (old.get("preferences") or {}).get("city")
+    if new_city != old_city:
+        out.append(f"город: {old_city or '—'} → {new_city or '—'}")
 
     if resume.filename != parent.filename:
         out.insert(0, f"Файл «{resume.filename}»")

@@ -50,6 +50,12 @@ describe('profileDraft', () => {
     expect(back.experience?.[0].achievements).toEqual(['Ускорил API в 3 раза'])
   })
 
+  it('город берётся из предпочтений и уходит туда же', () => {
+    const draft = toDraft({ preferences: { city: 'Казань', format: 'гибрид' } })
+    expect(draft.city).toBe('Казань')
+    expect(fromDraft({ ...draft, city: 'Москва' }).preferences).toEqual({ city: 'Москва' })
+  })
+
   it('незнакомые поля места работы уходят обратно как были', () => {
     const job = { company: 'А', role: 'Б', period: '', extra: 'x' }
     expect(fromDraft(toDraft({ experience: [job] })).experience?.[0]).toMatchObject({

@@ -43,6 +43,7 @@ import {
   type SearchFilters,
   type SortKey,
   conditionMiss,
+  splitCities,
   loadFilters,
   saveFilters,
   sortRows,
@@ -157,7 +158,14 @@ export function SearchPage() {
   const [showInactive, setShowInactive] = useState(initialFilters.showInactive)
   const [showHidden, setShowHidden] = useState(initialFilters.showHidden)
   const [showMismatch, setShowMismatch] = useState(initialFilters.showMismatch)
-  const [conditions, setConditions] = useState<Conditions>(initialFilters.conditions)
+  const [chosenConditions, setConditions] = useState<Conditions>(initialFilters.conditions)
+  // A city never typed here is the one the CV gives — derived, not copied
+  // into state, so editing the CV moves it until the user picks their own.
+  const resumeCity = data?.profile?.preferences?.city ?? ''
+  const conditions = useMemo(
+    () => ({ ...chosenConditions, city: chosenConditions.city ?? resumeCity }),
+    [chosenConditions, resumeCity],
+  )
   const [confirmClear, setConfirmClear] = useState(false)
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
@@ -289,13 +297,13 @@ export function SearchPage() {
       showInactive,
       showHidden,
       showMismatch,
-      conditions,
+      conditions: chosenConditions,
       ...change,
     })
   }
 
   function changeConditions(change: Partial<Conditions>) {
-    const next = { ...conditions, ...change }
+    const next = { ...chosenConditions, ...change }
     setConditions(next)
     setLimit(PAGE_SIZE)
     persist({ conditions: next })
@@ -349,6 +357,7 @@ export function SearchPage() {
         any_salary: conditions.anySalary,
         remote_only: conditions.remoteOnly,
         accredited_only: conditions.accreditedOnly,
+        cities: splitCities(conditions.city),
         include_global: conditions.includeGlobal,
       })
       // Seeded with the queued row so polling starts without waiting a round.
@@ -445,6 +454,19 @@ export function SearchPage() {
           />
 
           <div className="scan__side">
+            <label className="scan__city">
+              <span className="scan__label">Город</span>
+              <input
+                className="input"
+                value={conditions.city ?? ''}
+                placeholder="любой"
+                onChange={(e) => changeConditions({ city: e.target.value })}
+              />
+              <span className="scan__hint">
+                для офиса и гибрида — удалёнку не ограничивает
+              </span>
+            </label>
+
             <div className="scan__opts">
               <label className="toggle">
                 <input

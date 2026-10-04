@@ -41,6 +41,9 @@ export interface Conditions {
   anySalary: boolean
   remoteOnly: boolean
   accreditedOnly: boolean
+  /** On-site cities, comma-separated as typed. null — never chosen here, so
+   *  the city from the CV applies; '' — any city, chosen on purpose. */
+  city: string | null
   /** A source choice, not a property of a row: the employer's group is not
    *  stored, so this one applies to the next scan only. */
   includeGlobal: boolean
@@ -51,6 +54,7 @@ export const DEFAULT_CONDITIONS: Conditions = {
   anySalary: true,
   remoteOnly: true,
   accreditedOnly: false,
+  city: null,
   includeGlobal: false,
 }
 
@@ -85,8 +89,62 @@ function loadConditions(value: unknown): Conditions {
     anySalary: flag(c.anySalary, DEFAULT_CONDITIONS.anySalary),
     remoteOnly: flag(c.remoteOnly, DEFAULT_CONDITIONS.remoteOnly),
     accreditedOnly: flag(c.accreditedOnly, DEFAULT_CONDITIONS.accreditedOnly),
+    city: typeof c.city === 'string' ? c.city : null,
     includeGlobal: flag(c.includeGlobal, DEFAULT_CONDITIONS.includeGlobal),
   }
+}
+
+/** The cities typed into the box, one per comma. */
+export const splitCities = (text: string | null): string[] =>
+  (text ?? '')
+    .split(',')
+    .map((city) => city.trim())
+    .filter(Boolean)
+
+/** Spellings of one city that boards really use. The same table as
+ *  CITY_ALIASES in core/filters.py: edit both, or the server keeps a row the
+ *  list folds away, or the reverse. */
+const CITY_ALIASES: readonly (readonly string[])[] = [
+  ['москва', 'moscow', 'мск'],
+  [
+    'санкт-петербург',
+    'спб',
+    'питер',
+    'петербург',
+    'saint petersburg',
+    'st. petersburg',
+    'st petersburg',
+  ],
+  ['екатеринбург', 'ekaterinburg', 'yekaterinburg', 'екб'],
+  ['новосибирск', 'novosibirsk'],
+  ['казань', 'kazan'],
+  ['нижний новгород', 'nizhny novgorod'],
+]
+
+const cityKey = (text: string) =>
+  text
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+    .trim()
+    .replace(/^г\.?\s+|^город\s+/, '')
+
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Does a location name one of the cities? A name must start a word, so
+ *  "Москва" does not match "Новомосковск". No cities — any location. */
+export function cityMatches(location: string, cities: string[]): boolean {
+  const names = new Set<string>()
+  for (const city of cities) {
+    const key = cityKey(city)
+    if (!key) continue
+    for (const name of CITY_ALIASES.find((aliases) => aliases.includes(key)) ?? [key])
+      names.add(name)
+  }
+  if (names.size === 0) return true
+  const loc = cityKey(location)
+  return [...names].some((name) =>
+    new RegExp(`(?<![\\p{L}\\p{N}_-])${escapeRe(name)}`, 'u').test(loc),
+  )
 }
 
 export function loadFilters(): SearchFilters {
@@ -157,6 +215,14 @@ export function sortRows(rows: FoundVacancy[], sort: SortKey): FoundVacancy[] {
  *  The reason is a line the row shows, so a folded row is never unexplained. */
 export function conditionMiss(row: FoundVacancy, c: Conditions): string | null {
   if (c.remoteOnly && row.remote === false) return 'не удалённая работа'
+  // Remote work is done from anywhere, and a row naming no city is not
+  // punished for the silence — PreScreen's rule.
+  if (
+    row.remote !== true &&
+    row.location &&
+    !cityMatches(row.location, splitCities(c.city))
+  )
+    return `другой город: ${row.location}`
   if (c.salary) {
     const [from, to] = row.salary_range ?? [null, null]
     const top = to ?? from

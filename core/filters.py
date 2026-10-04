@@ -47,6 +47,9 @@ class SearchProfile:
     qualifications: list[str] = field(default_factory=list)
     min_qualification: str = ""
     remote_only: bool = False
+    # Cities the user can work in on site. Empty means "anywhere"; a remote
+    # posting passes whatever its location says. See PreScreen.check step 5.
+    cities: list[str] = field(default_factory=list)
     salary_min: int | None = None
     max_age_days: int | None = None
     # Only employers with Russian IT accreditation (deferment, mortgage).
@@ -63,6 +66,7 @@ class SearchProfile:
             "qualifications": self.qualifications,
             "min_qualification": self.min_qualification,
             "remote_only": self.remote_only,
+            "cities": self.cities,
             "salary_min": self.salary_min,
             "max_age_days": self.max_age_days,
             "accredited_only": self.accredited_only,
@@ -188,6 +192,48 @@ def _any_match(text: str, patterns: list[_Folded]) -> str | None:
     return None
 
 
+# Spellings of the same city that boards really use: Habr and hh write
+# "Санкт-Петербург", Telegram posts "СПб" and "Питер", ATS boards abroad
+# "Saint Petersburg". The first name is the one a reason line shows.
+# The cabinet folds rows with the same table (frontend searchFilters.ts):
+# edit both, or a row the server kept is folded on screen, or the reverse.
+CITY_ALIASES: tuple[tuple[str, ...], ...] = (
+    ("москва", "moscow", "мск"),
+    ("санкт-петербург", "спб", "питер", "петербург", "saint petersburg",
+     "st. petersburg", "st petersburg"),
+    ("екатеринбург", "ekaterinburg", "yekaterinburg", "екб"),
+    ("новосибирск", "novosibirsk"),
+    ("казань", "kazan"),
+    ("нижний новгород", "nizhny novgorod"),
+)
+
+
+def _city_key(text: str) -> str:
+    text = text.casefold().replace("ё", "е").strip()
+    return re.sub(r"^г\.?\s+|^город\s+", "", text)
+
+
+def _city_names(city: str) -> set[str]:
+    key = _city_key(city)
+    for names in CITY_ALIASES:
+        if key in names:
+            return set(names)
+    return {key} if key else set()
+
+
+def city_matches(location: str, cities: list[str]) -> bool:
+    """Does a posting's location name one of the cities? Empty list: any city.
+
+    A name must start a word, so "Казань" does not hide inside some longer
+    word; it may end mid-word, so "Москва, м. Курская" and "Москва и МО" match.
+    """
+    loc = _city_key(location)
+    names = set().union(*(_city_names(c) for c in cities)) if cities else set()
+    if not names:
+        return True
+    return any(re.search(rf"(?<![\w-]){re.escape(n)}", loc) for n in names)
+
+
 @dataclass
 class Decision:
     """Why a posting was kept or dropped."""
@@ -278,6 +324,14 @@ class PreScreen:
         #    the silence would hide every one of its vacancies.
         if self.profile.remote_only and p.remote is False:
             return Decision(False, "не удалённая работа")
+
+        #    City, by the same three-valued rule: a remote posting can be
+        #    worked from anywhere, and a posting that names no city (Telegram
+        #    usually) is not punished for the silence. Only a stated city that
+        #    is not one of the user's drops.
+        if p.remote is not True and p.location:
+            if not city_matches(p.location, self.profile.cities):
+                return Decision(False, f"другой город: {p.location}")
 
         # 6. Salary. Only judged when the employer stated a figure.
         if self.profile.salary_min:

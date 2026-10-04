@@ -104,6 +104,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 Posting.qualification,
                 Posting.salary_text,
                 Posting.remote,
+                Posting.location,
                 Posting.accredited,
                 Posting.source,
                 # Read by `liveness.stale_reason`: an employer feed posting is
@@ -152,6 +153,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 # not only to the next scan; the threshold needs a number.
                 "salary_range": salary_band(v.salary_text),
                 "remote": v.remote,
+                "location": v.location,
                 "accredited": v.accredited,
                 "source": v.source,
                 "stage": v.stage,

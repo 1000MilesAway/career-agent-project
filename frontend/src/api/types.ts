@@ -91,6 +91,8 @@ export interface FoundVacancy {
    *  not stated. Absent or both null — no rouble band could be read. */
   salary_range?: [number | null, number | null] | null
   remote: boolean | null
+  /** The city as the source states it; empty or null — the source is silent. */
+  location?: string | null
   /** IT accreditation as the source states it; null — the source is silent. */
   accredited?: boolean | null
   source: string
@@ -141,6 +143,9 @@ export interface ResumeProfile {
   }[]
   education?: string[]
   languages?: string[]
+  /** What the person asks of a job, as the CV states it. The cabinet edits
+   *  only the city; the server keeps the other keys. */
+  preferences?: { city?: string | null; [key: string]: unknown } | null
 }
 
 export interface SearchProfile {

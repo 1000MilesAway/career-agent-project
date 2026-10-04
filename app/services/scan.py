@@ -867,6 +867,11 @@ class ScanRequest(BaseModel):
     # title anyway, and a hidden vacancy cannot be judged at all.
     any_salary: bool = True
     remote_only: bool | None = None
+    # Not sent to any source: Habr wants its own city ids and hh its area
+    # codes, and a listing keyed by city would stop being shared across users
+    # in the pool. PreScreen drops the other cities here and says which.
+    # None leaves the profile's list; [] clears it for this run.
+    cities: list[str] | None = Field(default=None, max_length=20)
     # Not sent to Habr as `has_accreditation`: what Habr filters out never
     # reaches us, and a vacancy hidden without a reason is the one thing the
     # free stage must not do. PreScreen drops it here and says why.
@@ -894,6 +899,8 @@ def with_overrides(search_profile: dict[str, Any], body: ScanRequest) -> dict[st
         merged["remote_only"] = body.remote_only
     if body.accredited_only is not None:
         merged["accredited_only"] = body.accredited_only
+    if body.cities is not None:
+        merged["cities"] = [c.strip() for c in body.cities if c.strip()]
     return merged
 
 

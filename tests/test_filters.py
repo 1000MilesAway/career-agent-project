@@ -169,6 +169,34 @@ class TestPreScreen:
         assert not PreScreen(prof).check(posting("Разработчик", remote=False)).keep
         assert PreScreen(prof).check(posting("Разработчик", remote=True)).keep
 
+    def test_another_city_is_dropped_with_its_name(self):
+        prof = SearchProfile(cities=["Москва"])
+        far = PreScreen(prof).check(posting("Разработчик", location="Казань"))
+        assert not far.keep
+        assert far.reason == "другой город: Казань"
+        assert PreScreen(prof).check(posting("Разработчик", location="Москва, м. Курская")).keep
+
+    def test_city_spares_remote_and_silent_postings(self):
+        """Remote work is done from anywhere; a post that names no city is
+        not punished for the silence — the same rule as remote_only."""
+        prof = SearchProfile(cities=["Москва"])
+        assert PreScreen(prof).check(posting("Разработчик", location="Казань", remote=True)).keep
+        assert PreScreen(prof).check(posting("Разработчик", location="")).keep
+
+    def test_no_cities_means_any_city(self):
+        assert PreScreen(SearchProfile()).check(posting("Разработчик", location="Казань")).keep
+
+    def test_city_spellings_match_each_other(self):
+        from core.filters import city_matches
+
+        assert city_matches("Санкт-Петербург", ["СПб"])
+        assert city_matches("Saint Petersburg", ["питер"])
+        assert city_matches("г. Москва", ["москва"])
+        assert city_matches("Москва", ["Казань", "Москва"])
+        assert not city_matches("Москва", ["Казань"])
+        # A name starts a word: it must not hide inside another one.
+        assert not city_matches("Новомосковск", ["Москва"])
+
     def test_accredited_only_drops_only_an_explicit_no(self):
         """Telegram and geekjob never state it; silence must not empty them."""
         prof = SearchProfile(accredited_only=True)
@@ -262,3 +290,14 @@ class TestAccreditationSource:
         assert "accredited_only" not in stored
         untouched = with_overrides(stored, ScanRequest(source="all"))
         assert "accredited_only" not in untouched
+
+    def test_scan_form_sets_and_clears_the_cities(self):
+        from app.services.scan import ScanRequest, with_overrides
+
+        stored = {"queries": ["python"], "cities": ["Казань"]}
+        asked = with_overrides(stored, ScanRequest(source="all", cities=[" Москва ", ""]))
+        assert SearchProfile.from_dict(asked).cities == ["Москва"]
+        cleared = with_overrides(stored, ScanRequest(source="all", cities=[]))
+        assert SearchProfile.from_dict(cleared).cities == []
+        kept = with_overrides(stored, ScanRequest(source="all"))
+        assert kept["cities"] == ["Казань"]

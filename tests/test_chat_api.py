@@ -726,6 +726,40 @@ class TestManualEdit:
         assert response.status_code == 200
         assert (await _active(session, user)).id == first.id
 
+    async def test_the_city_is_edited_without_losing_other_preferences(
+        self, client, auth_headers, session, user
+    ):
+        first = await _resume(session, user, {
+            "target_role": "Backend",
+            "preferences": {"city": "Казань", "format": "гибрид"},
+        })
+        response = await client.put(
+            "/api/resumes/active/profile",
+            json={"preferences": {"city": " Москва "}},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        active = await _active(session, user)
+        assert active.id != first.id
+        assert active.profile["preferences"] == {"city": "Москва", "format": "гибрид"}
+
+        history = (await client.get("/api/state", headers=auth_headers)).json()[
+            "resume_history"
+        ]
+        assert "город: Казань → Москва" in history[0]["changes"]
+
+    async def test_a_blank_city_on_a_profile_without_one_is_no_change(
+        self, client, auth_headers, session, user
+    ):
+        first = await _resume(session, user)
+        response = await client.put(
+            "/api/resumes/active/profile",
+            json={"target_role": "Backend", "preferences": {"city": ""}},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert (await _active(session, user)).id == first.id
+
     async def test_an_unknown_level_is_refused(self, client, auth_headers, session, user):
         await _resume(session, user)
         response = await client.put(

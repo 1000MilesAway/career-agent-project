@@ -10,7 +10,9 @@ import { bucketOf } from '../components/VacancyRow'
 import {
   DEFAULT_CONDITIONS,
   DEFAULT_FILTERS,
+  cityMatches,
   conditionMiss,
+  splitCities,
   loadFilters,
   saveFilters,
   sortRows,
@@ -41,6 +43,8 @@ describe('searchFilters', () => {
         anySalary: false,
         remoteOnly: false,
         accreditedOnly: true,
+        // '' is a choice too — "any city" — and must not come back as null.
+        city: '',
         includeGlobal: true,
       },
     } as const
@@ -155,5 +159,32 @@ describe('conditionMiss', () => {
     )
     // Без порога галочка ни на что не влияет.
     expect(conditionMiss(vacancy({}), at({ salary: null, anySalary: false }))).toBeNull()
+  })
+
+  it('чужой город сворачивается с его названием, удалёнка и молчание проходят', () => {
+    const c = at({ remoteOnly: false, city: 'Москва' })
+    expect(conditionMiss(vacancy({ location: 'Казань', remote: false }), c)).toBe(
+      'другой город: Казань',
+    )
+    expect(conditionMiss(vacancy({ location: 'Москва, м. Курская' }), c)).toBeNull()
+    expect(conditionMiss(vacancy({ location: 'Казань', remote: true }), c)).toBeNull()
+    expect(conditionMiss(vacancy({ location: '' }), c)).toBeNull()
+    expect(conditionMiss(vacancy({ location: 'Казань' }), at({ city: '' }))).toBeNull()
+  })
+})
+
+describe('cityMatches', () => {
+  it('понимает разные написания одного города', () => {
+    expect(cityMatches('Санкт-Петербург', ['СПб'])).toBe(true)
+    expect(cityMatches('Saint Petersburg', ['питер'])).toBe(true)
+    expect(cityMatches('г. Москва', ['москва'])).toBe(true)
+    expect(cityMatches('Москва', ['Казань', 'Москва'])).toBe(true)
+    expect(cityMatches('Москва', ['Казань'])).toBe(false)
+    expect(cityMatches('Новомосковск', ['Москва'])).toBe(false)
+  })
+
+  it('города вводятся через запятую', () => {
+    expect(splitCities(' Москва, ,Казань ')).toEqual(['Москва', 'Казань'])
+    expect(splitCities(null)).toEqual([])
   })
 })

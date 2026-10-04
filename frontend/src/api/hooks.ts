@@ -54,6 +54,8 @@ export interface ScanParams {
   remote_only?: boolean
   /** Drop employers whose IT accreditation is explicitly not confirmed. */
   accredited_only?: boolean
+  /** On-site cities; [] — any city. Remote postings pass regardless. */
+  cities?: string[]
   /** Also read employers abroad hiring Russian speakers. */
   include_global?: boolean
 }

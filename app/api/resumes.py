@@ -200,6 +200,19 @@ class ExperienceEdit(BaseModel):
         return _clean_list(value)
 
 
+class PreferencesEdit(BaseModel):
+    # The parser fills salary and format too; the form shows only the city,
+    # and the keys it does not send keep their stored value (edit_profile).
+    model_config = ConfigDict(extra="forbid")
+
+    city: str | None = Field(default=None, max_length=200)
+
+    @field_validator("city")
+    @classmethod
+    def _text(cls, value: str | None) -> str | None:
+        return _clean_text(value)
+
+
 class ProfileEdit(BaseModel):
     """The parsed profile as the user corrected it by hand.
 
@@ -220,6 +233,7 @@ class ProfileEdit(BaseModel):
     education: list[str] | None = _Items
     languages: list[str] | None = _Items
     experience: list[ExperienceEdit] | None = _Items
+    preferences: PreferencesEdit | None = None
 
     @field_validator("name", "target_role", "field", "summary")
     @classmethod
@@ -267,6 +281,17 @@ async def edit_profile(
     years = edited.get("years_experience")
     if isinstance(years, float) and years.is_integer():
         edited["years_experience"] = int(years)
+
+    if "preferences" in edited:
+        # Merged, not replaced: the form sends the city alone, and salary and
+        # format the parser read must survive. A cleared key the profile never
+        # had stays absent, so an untouched form makes no new revision.
+        prefs = dict((resume.profile or {}).get("preferences") or {})
+        for key, value in (edited.pop("preferences") or {}).items():
+            if value is not None or key in prefs:
+                prefs[key] = value
+        if prefs or "preferences" in (resume.profile or {}):
+            edited["preferences"] = prefs
 
     profile = {**(resume.profile or {}), **edited}
     if profile == resume.profile:

@@ -27,6 +27,8 @@ export interface ProfileDraft {
   seniority: string
   years_experience: string
   field: string
+  /** Where the person lives and can work on site; the search starts there. */
+  city: string
   summary: string
   directions: string
   skills: string
@@ -65,6 +67,7 @@ export function toDraft(profile: ResumeProfile): ProfileDraft {
     years_experience:
       profile.years_experience != null ? String(profile.years_experience) : '',
     field: profile.field ?? '',
+    city: profile.preferences?.city ?? '',
     summary: profile.summary ?? '',
     directions: lines(profile.directions),
     skills: lines(profile.skills),
@@ -83,6 +86,8 @@ export function fromDraft(draft: ProfileDraft): ResumeProfile {
     seniority: draft.seniority || undefined,
     years_experience: Number.isFinite(years) ? years : undefined,
     field: draft.field,
+    // The city alone: the server merges it into the stored preferences.
+    preferences: { city: draft.city },
     summary: draft.summary,
     directions: split(draft.directions),
     skills: split(draft.skills),

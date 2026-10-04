@@ -38,6 +38,27 @@
   align-self: stretch;
 }
 
+/* The city sits above the switches: it narrows the same thing they do. */
+.scan__city {
+  display: grid;
+  grid-template-columns: auto minmax(0, 220px) auto;
+  align-items: center;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+}
+
+.scan__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.scan__hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .scan__opts {
   display: flex;
   flex-wrap: wrap;
@@ -175,6 +196,14 @@
      min-content instead of squeezing it into the card. */
   .scan__grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scan__city {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .scan__hint {
+    grid-column: 1 / -1;
   }
 }
 

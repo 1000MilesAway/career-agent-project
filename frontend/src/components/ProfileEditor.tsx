@@ -102,6 +102,12 @@ export function ProfileEditor({
           onChange={(v) => set('years_experience', v)}
         />
         <Text label="Сфера" value={draft.field} onChange={(v) => set('field', v)} />
+        <Text
+          label="Город проживания"
+          value={draft.city}
+          placeholder="Москва"
+          onChange={(v) => set('city', v)}
+        />
       </div>
 
       <Area
