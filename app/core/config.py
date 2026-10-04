@@ -35,11 +35,12 @@ class Settings(BaseSettings):
     # Quotas per plan, in USD at the off-peak price; 0 or less switches that
     # window off. The owner's key pays for every call, so a public host needs
     # them on. An evaluation is ~$0.0018, a full package ~$0.0085: the free day
-    # is ~11 evaluations, the paid day ~55. Users see a percentage, never these
+    # is ~22 evaluations, the paid day ~55. Users see a percentage, never these
     # numbers, so they can be retuned without a word of the interface changing.
-    # Decided 2026-10-01, see docs/decisions.md.
-    free_day_usd: float = 0.02
-    free_week_usd: float = 0.06
+    # Decided 2026-10-01; the free plan doubled 2026-10-04 to win early users.
+    # See docs/decisions.md.
+    free_day_usd: float = 0.04
+    free_week_usd: float = 0.12
     paid_day_usd: float = 0.10
     paid_week_usd: float = 0.30
 
