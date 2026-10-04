@@ -1,8 +1,7 @@
+/* Label over a boxed field, like every other field in the panel. */
 .salary__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 8px;
 }
 
 .salary__label {
@@ -12,14 +11,17 @@
   letter-spacing: 0.02em;
 }
 
-/* Still the largest text in the panel — "250 000" has to read at a glance as
-   thousands, which is what people got wrong — but no longer a headline. */
+/* The number in the serif face, grouped — "250 000" has to read at a glance
+   as thousands, which is what people got wrong. */
 .salary__field {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  border-bottom: 1.5px solid var(--line-strong);
-  padding: 0 0 2px;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   transition: border-color 0.15s;
 }
 
@@ -28,15 +30,15 @@
 }
 
 .salary__field input {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: none;
   padding: 0;
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums lining-nums;
   line-height: 1.2;
-  width: 8ch;
-  text-align: right;
 }
 
 .salary__field input::placeholder {
@@ -56,7 +58,7 @@
 /* A thin ink track with the chosen part filled: the browser's own slider is
    blue and differs on every OS, which clashed with the paper palette. */
 .salary__slider {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .salary__slider input[type='range'] {

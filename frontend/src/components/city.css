@@ -1,0 +1,107 @@
+/* City combobox: an input that shows what is typed, with the matching
+   cities in a list under it. */
+
+.city {
+  position: relative;
+}
+
+.city__icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.city__input.input {
+  padding-left: 34px;
+  padding-right: 34px;
+  text-overflow: ellipsis;
+}
+
+.city__input::placeholder {
+  color: var(--muted);
+}
+
+/* While searching the placeholder is the current city, dimmed: it says what
+   stays if nothing new is picked. */
+.city--open .city__input {
+  border-color: var(--ink);
+}
+
+.city__clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.city__clear:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.city__list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 264px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+.city__option {
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.city__option[aria-selected='true'] {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.city__option--current {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.city__option mark {
+  background: none;
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.city__none {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}

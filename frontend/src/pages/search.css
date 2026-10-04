@@ -23,28 +23,24 @@
   font-size: 18px;
 }
 
-/* Salary on the left at a fixed, modest width; switches and the launch on
-   the right. The salary used to take half the card for one number. */
+/* Two equal columns of label-over-control fields, so every label sits on
+   the same line and every box has the same height: salary on the left,
+   where and which vacancies on the right. */
 .scan__grid {
   display: grid;
-  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-  gap: 16px 40px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 40px;
   align-items: start;
 }
 
 .scan__side {
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
+  display: grid;
+  gap: 20px;
 }
 
-/* The city sits above the switches: it narrows the same thing they do. */
-.scan__city {
+.scan__field {
   display: grid;
-  grid-template-columns: auto minmax(0, 220px);
-  align-items: center;
-  gap: 4px 12px;
-  margin-bottom: 12px;
+  gap: 8px;
 }
 
 .scan__label {
@@ -60,16 +56,18 @@
   gap: 8px;
 }
 
+/* The launch, then what the last launch found, on one line under a rule. */
 .scan__go {
   display: flex;
   align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
-  margin-top: auto;
+  gap: 12px 20px;
+  border-top: 1px solid var(--line);
   padding-top: 16px;
 }
 
 .scan__btn {
+  flex: none;
   height: 44px;
   padding: 0 22px;
   font-size: 15px;
@@ -77,9 +75,8 @@
 
 .scan__progress,
 .scan__result {
-  grid-column: 1 / -1;
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
+  flex: 1 1 320px;
+  min-width: 0;
   font-size: 13px;
   color: var(--ink-2);
 }
@@ -193,8 +190,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .scan__city {
-    grid-template-columns: auto minmax(0, 1fr);
+  .scan__btn {
+    width: 100%;
   }
 }
 

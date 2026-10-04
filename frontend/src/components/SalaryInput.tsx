@@ -60,7 +60,7 @@ export function SalaryInput({
     <div className="salary">
       <div className="salary__head">
         <label className="salary__label" htmlFor="salary-input">
-          Минимальная зарплата
+          Зарплата от
         </label>
         <div className="salary__field">
           <input

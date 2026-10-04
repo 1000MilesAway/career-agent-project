@@ -455,100 +455,109 @@ export function SearchPage() {
           />
 
           <div className="scan__side">
-            <label className="scan__city">
-              <span className="scan__label">Город</span>
+            <div className="scan__field">
+              <label className="scan__label" htmlFor="scan-city">
+                Город
+              </label>
               <CitySelect
+                id="scan-city"
                 value={conditions.city ?? ''}
-                emptyLabel="Любой"
+                emptyLabel="Любой город"
                 onChange={(city) => changeConditions({ city })}
               />
-            </label>
-
-            <div className="scan__opts">
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={conditions.remoteOnly}
-                  onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
-                />
-                Удалёнка
-              </label>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={conditions.accreditedOnly}
-                  onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
-                />
-                ИТ-аккредитованные
-              </label>
-              {/* A source choice, not a property of a row — the employer's
-                  group is not stored — so it cannot filter what was found. */}
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={conditions.includeGlobal}
-                  onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
-                />
-                Зарубежные
-              </label>
             </div>
 
-            <div className="scan__go">
-              <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
-                {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
-              </button>
+            <div className="scan__field" role="group" aria-labelledby="scan-opts">
+              <span className="scan__label" id="scan-opts">
+                Вакансии
+              </span>
+              <div className="scan__opts">
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={conditions.remoteOnly}
+                    onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
+                  />
+                  Удалёнка
+                </label>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={conditions.accreditedOnly}
+                    onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
+                  />
+                  ИТ-аккредитованные
+                </label>
+                {/* A source choice, not a property of a row — the employer's
+                    group is not stored — so it cannot filter what was found. */}
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={conditions.includeGlobal}
+                    onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
+                  />
+                  Зарубежные
+                </label>
+              </div>
             </div>
           </div>
         </div>
 
-        {isScanning ? (
-          <div className="scan__progress" role="status">
-            <span className="scan__bar" aria-hidden="true" />
-            Источники читаются параллельно, модель не вызывается. Можно уйти на другую
-            страницу — поиск продолжится, итог появится здесь.
-          </div>
-        ) : null}
+        {/* The launch and its outcome share one row: the result is the answer
+            to the button, so it sits next to it rather than a section below. */}
+        <div className="scan__go">
+          <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
+            {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
+          </button>
+          {isScanning ? (
+            <div className="scan__progress" role="status">
+              <span className="scan__bar" aria-hidden="true" />
+              Источники читаются параллельно, модель не вызывается. Можно уйти на другую
+              страницу — поиск продолжится, итог появится здесь.
+            </div>
+          ) : null}
 
-        {scanError && !isScanning ? (
-          <div className="scan__result scan__source--err" role="alert">
-            Поиск не удался: {scanError}
-          </div>
-        ) : null}
+          {scanError && !isScanning ? (
+            <div className="scan__result scan__source--err" role="alert">
+              Поиск не удался: {scanError}
+            </div>
+          ) : null}
 
-        {/* Folded: the totals are what a glance needs, the per-source lines
-            only matter when a number looks wrong. A failed source is named in
-            the summary, so folding never hides an error. */}
-        {scanNote && !isScanning ? (
-          <details className="scan__result scan__report">
-            <summary role="status">
-              {scanJob?.finished_at
-                ? `Поиск ${whenText(scanJob.finished_at)}: `
-                : 'Поиск: '}
-              найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
-              <b className="num">{scanNote.kept ?? 0}</b>, новых{' '}
-              <b className="num">{scanNote.new}</b>
-              {failedSources(scanNote.sources) ? (
-                <span className="scan__source--err">
-                  {' '}
-                  · не прочитано источников: {failedSources(scanNote.sources)}
-                </span>
+          {/* Folded: the totals are what a glance needs, the per-source lines
+              only matter when a number looks wrong. A failed source is named in
+              the summary, so folding never hides an error. */}
+          {scanNote && !isScanning ? (
+            <details className="scan__result scan__report">
+              <summary role="status">
+                {scanJob?.finished_at
+                  ? `Поиск ${whenText(scanJob.finished_at)}: `
+                  : 'Поиск: '}
+                найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
+                <b className="num">{scanNote.kept ?? 0}</b>, новых{' '}
+                <b className="num">{scanNote.new}</b>
+                {failedSources(scanNote.sources) ? (
+                  <span className="scan__source--err">
+                    {' '}
+                    · не прочитано источников: {failedSources(scanNote.sources)}
+                  </span>
+                ) : null}
+                <span className="scan__more">подробнее</span>
+              </summary>
+              {scanNote.duplicates ? (
+                <p className="scan__total">
+                  Уже найдены в другом месте: {scanNote.duplicates}.
+                </p>
               ) : null}
-              <span className="scan__more">подробнее</span>
-            </summary>
-            {scanNote.duplicates ? (
-              <p className="scan__total">
-                Уже найдены в другом месте: {scanNote.duplicates}.
-              </p>
-            ) : null}
-            <ul className="scan__sources">
-              {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
-                <li key={name} className={s.error ? 'scan__source--err' : undefined}>
-                  {sourceLine(name, s)}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
+              <ul className="scan__sources">
+                {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
+                  <li key={name} className={s.error ? 'scan__source--err' : undefined}>
+                    {sourceLine(name, s)}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
       </section>
 
       <section aria-label="Найденные вакансии">
