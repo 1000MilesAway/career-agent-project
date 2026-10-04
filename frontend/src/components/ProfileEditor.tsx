@@ -16,6 +16,7 @@ import {
   type JobDraft,
   type ProfileDraft,
 } from './profileDraft'
+import { CitySelect } from './CitySelect'
 import { useToast } from './toast'
 
 export function ProfileEditor({
@@ -102,12 +103,14 @@ export function ProfileEditor({
           onChange={(v) => set('years_experience', v)}
         />
         <Text label="Сфера" value={draft.field} onChange={(v) => set('field', v)} />
-        <Text
-          label="Город проживания"
-          value={draft.city}
-          placeholder="Москва"
-          onChange={(v) => set('city', v)}
-        />
+        <label className="editor__field">
+          <span className="eyebrow">Город проживания</span>
+          <CitySelect
+            value={draft.city}
+            emptyLabel="не указан"
+            onChange={(v) => set('city', v)}
+          />
+        </label>
       </div>
 
       <Area

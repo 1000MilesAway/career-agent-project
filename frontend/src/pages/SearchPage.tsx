@@ -24,6 +24,7 @@ import {
   useTriageSettled,
 } from '../api/hooks'
 import type { FoundVacancy, SourceScan } from '../api/types'
+import { CitySelect } from '../components/CitySelect'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { SalaryInput } from '../components/SalaryInput'
 import {
@@ -456,11 +457,10 @@ export function SearchPage() {
           <div className="scan__side">
             <label className="scan__city">
               <span className="scan__label">Город</span>
-              <input
-                className="input"
+              <CitySelect
                 value={conditions.city ?? ''}
-                placeholder="любой"
-                onChange={(e) => changeConditions({ city: e.target.value })}
+                emptyLabel="Любой"
+                onChange={(city) => changeConditions({ city })}
               />
             </label>
 
