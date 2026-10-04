@@ -2,6 +2,8 @@
 
 .scan {
   display: grid;
+  /* Explicit: the implicit auto track also widens to its content. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: 18px 24px 20px;
 }
@@ -123,7 +125,11 @@
 }
 
 /* The report is folded to its totals; the per-source lines open on demand. */
+/* Block, not the global flex summary: as flex items, every text run and <b>
+   became its own column, and on a phone the line was wider than the card and
+   pushed the whole panel past the screen edge. */
 .scan__report summary {
+  display: block;
   cursor: pointer;
   list-style: none;
   color: var(--ink);
@@ -131,6 +137,12 @@
 
 .scan__report summary::-webkit-details-marker {
   display: none;
+}
+
+.scan__report summary::before {
+  display: inline-block;
+  vertical-align: 0.15em;
+  margin-right: 10px;
 }
 
 .scan__more {
@@ -159,8 +171,10 @@
     padding: 16px;
   }
 
+  /* minmax(0, …), not 1fr: a bare 1fr track grows to its widest child's
+     min-content instead of squeezing it into the card. */
   .scan__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
