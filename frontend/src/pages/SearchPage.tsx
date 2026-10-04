@@ -462,9 +462,6 @@ export function SearchPage() {
                 placeholder="любой"
                 onChange={(e) => changeConditions({ city: e.target.value })}
               />
-              <span className="scan__hint">
-                для офиса и гибрида — удалёнку не ограничивает
-              </span>
             </label>
 
             <div className="scan__opts">

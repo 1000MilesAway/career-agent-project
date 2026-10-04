@@ -41,7 +41,7 @@
 /* The city sits above the switches: it narrows the same thing they do. */
 .scan__city {
   display: grid;
-  grid-template-columns: auto minmax(0, 220px) auto;
+  grid-template-columns: auto minmax(0, 220px);
   align-items: center;
   gap: 4px 12px;
   margin-bottom: 12px;
@@ -52,11 +52,6 @@
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0.02em;
-}
-
-.scan__hint {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 .scan__opts {
@@ -200,10 +195,6 @@
 
   .scan__city {
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .scan__hint {
-    grid-column: 1 / -1;
   }
 }
 
