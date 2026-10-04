@@ -80,3 +80,31 @@ def verification_letter(link: str) -> tuple[str, str, str]:
         "</div>"
     )
     return subject, text, html_body
+
+
+def password_reset_letter(link: str) -> tuple[str, str, str]:
+    """Subject, plain text and HTML of the password reset letter."""
+    subject = "Сброс пароля в career-helper"
+    text = (
+        "Здравствуйте!\n\n"
+        "Кто-то — надеемся, вы — попросил сбросить пароль от career-helper. "
+        "Чтобы задать новый, откройте ссылку:\n"
+        f"{link}\n\n"
+        "Ссылка действует час и срабатывает один раз. Если вы не просили "
+        "сброс, просто проигнорируйте письмо — пароль останется прежним.\n"
+    )
+    safe = html.escape(link, quote=True)
+    html_body = (
+        '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">'
+        "<p>Здравствуйте!</p>"
+        "<p>Кто-то — надеемся, вы — попросил сбросить пароль от career-helper.</p>"
+        f'<p><a href="{safe}" style="display:inline-block;padding:10px 18px;'
+        'background:#1a1a1a;color:#ffffff;text-decoration:none;border-radius:6px">'
+        "Задать новый пароль</a></p>"
+        f'<p style="color:#666;font-size:13px">Или скопируйте ссылку: {safe}</p>'
+        '<p style="color:#666;font-size:13px">Ссылка действует час и срабатывает один '
+        "раз. Если вы не просили сброс, просто проигнорируйте письмо — пароль "
+        "останется прежним.</p>"
+        "</div>"
+    )
+    return subject, text, html_body

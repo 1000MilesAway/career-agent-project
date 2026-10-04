@@ -1,8 +1,9 @@
 /** The gate. Nothing else renders until a token is in hand.
  *
- * Three states of one form: log in, sign up, and "the letter is on its way".
- * Signing up is offered only when the server can send mail; without it the
- * way in for a newcomer is Telegram.
+ * States of one form: log in, sign up, ask for a password reset, and "the
+ * letter is on its way" after either letter. Signing up and resetting are
+ * offered only when the server can send mail; without it the way in for a
+ * newcomer is Telegram.
  */
 
 import { useState, useTransition, type FormEvent, type ReactNode } from 'react'
@@ -15,7 +16,7 @@ import { TelegramButton, useTelegramConfig } from '../components/TelegramLogin'
 import { ErrorNote } from '../components/ui'
 import './login.css'
 
-type Mode = 'login' | 'signup' | 'sent'
+type Mode = 'login' | 'signup' | 'sent' | 'forgot' | 'forgot-sent'
 
 interface SignupConfig {
   enabled: boolean
@@ -65,6 +66,22 @@ export function LoginPage() {
     setMode('sent')
   }
 
+  // The server answers the same for any address, so the screen after it
+  // cannot say more than "if there is such an account".
+  async function requestReset() {
+    const data = await api<{ email: string }>('/api/auth/password-reset', {
+      method: 'POST',
+      json: { email: email.trim() },
+    })
+    setSentTo(data.email)
+    setMode('forgot-sent')
+  }
+
+  function onForgot(event: FormEvent) {
+    event.preventDefault()
+    run(requestReset)
+  }
+
   function onSubmit(event: FormEvent) {
     event.preventDefault()
     run(() => (mode === 'signup' ? signup() : login(email, password)))
@@ -86,7 +103,58 @@ export function LoginPage() {
       <LoginHome />
 
       <section className="login__form">
-        {mode === 'sent' ? (
+        {mode === 'forgot' ? (
+          <>
+            <h2 className="login__form-title">Сброс пароля</h2>
+            <p style={{ margin: 0 }}>
+              Пришлём на почту ссылку, по которой можно задать новый пароль.
+            </p>
+            <form className="stack" style={{ gap: 14 }} onSubmit={onForgot}>
+              <label className="stack" style={{ gap: 6 }}>
+                <span className="eyebrow" style={{ margin: 0 }}>
+                  Email
+                </span>
+                <input
+                  className="input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                  required
+                  autoFocus
+                />
+              </label>
+              <button
+                className="btn"
+                type="submit"
+                disabled={isPending}
+                style={{ height: 44 }}
+              >
+                {isPending ? 'Отправляю…' : 'Прислать ссылку'}
+              </button>
+            </form>
+            <ErrorNote error={error} />
+            <p className="muted" style={{ marginBottom: 0 }}>
+              <SwitchLink onClick={() => switchTo('login')}>Ко входу</SwitchLink>
+            </p>
+          </>
+        ) : mode === 'forgot-sent' ? (
+          <>
+            <h2 className="login__form-title">Проверьте почту</h2>
+            <p style={{ margin: 0 }}>
+              Если учётка с адресом <b>{sentTo}</b> есть, письмо со ссылкой уже в пути.
+            </p>
+            <p className="muted" style={{ margin: 0 }}>
+              Ссылка действует час. Не видно письма — загляните в «Спам». Учётку, созданную
+              через Telegram, восстанавливать не нужно: войдите через него.
+            </p>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              <SwitchLink onClick={() => switchTo('forgot')}>Другой адрес</SwitchLink>
+              {' · '}
+              <SwitchLink onClick={() => switchTo('login')}>Ко входу</SwitchLink>
+            </p>
+          </>
+        ) : mode === 'sent' ? (
           <>
             <h2 className="login__form-title">Проверьте почту</h2>
             <p style={{ margin: 0 }}>
@@ -157,6 +225,13 @@ export function LoginPage() {
                 {mode === 'signup' ? (
                   <span className="muted" style={{ fontSize: 13 }}>
                     Не короче 8 символов
+                  </span>
+                ) : signupEnabled ? (
+                  // The same switch as signup: both need the server to send mail.
+                  <span style={{ fontSize: 13 }}>
+                    <SwitchLink onClick={() => switchTo('forgot')}>
+                      Забыли пароль?
+                    </SwitchLink>
                   </span>
                 ) : null}
               </label>

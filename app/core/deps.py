@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Resume, User
 from .db import get_session
-from .security import read_access_token
+from .security import read_access_claims
 
 # auto_error=False so a missing header produces our 401 with a Russian message
 # rather than FastAPI's default English one.
@@ -42,12 +42,19 @@ async def current_user(
     if credentials is None:
         raise unauthorized
 
-    user_id = read_access_token(credentials.credentials)
-    if user_id is None:
+    claims = read_access_claims(credentials.credentials)
+    if claims is None:
         raise unauthorized
+    user_id, issued_at = claims
 
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
+        raise unauthorized
+    # A reset logs out every session from before it. Whole seconds, as `iat`
+    # is: the token handed out by the reset itself carries the same second.
+    if user.password_changed_at is not None and issued_at < int(
+        user.password_changed_at.timestamp()
+    ):
         raise unauthorized
     return user
 

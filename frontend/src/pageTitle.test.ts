@@ -19,6 +19,7 @@ describe('pageTitle', () => {
   it('keeps the open pages their own titles when logged out', () => {
     expect(pageTitle('/terms', false)).toBe('Пользовательское соглашение | Career Helper')
     expect(pageTitle('/verify', false)).toBe('Подтверждение почты | Career Helper')
+    expect(pageTitle('/reset-password', false)).toBe('Новый пароль | Career Helper')
   })
 
   it('falls back to the site name for a path about to redirect', () => {

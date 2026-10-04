@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
@@ -16,14 +17,18 @@ from ..core.deps import SessionDep, UserDep
 from ..core.security import (
     create_access_token,
     create_email_token,
+    create_reset_token,
     hash_password,
     password_mark_matches,
     read_email_token,
+    read_reset_token,
     verify_password,
 )
 from ..models import User
 from ..services import mail
 from ..services.spend import plan_of
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -218,6 +223,98 @@ async def verify_email(body: VerifyRequest, session: SessionDep) -> TokenRespons
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(UTC)
         await session.commit()
+    return TokenResponse(access_token=create_access_token(user.id))
+
+
+class ResetRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetConfirm(BaseModel):
+    token: str
+    # The same limits as at signup.
+    password: str = Field(min_length=8, max_length=72)
+
+
+@router.post("/password-reset", response_model=SignupResponse, status_code=status.HTTP_202_ACCEPTED)
+async def request_password_reset(body: ResetRequest, session: SessionDep) -> SignupResponse:
+    """Send a link that sets a new password.
+
+    The answer is the same whether a letter went or not: unknown address,
+    Telegram-only account, disabled account, a letter sent under a minute
+    ago. A reset form that told them apart would be a directory of who has
+    an account here. The throttle is silent for the same reason — the letter
+    from a minute ago is still the one to open.
+
+    An unconfirmed signup may reset too: the link proves the inbox, which is
+    all the confirmation letter would have proved.
+    """
+    if not mail.mail_enabled():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Почта не настроена")
+    email = body.email.lower()
+    sent = SignupResponse(
+        email=email,
+        detail="Если такая учётка есть, письмо со ссылкой уже в пути",
+    )
+
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    now = datetime.now(UTC)
+    if (
+        user is None
+        or not user.is_active
+        or user.password_hash is None
+        or (
+            user.verification_sent_at is not None
+            and now - user.verification_sent_at < RESEND_AFTER
+        )
+    ):
+        return sent
+
+    link = f"{get_settings().public_url.rstrip('/')}/reset-password?token=" + create_reset_token(
+        user.id, email, user.password_hash
+    )
+    subject, text, html_body = mail.password_reset_letter(link)
+    try:
+        await mail.send_email(email, subject, text, html_body)
+    except mail.MailUnavailable:
+        # Hidden too: only a known address ever reaches the send, so a 503
+        # here would tell it apart — and Resend's daily quota is something a
+        # stranger can exhaust with signups. Not stamped, so a retry sends.
+        log.warning("password reset letter was not sent", exc_info=True)
+        return sent
+    user.verification_sent_at = now
+    await session.commit()
+    return sent
+
+
+@router.post("/password-reset/confirm", response_model=TokenResponse)
+async def confirm_password_reset(body: ResetConfirm, session: SessionDep) -> TokenResponse:
+    """Set the new password from a reset link, and log in with it.
+
+    The link works once: the new password changes the mark it is bound to.
+    Every token issued before the reset stops working (see core/deps.py).
+    """
+    refused = HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        "Ссылка устарела или уже использована — запросите сброс ещё раз",
+    )
+    claims = read_reset_token(body.token)
+    if claims is None:
+        raise refused
+    user_id, email, mark = claims
+    user = await session.get(User, user_id)
+    if user is None or user.email != email or not password_mark_matches(mark, user.password_hash):
+        raise refused
+    if not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Учётка выключена администратором")
+
+    now = datetime.now(UTC)
+    user.password_hash = hash_password(body.password)
+    user.password_changed_at = now
+    if user.email_verified_at is None:
+        user.email_verified_at = now
+    await session.commit()
     return TokenResponse(access_token=create_access_token(user.id))
 
 

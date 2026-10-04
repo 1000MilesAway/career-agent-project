@@ -72,9 +72,14 @@ class User(Base, TimestampMixin):
     # cannot log in until it is set; accounts made by the admin CLI are born
     # confirmed. Null for a Telegram-only account, which has no email.
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # When the last confirmation letter went out: repeat signups are throttled
-    # by it, because Resend's free plan is 100 letters a day for everyone.
+    # When the last letter to this account went out — a confirmation or a
+    # password reset: repeats are throttled by it, because Resend's free plan
+    # is 100 letters a day for everyone.
     verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the password was last reset from a letter. Access tokens issued
+    # before it are refused (core/deps.py): a reset is what someone does when
+    # the password leaked, and it has to log out whoever used the leak.
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # What the cabinet calls the user instead of the login email. Optional:
     # the cabinet falls back to the email, or to the Telegram name for an

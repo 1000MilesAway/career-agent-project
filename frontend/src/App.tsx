@@ -17,6 +17,7 @@ import type { AppState, Quota, QuotaWindow } from './api/types'
 import { useAuth } from './auth'
 import { LoginPage } from './pages/LoginPage'
 import { VerifyPage } from './pages/VerifyPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
 import { pageTitle } from './pageTitle'
 import {
@@ -82,6 +83,7 @@ function Screen() {
   // Before the token check: the link from a letter must work whether or not
   // this browser is logged in, and logged in as whom.
   if (pathname === '/verify') return <VerifyPage />
+  if (pathname === '/reset-password') return <ResetPasswordPage />
   if (!token && pathname === '/terms') return <LegalScreen doc="terms" />
   if (!token && pathname === '/privacy') return <LegalScreen doc="privacy" />
   if (!token) return <LoginPage />

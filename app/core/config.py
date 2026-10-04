@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     public_url: str = "https://career-helper.site"
     # How long a confirmation link works.
     email_token_hours: int = 24
+    # How long a password reset link works. Shorter than a confirmation: the
+    # link is as good as the password, and a letter lingers in the inbox.
+    reset_token_hours: int = 1
 
     debug: bool = False
 

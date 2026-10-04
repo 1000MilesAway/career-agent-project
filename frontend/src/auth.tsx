@@ -14,6 +14,8 @@ interface AuthValue {
   loginTelegram: (idToken: string) => Promise<void>
   /** Opens a letter's link: confirms the address and logs in. */
   verifyEmail: (token: string) => Promise<void>
+  /** Opens a reset letter's link: sets the new password and logs in. */
+  resetPassword: (token: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -48,10 +50,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(response.access_token)
   }, [])
 
+  const resetPassword = useCallback(async (token: string, password: string) => {
+    const response = await api<{ access_token: string }>(
+      '/api/auth/password-reset/confirm',
+      {
+        method: 'POST',
+        json: { token, password },
+      },
+    )
+    setToken(response.access_token)
+  }, [])
+
   const logout = useCallback(() => setToken(null), [])
 
   return (
-    <AuthContext value={{ token, login, loginTelegram, verifyEmail, logout }}>
+    <AuthContext
+      value={{ token, login, loginTelegram, verifyEmail, resetPassword, logout }}
+    >
       {children}
     </AuthContext>
   )

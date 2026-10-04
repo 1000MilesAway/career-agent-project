@@ -1,8 +1,8 @@
 """Passwords and access tokens.
 
-Deliberately small. Email exists only to confirm the address of a
-self-signup; there is still no password reset: a lost password is an admin
-re-running the CLI.
+Deliberately small. Letters carry two kinds of signed links — confirming
+the address of a self-signup and resetting a lost password — and neither
+needs a table: each is bound to the password hash it was issued for.
 """
 
 from __future__ import annotations
@@ -33,6 +33,9 @@ ALGORITHM = "HS256"
 # are signed with one key, so without it a link from a letter would work as a
 # login token and a login token as a confirmation.
 _EMAIL_TOKEN_TYPE = "verify_email"
+# Its own type rather than reusing the confirmation one: a confirmation link
+# lives a day and only logs in, a reset link sets a password and lives an hour.
+_RESET_TOKEN_TYPE = "reset_password"
 
 
 def hash_password(password: str) -> str:
@@ -59,7 +62,13 @@ def create_access_token(user_id: uuid.UUID) -> str:
 
 
 def read_access_token(token: str) -> uuid.UUID | None:
-    """The user id a token carries, or None if it is expired, forged or junk.
+    """The user id a token carries, or None if it is expired, forged or junk."""
+    claims = read_access_claims(token)
+    return claims[0] if claims else None
+
+
+def read_access_claims(token: str) -> tuple[uuid.UUID, int] | None:
+    """(user id, issued-at in epoch seconds) from an access token, or None.
 
     Returns None rather than raising: every failure here means the same thing
     to the caller — this request is not authenticated — and distinguishing
@@ -72,8 +81,8 @@ def read_access_token(token: str) -> uuid.UUID | None:
         # Access tokens carry no type; anything typed is some other token.
         if "typ" in payload:
             return None
-        return uuid.UUID(payload["sub"])
-    except (jwt.InvalidTokenError, KeyError, ValueError):
+        return uuid.UUID(payload["sub"]), int(payload["iat"])
+    except (jwt.InvalidTokenError, KeyError, ValueError, TypeError):
         return None
 
 
@@ -87,23 +96,24 @@ def _password_mark(password_hash: str) -> str:
     return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
 
 
-def create_email_token(user_id: uuid.UUID, email: str, password_hash: str) -> str:
-    """The token in a confirmation letter: this account, this address, this password."""
+def _create_letter_token(
+    kind: str, hours: int, user_id: uuid.UUID, email: str, password_hash: str
+) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
-        "typ": _EMAIL_TOKEN_TYPE,
+        "typ": kind,
         "email": email,
         "pwd": _password_mark(password_hash),
         "iat": now,
-        "exp": now + timedelta(hours=settings.email_token_hours),
+        "exp": now + timedelta(hours=hours),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def read_email_token(token: str) -> tuple[uuid.UUID, str, str] | None:
-    """(user id, email, password mark) from a confirmation token, or None.
+def _read_letter_token(kind: str, token: str) -> tuple[uuid.UUID, str, str] | None:
+    """(user id, email, password mark) from a letter's token, or None.
 
     One None for every failure, as with access tokens. The caller compares the
     email and the mark against the account as it is now.
@@ -111,11 +121,36 @@ def read_email_token(token: str) -> tuple[uuid.UUID, str, str] | None:
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        if payload.get("typ") != _EMAIL_TOKEN_TYPE:
+        if payload.get("typ") != kind:
             return None
         return uuid.UUID(payload["sub"]), payload["email"], payload["pwd"]
     except (jwt.InvalidTokenError, KeyError, ValueError, TypeError):
         return None
+
+
+def create_email_token(user_id: uuid.UUID, email: str, password_hash: str) -> str:
+    """The token in a confirmation letter: this account, this address, this password."""
+    hours = get_settings().email_token_hours
+    return _create_letter_token(_EMAIL_TOKEN_TYPE, hours, user_id, email, password_hash)
+
+
+def read_email_token(token: str) -> tuple[uuid.UUID, str, str] | None:
+    return _read_letter_token(_EMAIL_TOKEN_TYPE, token)
+
+
+def create_reset_token(user_id: uuid.UUID, email: str, password_hash: str) -> str:
+    """The token in a password reset letter.
+
+    Bound to the current password like a confirmation: setting a new one
+    changes the mark, so the link works once, and a second letter's link
+    stays valid only until either of them is used.
+    """
+    hours = get_settings().reset_token_hours
+    return _create_letter_token(_RESET_TOKEN_TYPE, hours, user_id, email, password_hash)
+
+
+def read_reset_token(token: str) -> tuple[uuid.UUID, str, str] | None:
+    return _read_letter_token(_RESET_TOKEN_TYPE, token)
 
 
 def password_mark_matches(mark: str, password_hash: str | None) -> bool:

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   signupEnabled: true,
   api: vi.fn(),
   verifyEmail: vi.fn(),
+  resetPassword: vi.fn(),
 }))
 
 vi.mock('swr', () => ({
@@ -26,6 +27,7 @@ vi.mock('../auth', () => ({
     login: vi.fn(),
     loginTelegram: vi.fn(),
     verifyEmail: mocks.verifyEmail,
+    resetPassword: mocks.resetPassword,
   }),
 }))
 
@@ -36,11 +38,13 @@ vi.mock('../components/TelegramLogin', () => ({
 
 const { LoginPage } = await import('./LoginPage')
 const { VerifyPage } = await import('./VerifyPage')
+const { ResetPasswordPage } = await import('./ResetPasswordPage')
 
 beforeEach(() => {
   mocks.signupEnabled = true
   mocks.api.mockReset()
   mocks.verifyEmail.mockReset()
+  mocks.resetPassword.mockReset()
 })
 
 describe('LoginPage', () => {
@@ -69,6 +73,73 @@ describe('LoginPage', () => {
       method: 'POST',
       json: { email: 'New@Example.com', password: 'long enough' },
     })
+  })
+})
+
+describe('сброс пароля', () => {
+  it('без почты на сервере ссылки «Забыли пароль?» нет', () => {
+    mocks.signupEnabled = false
+    renderLogin()
+    expect(screen.queryByRole('button', { name: 'Забыли пароль?' })).toBeNull()
+  })
+
+  it('запрос уходит с почтой и не говорит, есть ли такая учётка', async () => {
+    mocks.api.mockResolvedValue({ email: 'me@example.com' })
+    const { container } = renderLogin()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Забыли пароль?' }))
+    expect(container.querySelector('input[type=password]')).toBeNull()
+    fireEvent.change(container.querySelector('input[type=email]')!, {
+      target: { value: ' me@example.com ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Прислать ссылку' }))
+
+    await screen.findByText(/Если учётка с адресом/)
+    expect(mocks.api).toHaveBeenCalledWith('/api/auth/password-reset', {
+      method: 'POST',
+      json: { email: 'me@example.com' },
+    })
+  })
+})
+
+function renderReset(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/" element={<p>кабинет</p>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('ResetPasswordPage', () => {
+  it('сохраняет новый пароль по токену из ссылки и открывает кабинет', async () => {
+    mocks.resetPassword.mockResolvedValue(undefined)
+    const { container } = renderReset('/reset-password?token=abc')
+    expect(mocks.resetPassword).not.toHaveBeenCalled()
+
+    fireEvent.change(container.querySelector('input[type=password]')!, {
+      target: { value: 'brand new one' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и войти' }))
+    await screen.findByText('кабинет')
+    expect(mocks.resetPassword).toHaveBeenCalledWith('abc', 'brand new one')
+  })
+
+  it('отказ сервера показывается, а не глотается', async () => {
+    mocks.resetPassword.mockRejectedValue(new Error('Ссылка устарела или уже использована'))
+    const { container } = renderReset('/reset-password?token=old')
+    fireEvent.change(container.querySelector('input[type=password]')!, {
+      target: { value: 'brand new one' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить и войти' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/устарела/))
+  })
+
+  it('без токена в ссылке формы нет', () => {
+    const { container } = renderReset('/reset-password')
+    expect(container.querySelector('input[type=password]')).toBeNull()
   })
 })
 
