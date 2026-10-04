@@ -437,3 +437,27 @@ export interface AdminSpend {
   journal_since: string | null
   lifetime_rub: number
 }
+
+export type FunnelStage =
+  'signed_up' | 'can_log_in' | 'resume' | 'scan' | 'evaluation' | 'applied'
+export type FunnelExtra = 'triage' | 'saved' | 'artifact' | 'paid'
+export type FunnelChannel = 'all' | 'email' | 'telegram'
+
+export interface FunnelCohort {
+  /** The Monday of the Moscow week the accounts signed up in, YYYY-MM-DD. */
+  week: string
+  /** Chained counts, one per stage. */
+  stages: number[]
+}
+
+/** A cohort funnel: the period picks who signed up, the counts are what
+ * they ever did. Each stage requires the ones before it. */
+export interface AdminFunnel {
+  /** 0 — every account ever. */
+  days: number
+  since: string | null
+  stages: FunnelStage[]
+  counts: number[]
+  extras: Record<FunnelExtra, number>
+  cohorts: FunnelCohort[]
+}

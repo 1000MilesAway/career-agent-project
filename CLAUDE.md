@@ -98,13 +98,13 @@
 | **`app/`** | **продукт**: FastAPI + Postgres, с пользователями. Только JSON |
 | `app/models.py` | таблицы; инварианты пайплайна закреплены структурой. Вакансии: общий пул `postings` + личные `vacancies` |
 | `app/api/` | роутеры: auth, resumes, vacancies, evaluations, artifacts, jobs, health, admin |
-| `app/api/admin.py` | дашборд владельца: пользователи и траты на модель; только `is_admin`, единственное место с деньгами |
+| `app/api/admin.py` | дашборд владельца: пользователи, конверсия и траты на модель; только `is_admin`, единственное место с деньгами |
 | `app/services/` | связка ядра с БД: `pool.py` (общий пул и кэш листингов), `scan.py`, `triage.py`, `tracker.py`, `spend.py` |
 | `app/worker.py` | воркер очереди на таблице `jobs` |
 | `app/cli.py` | админские команды; главная — завести пользователя |
 | **`frontend/`** | **кабинет**: React SPA (Vite + TypeScript), свой образ с nginx |
 | `frontend/src/api/` | типы контракта, клиент с токеном, хуки SWR |
-| `frontend/src/pages/` | страницы кабинета; `Admin*Page.tsx` — дашборд владельца (`/admin/users`, `/admin/spend`) |
+| `frontend/src/pages/` | страницы кабинета; `Admin*Page.tsx` — дашборд владельца (`/admin/users`, `/admin/funnel`, `/admin/spend`) |
 | `frontend/src/components/` | строка вакансии, панель отчёта, дифф профиля, тосты |
 | `frontend/src/landing/` | лендинг: разметка в `frontend/index.html`, здесь стили и смена слайдов |
 | `frontend/nginx.conf` | отдача статики и прокси `/api` на контейнер api |
@@ -219,7 +219,7 @@ git-статуса в начале сессии этого не показыва
 
 ```bash
 uv sync --group dev                  # зависимости из uv.lock
-uv run pytest                        # тесты (865 шт., ключ API не нужен)
+uv run pytest                        # тесты (867 шт., ключ API не нужен)
 uv run ruff check .                  # линтер
 uv run ruff check --fix .            # линтер с автоправкой
 ```
@@ -256,7 +256,7 @@ uv run python -m app.cli calibrate --source golden  # размеченный н�
 cd frontend
 npm ci                  # зависимости из package-lock.json
 npm run dev             # http://127.0.0.1:5173, /api проксируется на 8000
-npm test                # 131 тест интерфейса, сети не требуют
+npm test                # 135 тестов интерфейса, сети не требуют
 npm run typecheck       # все три проекта TS, включая тесты
 npm run lint            # oxlint
 npm run build           # сборка в dist/ (в git не кладётся)

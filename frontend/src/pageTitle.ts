@@ -14,6 +14,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/verify': 'Подтверждение почты',
   '/admin/users': 'Пользователи',
   '/admin/spend': 'Траты на модель',
+  '/admin/funnel': 'Конверсия',
 }
 
 /** The tab title for what Screen shows at this path. Mirrors its branches:

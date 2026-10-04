@@ -17,11 +17,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from sqlalchemy import Date, cast, func, or_, select
+from sqlalchemy import Date, and_, cast, func, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from ..core.deps import AdminDep, SessionDep
-from ..models import Evaluation, LlmCall, Resume, User, Vacancy
+from ..models import Application, Artifact, Evaluation, Job, LlmCall, Resume, User, Vacancy
 from ..services.spend import MSK, plan_of, windows
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -322,4 +322,132 @@ async def spend(
         top_users=top_users,
         journal_since=await session.scalar(select(func.min(LlmCall.created_at))),
         lifetime_rub=_money(await session.scalar(select(func.sum(User.spent_rub)))),
+    )
+
+
+# ---------------------------------------------------------------- funnel
+
+# The path a new account is meant to walk, in order. Each stage counts the
+# accounts that reached it AND every stage before it, so the bars only ever
+# shrink and "lost between two stages" is a subtraction. Most of these are
+# prerequisites in the product anyway: no scan without a CV, no evaluation
+# without a scanned vacancy.
+FUNNEL = ("signed_up", "can_log_in", "resume", "scan", "evaluation", "applied")
+
+# Done by some and skipped by others without being stuck: counted on their
+# own, as a share of the cohort, outside the chained funnel.
+EXTRAS = ("triage", "saved", "artifact", "paid")
+
+# Tracker statuses that mean the user sent an application. "discarded" is a
+# vacancy put aside before applying, so it is not one.
+APPLIED = ("applied", "responded", "interview", "tech_interview", "offer", "rejected")
+
+Channel = Literal["all", "email", "telegram"]
+
+
+class FunnelCohort(BaseModel):
+    # The Monday of the Moscow week the accounts signed up in.
+    week: date
+    # Chained counts, one per FUNNEL stage.
+    stages: list[int]
+
+
+class Funnel(BaseModel):
+    days: int  # 0: every account ever
+    since: datetime | None
+    stages: list[str]
+    counts: list[int]
+    extras: dict[str, int]
+    cohorts: list[FunnelCohort]
+
+
+def _reached() -> dict[str, ColumnElement[bool]]:
+    """Per account, whether it got to each stage — correlated EXISTS, so the
+    whole funnel is one pass over the cohort's users."""
+    vacancy_of_user = Vacancy.user_id == User.id
+    return {
+        "signed_up": User.id.is_not(None),
+        # A self-signup cannot log in until the address is confirmed;
+        # a Telegram account is in from its first login.
+        "can_log_in": or_(User.email_verified_at.is_not(None), User.telegram_id.is_not(None)),
+        "resume": select(Resume.id).where(Resume.user_id == User.id).exists(),
+        "scan": select(Job.id).where(Job.user_id == User.id, Job.kind == "scan").exists(),
+        "evaluation": select(Evaluation.id)
+        .join(Vacancy, Evaluation.vacancy_id == Vacancy.id)
+        .where(vacancy_of_user)
+        .exists(),
+        "applied": select(Application.id)
+        .join(Vacancy, Application.vacancy_id == Vacancy.id)
+        .where(vacancy_of_user, Application.status.in_(APPLIED))
+        .exists(),
+        "triage": select(Job.id)
+        .where(Job.user_id == User.id, Job.kind == "triage", Job.status == "done")
+        .exists(),
+        "saved": select(Vacancy.id)
+        .where(vacancy_of_user, Vacancy.saved_at.is_not(None))
+        .exists(),
+        "artifact": select(Artifact.id)
+        .join(Evaluation, Artifact.evaluation_id == Evaluation.id)
+        .join(Vacancy, Evaluation.vacancy_id == Vacancy.id)
+        .where(vacancy_of_user)
+        .exists(),
+        # Ever given a subscription, lapsed or not: the funnel asks who
+        # converted, not who is paying today.
+        "paid": User.paid_until.is_not(None),
+    }
+
+
+@router.get("/funnel", response_model=Funnel)
+async def funnel(
+    session: SessionDep,
+    _: AdminDep,
+    days: int = Query(30, ge=0, le=366, description="0 — все учётки"),
+    channel: Channel = "all",
+) -> Funnel:
+    """How far the accounts that signed up in the period got.
+
+    A cohort funnel: the period picks WHO (signed up in the last `days` Moscow
+    days), and every stage counts what those accounts ever did. Counting the
+    period's events instead would mix last month's sign-ups into this month's
+    evaluations and show conversions above 100%.
+
+    Admins are left out: the owner testing the service is not a user.
+    """
+    since = None
+    filters: list[ColumnElement[bool]] = [User.is_admin.is_(False)]
+    if days:
+        first = datetime.now(MSK).date() - timedelta(days=days - 1)
+        since = datetime.combine(first, time(), MSK)
+        filters.append(User.created_at >= since)
+    if channel == "email":
+        filters.append(User.email.is_not(None))
+    elif channel == "telegram":
+        filters.append(User.email.is_(None))
+
+    reached = _reached()
+    flags = select(
+        User.id,
+        cast(
+            func.date_trunc("week", func.timezone("Europe/Moscow", User.created_at)), Date
+        ).label("week"),
+        *(cond.label(name) for name, cond in reached.items()),
+    ).where(*filters).subquery()
+
+    chained = []
+    for i in range(len(FUNNEL)):
+        chained.append(func.count().filter(and_(*(flags.c[s] for s in FUNNEL[: i + 1]))))
+    extras = [func.count().filter(flags.c[name]) for name in EXTRAS]
+
+    total = (await session.execute(select(*chained, *extras).select_from(flags))).one()
+    by_week = await session.execute(
+        select(flags.c.week, *chained).group_by(flags.c.week).order_by(flags.c.week.desc())
+    )
+
+    return Funnel(
+        days=days,
+        since=since,
+        stages=list(FUNNEL),
+        counts=list(total[: len(FUNNEL)]),
+        extras=dict(zip(EXTRAS, total[len(FUNNEL):], strict=True)),
+        cohorts=[FunnelCohort(week=row[0], stages=list(row[1:])) for row in by_week],
     )

@@ -128,3 +128,74 @@ async def test_spend_sums_by_day_step_and_user(client, session, user, admin_head
 
     total = await session.scalar(select(func.count()).select_from(LlmCall))
     assert total == 3
+
+
+# ---------------------------------------------------------------- funnel
+
+
+async def _walk(session, *, email: str | None, telegram_id: int | None = None,
+                upto: str, created_at: datetime | None = None) -> User:
+    """An account that got as far as `upto` along the funnel."""
+    from app.models import Application, Evaluation, Job, Resume
+    from tests.pool_helpers import make_vacancy
+
+    order = ["signed_up", "can_log_in", "resume", "scan", "evaluation", "applied"]
+    reached = order[: order.index(upto) + 1]
+    u = User(
+        email=email, password_hash="x" if email else None, telegram_id=telegram_id,
+        email_verified_at=datetime.now(UTC) if "can_log_in" in reached and email else None,
+    )
+    if created_at:
+        u.created_at = created_at
+    session.add(u)
+    await session.flush()
+    if "resume" in reached:
+        resume = Resume(user_id=u.id, filename="cv.txt", raw_text="x", profile={})
+        session.add(resume)
+        await session.flush()
+    if "scan" in reached:
+        session.add(Job(user_id=u.id, kind="scan", payload={}, status="done"))
+    if "evaluation" in reached:
+        vacancy = make_vacancy(u.id)
+        session.add(vacancy)
+        await session.flush()
+        session.add(Evaluation(vacancy_id=vacancy.id, resume_id=resume.id, report={},
+                               model="deepseek-flash"))
+        if "applied" in reached:
+            session.add(Application(vacancy_id=vacancy.id, status="applied", status_log=[]))
+    await session.commit()
+    return u
+
+
+async def test_funnel_chains_stages_and_skips_admins(client, session, admin_headers):
+    await _walk(session, email="a@example.com", upto="signed_up")
+    await _walk(session, email="b@example.com", upto="resume")
+    await _walk(session, email=None, telegram_id=42, upto="applied")
+    # An evaluation without the stages before it does not count past them:
+    # the funnel is chained, so bars only ever shrink.
+    odd = await _walk(session, email="c@example.com", upto="signed_up")
+    from app.models import Job
+    session.add(Job(user_id=odd.id, kind="scan", payload={}, status="done"))
+    await session.commit()
+
+    body = (await client.get("/api/admin/funnel?days=0", headers=admin_headers)).json()
+    assert body["stages"] == ["signed_up", "can_log_in", "resume", "scan", "evaluation",
+                              "applied"]
+    # Four users; the admin from the fixture is left out.
+    assert body["counts"] == [4, 2, 2, 1, 1, 1]
+    assert body["extras"]["paid"] == 0
+    assert sum(c["stages"][0] for c in body["cohorts"]) == 4
+
+
+async def test_funnel_by_channel_and_period(client, session, admin_headers):
+    await _walk(session, email="e@example.com", upto="can_log_in")
+    await _walk(session, email=None, telegram_id=7, upto="can_log_in")
+    await _walk(session, email="old@example.com", upto="can_log_in",
+                created_at=datetime.now(UTC) - timedelta(days=40))
+
+    tg = (await client.get("/api/admin/funnel?days=0&channel=telegram",
+                           headers=admin_headers)).json()
+    assert tg["counts"][0] == 1
+    recent = (await client.get("/api/admin/funnel?days=30", headers=admin_headers)).json()
+    assert recent["counts"][0] == 2
+    assert recent["since"] is not None

@@ -5,11 +5,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AdminSpend, AdminUsers, SpendTotals } from '../api/types'
+import type { AdminFunnel, AdminSpend, AdminUsers, SpendTotals } from '../api/types'
 
 const mocks = vi.hoisted(() => ({
   usersQuery: vi.fn(),
   spendDays: vi.fn(),
+  funnelArgs: vi.fn(),
+  funnel: null as AdminFunnel | null,
   users: null as AdminUsers | null,
   spend: null as AdminSpend | null,
 }))
@@ -19,6 +21,10 @@ vi.mock('../api/hooks', () => ({
     mocks.usersQuery(query)
     return { data: mocks.users, error: null, isLoading: false, isValidating: false }
   },
+  useAdminFunnel: (days: number, channel: string) => {
+    mocks.funnelArgs(days, channel)
+    return { data: mocks.funnel, error: null, isLoading: false, isValidating: false }
+  },
   useAdminSpend: (days: number) => {
     mocks.spendDays(days)
     return { data: mocks.spend, error: null, isLoading: false, isValidating: false }
@@ -27,6 +33,7 @@ vi.mock('../api/hooks', () => ({
 
 const { AdminUsersPage } = await import('./AdminUsersPage')
 const { AdminSpendPage } = await import('./AdminSpendPage')
+const { AdminFunnelPage } = await import('./AdminFunnelPage')
 
 const zero: SpendTotals = {
   calls: 0,
@@ -163,5 +170,47 @@ describe('AdminSpendPage', () => {
     }
     at('/admin/spend', <AdminSpendPage />)
     expect(screen.getByText('За этот период вызовов не было')).toBeTruthy()
+  })
+})
+
+describe('AdminFunnelPage', () => {
+  beforeEach(() => {
+    mocks.funnel = {
+      days: 30,
+      since: '2026-09-05T00:00:00+03:00',
+      stages: ['signed_up', 'can_log_in', 'resume', 'scan', 'evaluation', 'applied'],
+      counts: [40, 30, 20, 20, 8, 2],
+      extras: { triage: 5, saved: 10, artifact: 3, paid: 1 },
+      cohorts: [
+        { week: '2026-09-28', stages: [10, 8, 5, 5, 2, 0] },
+        { week: '2026-09-21', stages: [30, 22, 15, 15, 6, 2] },
+      ],
+    }
+  })
+
+  it('reads period and channel from the address', () => {
+    at('/admin/funnel?days=0&channel=telegram', <AdminFunnelPage />)
+    expect(mocks.funnelArgs).toHaveBeenLastCalledWith(0, 'telegram')
+    at('/admin/funnel?days=13&channel=fax', <AdminFunnelPage />)
+    expect(mocks.funnelArgs).toHaveBeenLastCalledWith(30, 'all')
+  })
+
+  it('writes the loss between stages and skips it where nobody dropped', () => {
+    at('/admin/funnel', <AdminFunnelPage />)
+    expect(screen.getByText('−10 · не дошли 25%')).toBeTruthy()
+    expect(screen.getByText('−12 · не дошли 60%')).toBeTruthy()
+    // resume → scan: 20 and 20, no loss line.
+    expect(screen.getAllByText(/не дошли/)).toHaveLength(4)
+  })
+
+  it('shows weekly cohorts as shares of each week', () => {
+    at('/admin/funnel', <AdminFunnelPage />)
+    expect(screen.getByTitle('6 из 30').textContent).toBe('20%')
+  })
+
+  it('an empty cohort says so', () => {
+    mocks.funnel = { ...mocks.funnel!, counts: [0, 0, 0, 0, 0, 0], cohorts: [] }
+    at('/admin/funnel', <AdminFunnelPage />)
+    expect(screen.getByText('За этот период никто не зарегистрировался')).toBeTruthy()
   })
 })

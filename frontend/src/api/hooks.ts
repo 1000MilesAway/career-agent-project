@@ -9,10 +9,12 @@
 import useSWR, { mutate } from 'swr'
 import { api, download, fetcher, fetchText } from './client'
 import type {
+  AdminFunnel,
   AdminSpend,
   AdminUserSort,
   AdminUsers,
   ApplyStepName,
+  FunnelChannel,
   AppState,
   ArtifactResponse,
   ChatMessage,
@@ -320,3 +322,8 @@ export const useAdminUsers = (query: AdminUsersQuery) =>
 
 export const useAdminSpend = (days: number) =>
   useSWR<AdminSpend>(`/api/admin/spend?days=${days}`, fetcher, { keepPreviousData: true })
+
+export const useAdminFunnel = (days: number, channel: FunnelChannel) =>
+  useSWR<AdminFunnel>(`/api/admin/funnel?days=${days}&channel=${channel}`, fetcher, {
+    keepPreviousData: true,
+  })

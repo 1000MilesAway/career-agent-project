@@ -162,3 +162,9 @@ export const ChartIcon = () => (
     <path d="M6 13.5v-4M10 13.5v-8M14 13.5v-6" />
   </Icon>
 )
+
+export const FunnelIcon = () => (
+  <Icon>
+    <path d="M3 4h14l-5.5 6.5V16l-3 1.5v-7z" />
+  </Icon>
+)

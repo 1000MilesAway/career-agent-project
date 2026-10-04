@@ -23,6 +23,7 @@ import {
   BrandMark,
   ChartIcon,
   ChatIcon,
+  FunnelIcon,
   InfoIcon,
   LogoutIcon,
   MoonIcon,
@@ -56,6 +57,9 @@ const AdminUsersPage = lazyPage(() =>
 )
 const AdminSpendPage = lazyPage(() =>
   import('./pages/AdminSpendPage').then((m) => m.AdminSpendPage),
+)
+const AdminFunnelPage = lazyPage(() =>
+  import('./pages/AdminFunnelPage').then((m) => m.AdminFunnelPage),
 )
 
 export function App() {
@@ -131,6 +135,9 @@ function Cabinet() {
               <NavItem to="/admin/users" icon={<UsersIcon />}>
                 Пользователи
               </NavItem>
+              <NavItem to="/admin/funnel" icon={<FunnelIcon />}>
+                Конверсия
+              </NavItem>
               <NavItem to="/admin/spend" icon={<ChartIcon />}>
                 Траты
               </NavItem>
@@ -171,6 +178,10 @@ function Cabinet() {
             <Route
               path="/admin/users"
               element={<AdminOnly state={data} page={<AdminUsersPage />} />}
+            />
+            <Route
+              path="/admin/funnel"
+              element={<AdminOnly state={data} page={<AdminFunnelPage />} />}
             />
             <Route
               path="/admin/spend"
