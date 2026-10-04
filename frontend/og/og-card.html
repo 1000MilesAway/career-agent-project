@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  Source of public/og-card.png — the picture Telegram, VK and messengers show
+  under a pasted link to the site (og:image in index.html).
+
+  A PNG and not this page: link-preview bots fetch an image and render no
+  HTML, and none of them take SVG. Re-render after editing, from frontend/:
+
+    chrome-headless-shell --hide-scrollbars --window-size=1200,630 \
+      --screenshot=public/og-card.png og/og-card.html
+
+  (add --no-sandbox where Chrome's sandbox is unavailable, as on the dev
+  host; the page is local and loads nothing from the network.)
+
+  then bump ?v= on og:image in index.html — Telegram caches a preview by URL.
+  Colours are the landing's light theme (src/styles/index.css).
+-->
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        background: #f4f2ed;
+        color: #1b1a15;
+        font-family: 'Inter Tight', 'Segoe UI', Roboto, Arial, sans-serif;
+      }
+      /* Faint grid, as on the landing's hero, so the card is not a flat field. */
+      body::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(#e4e0d6 1px, transparent 1px),
+          linear-gradient(90deg, #e4e0d6 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: linear-gradient(115deg, transparent 35%, #000 100%);
+        opacity: 0.8;
+      }
+      .card {
+        position: relative;
+        height: 100%;
+        padding: 64px 80px 60px;
+        display: flex;
+        flex-direction: column;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .brand svg {
+        width: 60px;
+        height: 60px;
+      }
+      h1 {
+        margin-top: 64px;
+        font-family: Georgia, 'Liberation Serif', 'Times New Roman', serif;
+        font-weight: 400;
+        font-size: 76px;
+        line-height: 1.06;
+        letter-spacing: -0.015em;
+      }
+      h1 em {
+        color: #c2410c;
+      }
+      .lead {
+        margin-top: 28px;
+        max-width: 900px;
+        font-size: 30px;
+        line-height: 1.35;
+        color: #47453d;
+      }
+      .foot {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 26px;
+        color: #47453d;
+      }
+      .url {
+        font-weight: 600;
+        color: #1b1a15;
+      }
+      .tags {
+        display: flex;
+        gap: 12px;
+      }
+      .tags span {
+        padding: 8px 18px;
+        border: 1.5px solid #d6d1c4;
+        border-radius: 999px;
+        background: #fbfaf7;
+        font-size: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="#1b1a15" />
+          <path
+            d="M8 17l5 5L24 10M18 10h6v6"
+            fill="none"
+            stroke="#c2410c"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        career-helper
+      </div>
+      <h1>Работу ищет сервис.<br /><em>Вы выбираете лучшее.</em></h1>
+      <p class="lead">
+        Подбор вакансий, разбор каждой с красными флагами, резюме под вакансию
+        и подготовка к интервью.
+      </p>
+      <div class="foot">
+        <span class="url">career-helper.site</span>
+        <span class="tags"><span>hh.ru</span><span>Хабр Карьера</span><span>Telegram</span></span>
+      </div>
+    </div>
+  </body>
+</html>

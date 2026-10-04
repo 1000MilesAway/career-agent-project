@@ -21,7 +21,18 @@
       property="og:description"
       content="Загрузите резюме — дальше всё само: подбор вакансий по множеству ресурсов, разбор каждой с красными флагами, резюме под вакансию и подготовка к интервью."
     />
-    <meta name="twitter:card" content="summary" />
+    <!-- Absolute, as the protocol requires. ?v= busts Telegram's per-URL cache
+         when the picture changes; the source is og/og-card.html. -->
+    <meta property="og:image" content="https://career-helper.site/og-card.png?v=1" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="career-helper: работу ищет сервис, вы выбираете лучшее"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://career-helper.site/og-card.png?v=1" />
     <!--
       The landing and the cabinet share this one page, and this script picks
       which of them shows before the first paint.
