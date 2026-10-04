@@ -147,3 +147,18 @@ export const TelegramIcon = () => (
     <path d="M7.8 11.1v5.4l2.5-2.9" />
   </Icon>
 )
+
+export const UsersIcon = () => (
+  <Icon>
+    <circle cx="8" cy="7" r="3" />
+    <path d="M2.5 16.5c.6-2.8 2.8-4.5 5.5-4.5s4.9 1.7 5.5 4.5" />
+    <path d="M13 4.3a3 3 0 0 1 0 5.4M15 12.4c1.3.7 2.2 2.1 2.5 4.1" />
+  </Icon>
+)
+
+export const ChartIcon = () => (
+  <Icon>
+    <path d="M3 16.5h14" />
+    <path d="M6 13.5v-4M10 13.5v-8M14 13.5v-6" />
+  </Icon>
+)

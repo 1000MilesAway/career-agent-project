@@ -21,6 +21,7 @@ import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
 import { pageTitle } from './pageTitle'
 import {
   BrandMark,
+  ChartIcon,
   ChatIcon,
   InfoIcon,
   LogoutIcon,
@@ -31,6 +32,7 @@ import {
   ResumeIcon,
   SearchIcon,
   StarIcon,
+  UsersIcon,
 } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
@@ -48,6 +50,13 @@ const SavedPage = lazyPage(() => import('./pages/SavedPage').then((m) => m.Saved
 const ResumePage = lazyPage(() => import('./pages/ResumePage').then((m) => m.ResumePage))
 const SearchPage = lazyPage(() => import('./pages/SearchPage').then((m) => m.SearchPage))
 const ChatPage = lazyPage(() => import('./pages/ChatPage').then((m) => m.ChatPage))
+// The owner's dashboard: separate chunks, so no user downloads it.
+const AdminUsersPage = lazyPage(() =>
+  import('./pages/AdminUsersPage').then((m) => m.AdminUsersPage),
+)
+const AdminSpendPage = lazyPage(() =>
+  import('./pages/AdminSpendPage').then((m) => m.AdminSpendPage),
+)
 
 export function App() {
   return (
@@ -114,6 +123,19 @@ function Cabinet() {
           <NavItem to="/resume" icon={<ResumeIcon />}>
             Моё резюме
           </NavItem>
+          {data?.user.is_admin ? (
+            <>
+              <span className="side__group" aria-hidden="true">
+                Админка
+              </span>
+              <NavItem to="/admin/users" icon={<UsersIcon />}>
+                Пользователи
+              </NavItem>
+              <NavItem to="/admin/spend" icon={<ChartIcon />}>
+                Траты
+              </NavItem>
+            </>
+          ) : null}
         </nav>
 
         <div className="side__foot">
@@ -146,6 +168,14 @@ function Cabinet() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/saved" element={<SavedPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route
+              path="/admin/users"
+              element={<AdminOnly state={data} page={<AdminUsersPage />} />}
+            />
+            <Route
+              path="/admin/spend"
+              element={<AdminOnly state={data} page={<AdminSpendPage />} />}
+            />
             <Route path="/terms" element={<LegalPage doc="terms" />} />
             <Route path="/privacy" element={<LegalPage doc="privacy" />} />
             <Route path="*" element={<Navigate to={home} replace />} />
@@ -154,6 +184,21 @@ function Cabinet() {
       </main>
     </div>
   )
+}
+
+/** An admin page, or the cabinet's home for anyone else. Waits for the
+ *  state rather than redirecting on its absence: a reload of /admin/spend
+ *  must land back there, not on search. The API refuses non-admins anyway;
+ *  this only keeps them from a page of 403s. */
+function AdminOnly({ state, page }: { state: AppState | undefined; page: ReactNode }) {
+  if (!state) {
+    return (
+      <div className="page">
+        <Skeleton rows={5} />
+      </div>
+    )
+  }
+  return state.user.is_admin ? page : <Navigate to="/search" replace />
 }
 
 function NavItem({

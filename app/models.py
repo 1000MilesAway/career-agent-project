@@ -486,6 +486,54 @@ class Job(Base, TimestampMixin):
     )
 
 
+class LlmCall(Base):
+    """One model call, costed: the owner's journal of what the key paid for.
+
+    The per-row `cost_rub` on evaluations, artifacts and chat messages answers
+    "what did this thing cost"; it cannot answer "what did Tuesday cost" or
+    "which step eats the budget", and parsing, triage and the search profile
+    leave no row of their own at all. This table is written in
+    `spend.charge`, the one place every paid step already passes through.
+
+    The user link is SET NULL, not CASCADE like everything else: erasing an
+    account erases its personal data, and nothing here is personal — a step
+    name, a model and token counts. The money was spent either way, and the
+    owner's books must not shrink when a user leaves.
+    """
+
+    __tablename__ = "llm_calls"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    step: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    cache_hit: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cache_miss: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reasoning: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    seconds: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+
+    # The real price (peak surcharge included) and what the quota was charged;
+    # the gap between the two is the surcharge the owner carries.
+    usd: Mapped[float] = mapped_column(Numeric(14, 8), default=0, nullable=False)
+    offpeak_usd: Mapped[float] = mapped_column(Numeric(14, 8), default=0, nullable=False)
+    rub: Mapped[float] = mapped_column(Numeric(12, 6), default=0, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        # The dashboard's two queries: a period, and a period for one user.
+        Index("ix_llm_calls_created_at", "created_at"),
+        Index("ix_llm_calls_user_created", "user_id", "created_at"),
+    )
+
+
 class ChatMessage(Base, TimestampMixin):
     """One turn of a conversation, stored verbatim.
 

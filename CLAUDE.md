@@ -97,13 +97,14 @@
 | `core/proposals.py` | слой подтверждений |
 | **`app/`** | **продукт**: FastAPI + Postgres, с пользователями. Только JSON |
 | `app/models.py` | таблицы; инварианты пайплайна закреплены структурой. Вакансии: общий пул `postings` + личные `vacancies` |
-| `app/api/` | роутеры: auth, resumes, vacancies, evaluations, artifacts, jobs, health |
+| `app/api/` | роутеры: auth, resumes, vacancies, evaluations, artifacts, jobs, health, admin |
+| `app/api/admin.py` | дашборд владельца: пользователи и траты на модель; только `is_admin`, единственное место с деньгами |
 | `app/services/` | связка ядра с БД: `pool.py` (общий пул и кэш листингов), `scan.py`, `triage.py`, `tracker.py`, `spend.py` |
 | `app/worker.py` | воркер очереди на таблице `jobs` |
 | `app/cli.py` | админские команды; главная — завести пользователя |
 | **`frontend/`** | **кабинет**: React SPA (Vite + TypeScript), свой образ с nginx |
 | `frontend/src/api/` | типы контракта, клиент с токеном, хуки SWR |
-| `frontend/src/pages/` | три страницы: резюме, поиск, избранное |
+| `frontend/src/pages/` | страницы кабинета; `Admin*Page.tsx` — дашборд владельца (`/admin/users`, `/admin/spend`) |
 | `frontend/src/components/` | строка вакансии, панель отчёта, дифф профиля, тосты |
 | `frontend/src/landing/` | лендинг: разметка в `frontend/index.html`, здесь стили и смена слайдов |
 | `frontend/nginx.conf` | отдача статики и прокси `/api` на контейнер api |
@@ -218,7 +219,7 @@ git-статуса в начале сессии этого не показыва
 
 ```bash
 uv sync --group dev                  # зависимости из uv.lock
-uv run pytest                        # тесты (849 шт., ключ API не нужен)
+uv run pytest                        # тесты (865 шт., ключ API не нужен)
 uv run ruff check .                  # линтер
 uv run ruff check --fix .            # линтер с автоправкой
 ```
@@ -255,7 +256,7 @@ uv run python -m app.cli calibrate --source golden  # размеченный н�
 cd frontend
 npm ci                  # зависимости из package-lock.json
 npm run dev             # http://127.0.0.1:5173, /api проксируется на 8000
-npm test                # 116 тестов интерфейса, сети не требуют
+npm test                # 131 тест интерфейса, сети не требуют
 npm run typecheck       # все три проекта TS, включая тесты
 npm run lint            # oxlint
 npm run build           # сборка в dist/ (в git не кладётся)
@@ -280,7 +281,9 @@ npm run build           # сборка в dist/ (в git не кладётся)
 отвечает 402. Тариф — `users.paid_until`, выдаётся командой
 `app.cli user-plan EMAIL --days 30`. Админ лимитов не имеет.
 **Пользователь денег не видит** — ни рублей, ни долларов: только проценты
-окон и время сброса. Рубли (`spent_rub`, `cost_rub`) — учёт владельца.
+окон и время сброса. Рубли (`spent_rub`, `cost_rub`) — учёт владельца. Каждый вызов модели
+пишется строкой в `llm_calls` (`spend.charge`); владелец видит траты в
+кабинете, раздел «Админка» → «Траты».
 
 ### Боевой сервер
 

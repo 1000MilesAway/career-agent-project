@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.llm import Ledger
 
 from ..core.config import get_settings
-from ..models import User
+from ..models import LlmCall, User
 
 MSK = ZoneInfo("Europe/Moscow")
 
@@ -163,6 +163,7 @@ async def charge(session: AsyncSession, user: User, ledger: Ledger) -> float:
     """
     rub = round(ledger.rub, 4)
     usd = ledger.offpeak_usd
+    journal(session, user, ledger)
     if rub:
         # Decimal, not float: the column is NUMERIC, and mixing the two makes
         # SQLAlchemy raise rather than silently round.
@@ -176,6 +177,33 @@ async def charge(session: AsyncSession, user: User, ledger: Ledger) -> float:
         user.quota_week = monday
         user.quota_week_usd = Decimal(str(round(week.used_usd + usd, 6)))
     return rub
+
+
+def journal(session: AsyncSession, user: User, ledger: Ledger) -> None:
+    """One `llm_calls` row per model call of the run, for the owner's dashboard.
+
+    Here rather than at each call site: every paid step already comes through
+    `charge`, and a step that forgot to journal would make the dashboard
+    under-report exactly the cost nobody is looking for. Failed calls are
+    journaled too — DeepSeek bills a timed-out answer all the same.
+    """
+    for c in ledger.calls:
+        session.add(
+            LlmCall(
+                user_id=user.id,
+                step=c.step[:32],
+                model=c.model[:64],
+                cache_hit=c.cache_hit,
+                cache_miss=c.cache_miss,
+                output=c.output,
+                reasoning=c.reasoning,
+                seconds=round(c.seconds, 3),
+                usd=Decimal(str(round(c.usd, 8))),
+                offpeak_usd=Decimal(str(round(c.usd / (c.peak or 1.0), 8))),
+                rub=Decimal(str(round(c.rub, 6))),
+                error=c.error,
+            )
+        )
 
 
 def quota(user: User, now: datetime | None = None) -> dict:

@@ -1,0 +1,405 @@
+/* The owner's dashboard: tables, tiles and one bar chart.
+   Wider than the cabinet's pages — a table of ten columns is the content. */
+
+.page--wide {
+  max-width: 1320px;
+}
+
+.admin-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.admin-toolbar__search {
+  flex: 1 1 260px;
+  max-width: 380px;
+  height: 36px;
+  font-size: 14px;
+}
+
+/* A refetch keeps the old numbers on screen, dimmed, instead of a skeleton. */
+.admin-body--stale,
+.table__body--stale {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 580px), 1fr));
+  gap: 0 16px;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+
+/* The table scrolls inside its frame; the page itself never scrolls sideways. */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card .table-wrap {
+  border: 0;
+  border-radius: 0;
+  margin: 0 -8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  color: var(--ink);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover td {
+  background: var(--sunken);
+}
+
+.table--compact th,
+.table--compact td {
+  padding: 7px 8px;
+}
+
+.table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.table th.table__num {
+  text-align: right;
+}
+
+.table__date {
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.table__label {
+  min-width: 150px;
+  max-width: 280px;
+  overflow-wrap: break-word;
+}
+
+.table__share {
+  min-width: 90px;
+}
+
+.share {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.share span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 240px;
+}
+
+.who__main {
+  font-weight: 500;
+  overflow-wrap: break-word;
+}
+
+.who__sub {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+
+.who__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.who__tags:empty {
+  display: none;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--sunken);
+  color: var(--ink-2);
+}
+
+.badge--bad {
+  background: color-mix(in srgb, var(--bad) 13%, transparent);
+  color: var(--bad);
+}
+
+.badge--warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn);
+}
+
+.badge--plan-paid {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+}
+
+.badge--plan-admin {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.pct--full {
+  color: var(--bad);
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pager .muted {
+  margin-right: 8px;
+}
+
+.admin-details {
+  margin-top: 14px;
+}
+
+.admin-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+
+/* ── Tiles ───────────────────────────────────────────────────────────── */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.tile__label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tile__value {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 1.2;
+  margin-top: 4px;
+  color: var(--ink);
+}
+
+.tile__sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.tile__bad {
+  color: var(--bad);
+}
+
+/* ── Daily chart ─────────────────────────────────────────────────────── */
+
+.chart {
+  --chart-h: 200px;
+  /* Room on the left for the tick labels, which sit on their own lines. */
+  --chart-axis: 64px;
+  position: relative;
+}
+
+.chart__plot {
+  position: relative;
+  padding-left: var(--chart-axis);
+}
+
+.chart__grid {
+  position: absolute;
+  top: 0;
+  left: var(--chart-axis);
+  right: 0;
+  height: var(--chart-h);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.chart__grid > span {
+  position: relative;
+  border-top: 1px solid var(--line);
+}
+
+.chart__grid > span:last-child {
+  border-top-color: var(--line-strong);
+}
+
+.chart__tick {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 0;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chart__bars {
+  position: relative;
+  height: var(--chart-h);
+  display: flex;
+  align-items: stretch;
+}
+
+/* The whole column is the hit target, not the bar: a day with a sliver of
+   spend is as easy to point at as the biggest one. */
+.chart__col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.chart__col:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.chart__col--on {
+  background: var(--accent-soft);
+  border-radius: 4px 4px 0 0;
+}
+
+.chart__bar {
+  display: block;
+  width: 100%;
+  max-width: 28px;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+}
+
+.chart__bar[data-empty] {
+  min-height: 0;
+}
+
+.chart__labels {
+  display: flex;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.chart__labels span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.chart__tip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Near an edge the tooltip hangs inwards instead of off the card. */
+.chart__tip[data-edge='start'] {
+  transform: translateX(-8px);
+}
+
+.chart__tip[data-edge='end'] {
+  transform: translateX(calc(-100% + 8px));
+}
+
+/* Today's label hangs left of its bar rather than off the card. */
+.chart__labels span:last-child {
+  direction: rtl;
+}
+
+@media (max-width: 720px) {
+  .chart {
+    --chart-h: 160px;
+    --chart-axis: 52px;
+  }
+
+  .chart__labels {
+    font-size: 10px;
+  }
+}

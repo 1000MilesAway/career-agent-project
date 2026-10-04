@@ -12,6 +12,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/terms': LEGAL_TITLES.terms,
   '/privacy': LEGAL_TITLES.privacy,
   '/verify': 'Подтверждение почты',
+  '/admin/users': 'Пользователи',
+  '/admin/spend': 'Траты на модель',
 }
 
 /** The tab title for what Screen shows at this path. Mirrors its branches:

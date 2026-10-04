@@ -56,6 +56,16 @@
 
 /* ── Navigation ──────────────────────────────────────────────────────── */
 
+/* A label over the admin's own pages, set apart from the user's four. */
+.side__group {
+  margin: 14px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .side__nav {
   display: flex;
   flex-direction: column;
@@ -371,6 +381,10 @@
 
   .brand {
     padding: 0;
+  }
+
+  .side__group {
+    display: none;
   }
 
   .side__nav {

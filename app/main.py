@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import (
+    admin,
     artifacts,
     auth,
     chat,
@@ -60,6 +61,7 @@ for router in (
     export.router,
     jobs.router,
     chat.router,
+    admin.router,
 ):
     app.include_router(router)
 

@@ -132,23 +132,38 @@ class TestTheGuard:
         assert "₽" not in e.value.detail and "$" not in e.value.detail
 
 
+class _Journal:
+    """A session stand-in: `charge` only adds journal rows to it."""
+
+    def __init__(self) -> None:
+        self.rows: list = []
+
+    def add(self, row) -> None:
+        self.rows.append(row)
+
+
 class TestCharging:
     async def test_the_quota_is_charged_the_off_peak_price(self, limits, frozen):
         """The peak surcharge is the owner's cost: the same click, the same share."""
         ledger = Ledger([Usage(step="evaluate", model="deepseek-flash", usd=0.4, peak=2.0)])
         user = account()
 
-        await spend.charge(None, user, ledger)
+        journal = _Journal()
+        await spend.charge(journal, user, ledger)
         assert float(user.quota_day_usd) == pytest.approx(0.2)
         assert float(user.quota_week_usd) == pytest.approx(0.2)
         # The owner's books keep the real price.
         assert float(user.spent_rub) == pytest.approx(round(ledger.rub, 4))
+        # One journal row per call, with both prices.
+        (row,) = journal.rows
+        assert float(row.usd) == pytest.approx(0.4)
+        assert float(row.offpeak_usd) == pytest.approx(0.2)
 
     async def test_a_new_day_starts_from_the_carried_overshoot(self, limits, frozen):
         ledger = Ledger([Usage(step="evaluate", model="deepseek-flash", usd=0.1)])
         user = account("1.2", day_of=TODAY - timedelta(days=1))
 
-        await spend.charge(None, user, ledger)
+        await spend.charge(_Journal(), user, ledger)
         assert user.quota_day == TODAY
         assert float(user.quota_day_usd) == pytest.approx(0.3)
 

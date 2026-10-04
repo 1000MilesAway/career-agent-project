@@ -218,6 +218,8 @@ export interface AppState {
     consent_at: string | null
     /** "@handle" of the linked Telegram account; null = not linked. */
     telegram_name?: string | null
+    /** Shows the owner's dashboard; the API checks the role again. */
+    is_admin?: boolean
   }
 }
 
@@ -360,4 +362,78 @@ export interface ChatResponse {
   reply: string
   messages: ChatMessage[]
   proposals: ChatProposal[]
+}
+
+/** The owner's dashboard, /api/admin/*. The one place the cabinet shows money:
+ * users never see it, the owner pays for the key. */
+
+export type AdminPlan = 'free' | 'paid' | 'admin'
+
+export interface AdminUser {
+  id: string
+  email: string | null
+  name: string | null
+  telegram_name: string | null
+  is_admin: boolean
+  is_active: boolean
+  email_verified: boolean
+  plan: AdminPlan
+  paid_until: string | null
+  created_at: string
+  /** Quota windows as the user sees them; null when the window is off. */
+  day_pct: number | null
+  week_pct: number | null
+  has_resume: boolean
+  vacancies: number
+  evaluations: number
+  /** Lifetime, from before the call journal too. */
+  spent_rub: number
+  spent_30d_rub: number
+  last_call_at: string | null
+}
+
+export interface AdminUsers {
+  total: number
+  items: AdminUser[]
+}
+
+export type AdminUserSort = 'created' | 'spent' | 'last_call'
+
+export interface SpendTotals {
+  calls: number
+  errors: number
+  cache_hit: number
+  cache_miss: number
+  output: number
+  usd: number
+  /** The same calls at the off-peak price — what quotas are charged. */
+  offpeak_usd: number
+  rub: number
+}
+
+export interface SpendDay extends SpendTotals {
+  /** A Moscow date, YYYY-MM-DD. */
+  day: string
+}
+
+export interface SpendGroup extends SpendTotals {
+  key: string
+}
+
+export interface SpendUser extends SpendTotals {
+  user_id: string | null
+  label: string
+}
+
+export interface AdminSpend {
+  days: number
+  since: string
+  totals: SpendTotals
+  daily: SpendDay[]
+  by_step: SpendGroup[]
+  by_model: SpendGroup[]
+  top_users: SpendUser[]
+  /** When the journal starts; earlier spend is only in `lifetime_rub`. */
+  journal_since: string | null
+  lifetime_rub: number
 }

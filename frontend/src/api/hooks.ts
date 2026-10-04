@@ -9,6 +9,9 @@
 import useSWR, { mutate } from 'swr'
 import { api, download, fetcher, fetchText } from './client'
 import type {
+  AdminSpend,
+  AdminUserSort,
+  AdminUsers,
   ApplyStepName,
   AppState,
   ArtifactResponse,
@@ -288,3 +291,32 @@ export const rejectProposal = (id: string) =>
 
 export const clearChat = () =>
   api<{ messages: number; proposals: number }>('/api/chat/clear', { method: 'POST' })
+
+/** The owner's dashboard.
+ *
+ * Its own keys, off /api/state: an aggregate over every account is not "what
+ * this screen shows for me", and it must not be refetched on every scan.
+ * keepPreviousData holds the table while the next page or period loads, so
+ * paging does not flash a skeleton.
+ */
+
+export interface AdminUsersQuery {
+  q: string
+  sort: AdminUserSort
+  offset: number
+  limit: number
+}
+
+export const adminUsersKey = ({ q, sort, offset, limit }: AdminUsersQuery) =>
+  `/api/admin/users?${new URLSearchParams({
+    q,
+    sort,
+    offset: String(offset),
+    limit: String(limit),
+  })}`
+
+export const useAdminUsers = (query: AdminUsersQuery) =>
+  useSWR<AdminUsers>(adminUsersKey(query), fetcher, { keepPreviousData: true })
+
+export const useAdminSpend = (days: number) =>
+  useSWR<AdminSpend>(`/api/admin/spend?days=${days}`, fetcher, { keepPreviousData: true })
