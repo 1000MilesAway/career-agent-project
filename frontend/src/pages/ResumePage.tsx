@@ -23,6 +23,7 @@ import { Card, Chips, PageHead, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
 import { ProfileEditor } from '../components/ProfileEditor'
 import { setTourStep } from '../components/tourStep'
+import { rematchText } from './rematchText'
 import { SearchProfileDiff } from '../components/SearchProfileDiff'
 import { StateError } from '../components/Fallback'
 import './resume.css'
@@ -48,10 +49,10 @@ export function ResumePage() {
       // Read before the upload: afterwards the state says there is a CV.
       const first = !data?.has_resume
       try {
-        await uploadResume(file)
+        const uploaded = await uploadResume(file)
         await mutate(STATE_KEY)
         setFile(null)
-        toast.info('Резюме разобрано')
+        toast.info(rematchText('Резюме разобрано', uploaded.rematch))
         // The user stays to check how the CV was read; a hint on the sidebar
         // points to the search as the next step.
         if (first) setTourStep('search')
@@ -73,10 +74,10 @@ export function ResumePage() {
 
   async function accept(profile: SearchProfile) {
     try {
-      await acceptSearchProfile(profile)
+      const accepted = await acceptSearchProfile(profile)
       await mutate(STATE_KEY)
       setProposal(null)
-      toast.info('Профиль поиска обновлён')
+      toast.info(rematchText('Профиль поиска обновлён', accepted.rematch))
     } catch (e) {
       toast.error(e)
     }

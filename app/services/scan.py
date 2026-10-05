@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from dataclasses import field as dc_field
@@ -34,7 +35,7 @@ from typing import Any, Literal
 
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import tg_scan
@@ -44,8 +45,8 @@ from core.pipeline import build_search_profile
 from core.sources import employers, geekjob, habr_api, hh, telegram, tg_channels
 from core.sources.habr_api import Posting
 
+from ..models import Application, Evaluation, Resume, User, Vacancy
 from ..models import Posting as Pooled
-from ..models import Resume, User, Vacancy
 from . import pool
 from . import sources as switches_db
 from .pool import Sighting
@@ -804,6 +805,90 @@ async def collect_all(
             defer_stale=defer_stale,
         ),
     )
+
+
+# The scan form sends these with every scan (`with_overrides`), so what the
+# stored profile says about them never decided a row; the cabinet filters the
+# list by the same conditions on render. A rematch that read the stored values
+# would drop rows the user's own form lets through.
+FORM_OWNED: dict[str, Any] = {
+    "salary_min": None, "remote_only": False, "accredited_only": False, "cities": [],
+}
+
+# Reason kinds a rematch reports, most frequent first. The full reason of
+# each posting is in `explain_screened`; the toast needs only the gist.
+REMATCH_REASONS = 3
+
+
+def _untouched(user_id: uuid.UUID):
+    """The user's rows nothing but a free filter put there.
+
+    A triage verdict, an evaluation, a tracker stage, a save or a hide is the
+    user's investment (or money spent on their behalf); a profile change must
+    not take any of those away.
+    """
+    return select(Vacancy).where(
+        Vacancy.user_id == user_id,
+        Vacancy.stage.in_((COLLECTED, SHORTLIST)),
+        Vacancy.triage_verdict.is_(None),
+        Vacancy.is_saved.is_(False),
+        Vacancy.hidden_at.is_(None),
+        ~exists().where(Evaluation.vacancy_id == Vacancy.id),
+        ~exists().where(Application.vacancy_id == Vacancy.id),
+    )
+
+
+async def rematch(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    search_profile: dict[str, Any] | None,
+    sources: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    """Bring the user's found list in line with a changed search profile.
+
+    Free and offline: the free filters over the pool and over the rows the
+    user has, no request to any source and no model. Untouched rows the new
+    profile drops are removed — their reasons stay reachable through
+    `explain_screened`, so the drop is not silent — and pooled postings it
+    keeps are added, as a scan would. Rows the user acted on stay as they are.
+    """
+    profile = _profile({**(search_profile or {}), **FORM_OWNED}, "все вакансии")
+    screen = PreScreen(profile)
+
+    reasons: Counter[str] = Counter()
+    for row in (await session.execute(_untouched(user_id))).scalars():
+        decision = screen.check(pool.as_posting(row.posting))
+        if not decision.keep:
+            # The kind, not the detail: "стоп-слово в заголовке: 1С" and
+            # "...: SAP" are one cause to the person reading the toast.
+            reasons[decision.reason.split(":")[0]] += 1
+            await session.delete(row)
+    await session.flush()
+
+    options = Options(switches=await switches_db.load(session))
+    now = datetime.now(UTC)
+    added = 0
+    for name in sources or active_sources():
+        try:
+            p = plan(name, profile, options)
+        except ValueError:
+            # The same profile fails the same way on the next scan, which
+            # says so per source; a rematch has nothing to add for it.
+            continue
+        rows = await _candidates(session, p, now, options.switches)
+        decided = []
+        for row in rows:
+            decision = screen.check(pool.as_posting(row))
+            decided.append((row, "" if decision.keep else decision.reason))
+        added += (await attach(session, user_id, decided))["new"]
+
+    return {
+        "added": added,
+        "removed": sum(reasons.values()),
+        "reasons": [
+            {"reason": r, "count": n} for r, n in reasons.most_common(REMATCH_REASONS)
+        ],
+    }
 
 
 # Rows `explain_screened` returns at most. The pool is thousands of postings;

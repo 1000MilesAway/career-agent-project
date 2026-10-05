@@ -12,6 +12,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.defaults import starter_profile
 from core.llm import LLM, Ledger
@@ -21,7 +23,7 @@ from core.pipeline import build_search_profile, parse_resume, read_document
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Resume
 from ..services import chat as chat_service
-from ..services import revisions
+from ..services import revisions, scan
 from ..services.spend import charge, ensure_can_spend
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
@@ -43,6 +45,37 @@ class ResumeResponse(BaseModel):
     created_at: datetime
 
 
+class Rematch(BaseModel):
+    """What a changed search profile did to the found list. Free, offline."""
+
+    added: int
+    removed: int
+    # The most common reason kinds of the removed, for the toast.
+    reasons: list[dict[str, Any]]
+
+
+class ResumeWithRematch(ResumeResponse):
+    # None: the search profile did not change, or the rematch could not run
+    # (a scan was writing the same rows) — the next scan matches instead.
+    rematch: Rematch | None = None
+
+
+async def _rematch(
+    session: AsyncSession, user_id: uuid.UUID, search_profile: dict[str, Any] | None
+) -> Rematch | None:
+    """Rematch the found list in a savepoint, so a clash cannot cost the save.
+
+    A scan job writing this user's rows at the same moment can win the unique
+    key on (user, posting); the profile change is what the user asked for and
+    must land regardless, and the scan itself matches the pool afterwards.
+    """
+    try:
+        async with session.begin_nested():
+            return Rematch(**await scan.rematch(session, user_id, search_profile))
+    except IntegrityError:
+        return None
+
+
 def _as_response(resume: Resume) -> ResumeResponse:
     return ResumeResponse(
         id=resume.id,
@@ -57,12 +90,12 @@ def _as_response(resume: Resume) -> ResumeResponse:
     )
 
 
-@router.post("", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ResumeWithRematch, status_code=status.HTTP_201_CREATED)
 async def upload(
     session: SessionDep,
     user: UserDep,
     file: UploadFile = File(...),
-) -> ResumeResponse:
+) -> ResumeWithRematch:
     """Parse a CV and store the profile.
 
     Parsing costs money (~0.05 RUB), so the result is stored rather than
@@ -144,9 +177,12 @@ async def upload(
     )
     session.add(resume)
     await charge(session, user, ledger)
+    # A new CV brings its own search profile; the list found under the old
+    # one follows it, as on an accepted diff.
+    rematch = await _rematch(session, user.id, search_profile)
     await session.commit()
     await session.refresh(resume)
-    return _as_response(resume)
+    return ResumeWithRematch(**_as_response(resume).model_dump(), rematch=rematch)
 
 
 @router.get("/active", response_model=ResumeResponse)
@@ -343,21 +379,24 @@ async def propose_search_profile(
     )
 
 
-@router.put("/search-profile", response_model=ResumeResponse)
+@router.put("/search-profile", response_model=ResumeWithRematch)
 async def accept_search_profile(
     body: dict[str, Any],
     session: SessionDep,
+    user: UserDep,
     resume: ResumeDep,
-) -> ResumeResponse:
-    """Store the search profile the user accepted.
+) -> ResumeWithRematch:
+    """Store the search profile the user accepted, and rematch the found list.
 
     A PUT of the whole object, not a merge of the proposal: what the user sees
     in the diff is exactly what gets saved, including any edits they made to it.
     """
+    changed = resume.search_profile != body
     resume.search_profile = body
+    rematch = await _rematch(session, user.id, body) if changed else None
     await session.commit()
     await session.refresh(resume)
-    return _as_response(resume)
+    return ResumeWithRematch(**_as_response(resume).model_dump(), rematch=rematch)
 
 
 @router.post("/{resume_id}/restore", response_model=ResumeResponse)

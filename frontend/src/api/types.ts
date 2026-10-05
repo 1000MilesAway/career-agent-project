@@ -319,6 +319,19 @@ export interface ResumeResponse {
   created_at: string
 }
 
+/** What a changed search profile did to the found list: free, from the pool. */
+export interface Rematch {
+  added: number
+  removed: number
+  reasons: { reason: string; count: number }[]
+}
+
+/** Upload and an accepted search profile also report the rematch;
+ * null when the profile did not change. */
+export interface ResumeWithRematch extends ResumeResponse {
+  rematch: Rematch | null
+}
+
 export interface SearchProfileProposal {
   current: SearchProfile
   proposed: SearchProfile

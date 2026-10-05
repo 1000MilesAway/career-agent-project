@@ -28,6 +28,7 @@ import type {
   RecheckResult,
   ResumeProfile,
   ResumeResponse,
+  ResumeWithRematch,
   ScanJob,
   TriageJob,
   SearchProfile,
@@ -203,10 +204,10 @@ export const setStatus = (vacancyId: string, status: string) =>
 export const updateProfile = (fields: { name: string }) =>
   api<unknown>('/api/auth/me', { method: 'PATCH', json: fields })
 
-export function uploadResume(file: File): Promise<ResumeResponse> {
+export function uploadResume(file: File): Promise<ResumeWithRematch> {
   const form = new FormData()
   form.append('file', file)
-  return api<ResumeResponse>('/api/resumes', { method: 'POST', form })
+  return api<ResumeWithRematch>('/api/resumes', { method: 'POST', form })
 }
 
 /** Free: copies an earlier version forward as the newest one. */
@@ -223,7 +224,7 @@ export const proposeSearchProfile = () =>
 
 /** A PUT of the whole object: what the user saw in the diff is what is saved. */
 export const acceptSearchProfile = (profile: SearchProfile) =>
-  api<ResumeResponse>('/api/resumes/search-profile', { method: 'PUT', json: profile })
+  api<ResumeWithRematch>('/api/resumes/search-profile', { method: 'PUT', json: profile })
 
 /** Downloads. Free — they render JSON that was already paid for. */
 
