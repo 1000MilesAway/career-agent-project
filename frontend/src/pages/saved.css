@@ -218,3 +218,9 @@ html.is-dragging * {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* "All" is narrower and set apart from the stages it sums up. */
+.funnel__step--all {
+  flex-basis: 72px;
+  margin-right: 8px;
+}

@@ -174,3 +174,23 @@ describe('SavedPage', () => {
     }
   })
 })
+
+describe('SavedPage: статусы', () => {
+  beforeEach(() => {
+    mocks.found.splice(0, mocks.found.length, row('a'), row('b', { status: 'applied' }))
+  })
+
+  it('без фильтра нажат шаг «Все», а не первый этап', () => {
+    render(<SavedPage />)
+    expect(stage('Все').getAttribute('aria-pressed')).toBe('true')
+    expect(stage('Не решено').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('статус виден и у неоценённой вакансии', () => {
+    render(<SavedPage />)
+    const values = screen
+      .getAllByRole('combobox', { name: 'Статус отклика' })
+      .map((select) => (select as HTMLSelectElement).value)
+    expect(values).toEqual(['none', 'applied'])
+  })
+})

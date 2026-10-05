@@ -139,6 +139,18 @@ export function SavedPage() {
             role="group"
             aria-label="Этап отклика"
           >
+            {/* "All" is a step of its own: without it the unfiltered list
+                looked like the first stage, and a row in «Отказ» seemed to
+                sit under «Не решено» until that filter was pressed. Not a
+                drop target — "all" is not a status. */}
+            <button
+              className="funnel__step funnel__step--all"
+              aria-pressed={active === null}
+              onClick={() => setFilter(null)}
+            >
+              <span className="funnel__count">{saved.length}</span>
+              <span className="funnel__label">Все</span>
+            </button>
             {Object.entries(data.statuses).map(([key, status]) => {
               const count = counts.get(key) ?? 0
               const classes = ['funnel__step']
@@ -183,25 +195,24 @@ export function SavedPage() {
                   vacancy={vacancy}
                   actions={
                     <>
-                      {vacancy.score != null ? (
-                        <>
-                          <label className="sr-only" htmlFor={`status-${vacancy.id}`}>
-                            Статус отклика
-                          </label>
-                          <select
-                            id={`status-${vacancy.id}`}
-                            className={`select status status--${vacancy.status ?? 'none'}`}
-                            value={vacancy.status ?? 'none'}
-                            onChange={(e) => move(vacancy.id, e.target.value)}
-                          >
-                            {Object.entries(data.statuses).map(([key, value]) => (
-                              <option key={key} value={key}>
-                                {value.title}
-                              </option>
-                            ))}
-                          </select>
-                        </>
-                      ) : null}
+                      {/* For every row, evaluated or not: a row dragged to a
+                          stage has a status, and hiding it made the row look
+                          undecided. */}
+                      <label className="sr-only" htmlFor={`status-${vacancy.id}`}>
+                        Статус отклика
+                      </label>
+                      <select
+                        id={`status-${vacancy.id}`}
+                        className={`select status status--${vacancy.status ?? 'none'}`}
+                        value={vacancy.status ?? 'none'}
+                        onChange={(e) => move(vacancy.id, e.target.value)}
+                      >
+                        {Object.entries(data.statuses).map(([key, value]) => (
+                          <option key={key} value={key}>
+                            {value.title}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         className="btn btn--quiet btn--small btn--icon"
                         onClick={() => unsave(vacancy.id)}
