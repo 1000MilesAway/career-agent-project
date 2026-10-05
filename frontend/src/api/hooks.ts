@@ -10,11 +10,13 @@ import useSWR, { mutate } from 'swr'
 import { api, download, fetcher, fetchText } from './client'
 import type {
   AdminFunnel,
+  AdminSources,
   AdminSpend,
   AdminUserSort,
   AdminUsers,
   ApplyStepName,
   FunnelChannel,
+  SwitchableSource,
   AppState,
   ArtifactResponse,
   ChatMessage,
@@ -329,3 +331,47 @@ export const useAdminFunnel = (days: number, channel: FunnelChannel) =>
   useSWR<AdminFunnel>(`/api/admin/funnel?days=${days}&channel=${channel}`, fetcher, {
     keepPreviousData: true,
   })
+
+export const ADMIN_SOURCES_KEY = '/api/admin/sources'
+
+export const useAdminSources = () => useSWR<AdminSources>(ADMIN_SOURCES_KEY, fetcher)
+
+/** Hide a channel or board from every user's results, or bring it back.
+ *  The table flips at once and settles on the server's answer. */
+export async function setSourceHidden(
+  source: SwitchableSource,
+  key: string,
+  hidden: boolean,
+) {
+  const list = source === 'telegram' ? 'channels' : 'boards'
+  await mutate<AdminSources>(
+    ADMIN_SOURCES_KEY,
+    async (current) => {
+      await api('/api/admin/sources/hidden', {
+        method: 'PUT',
+        json: { source, key, hidden },
+      })
+      return current
+    },
+    {
+      optimisticData: (current) => ({
+        ...current!,
+        [list]: current![list].map((item) =>
+          item.key === key ? { ...item, hidden } : item,
+        ),
+      }),
+      rollbackOnError: true,
+      populateCache: false,
+      revalidate: true,
+    },
+  )
+}
+
+/** Show a company under another name; empty — under its own. */
+export async function setCompanyName(name: string, displayName: string) {
+  await api('/api/admin/sources/name', {
+    method: 'PUT',
+    json: { name, display_name: displayName.trim() || null },
+  })
+  await mutate(ADMIN_SOURCES_KEY)
+}

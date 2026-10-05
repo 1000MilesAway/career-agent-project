@@ -466,3 +466,48 @@ export interface AdminFunnel {
   extras: Record<FunnelExtra, number>
   cohorts: FunnelCohort[]
 }
+
+/** Pool numbers of a source or a part of one. `active` — open and recent
+ * enough for a scan to hand out. */
+export interface SourceStats {
+  postings: number
+  active: number
+  last_seen_at: string | null
+}
+
+export interface AdminAggregator extends SourceStats {
+  source: string
+  label: string
+  fetched_at: string | null
+}
+
+/** A company name as the source wrote it, and what users see instead. */
+export interface AdminCompanyName extends SourceStats {
+  name: string
+  display_name: string | null
+}
+
+export type ChannelGroup = 'core' | 'adjacent' | 'special'
+
+export interface AdminChannel extends AdminCompanyName {
+  key: string
+  /** null — only in the pool, read by a scan that named it. */
+  group: ChannelGroup | null
+  hidden: boolean
+}
+
+export interface AdminBoard extends SourceStats {
+  key: string
+  label: string
+  group: string
+  hidden: boolean
+  names: AdminCompanyName[]
+}
+
+export interface AdminSources {
+  aggregators: AdminAggregator[]
+  channels: AdminChannel[]
+  boards: AdminBoard[]
+}
+
+export type SwitchableSource = 'telegram' | 'company'

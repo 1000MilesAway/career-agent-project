@@ -98,13 +98,13 @@
 | **`app/`** | **продукт**: FastAPI + Postgres, с пользователями. Только JSON |
 | `app/models.py` | таблицы; инварианты пайплайна закреплены структурой. Вакансии: общий пул `postings` + личные `vacancies` |
 | `app/api/` | роутеры: auth, resumes, vacancies, evaluations, artifacts, jobs, health, admin |
-| `app/api/admin.py` | дашборд владельца: пользователи, конверсия и траты на модель; только `is_admin`, единственное место с деньгами |
-| `app/services/` | связка ядра с БД: `pool.py` (общий пул и кэш листингов), `scan.py`, `triage.py`, `tracker.py`, `spend.py` |
+| `app/api/admin.py` | дашборд владельца: пользователи, конверсия, траты на модель и источники; только `is_admin`, единственное место с деньгами |
+| `app/services/` | связка ядра с БД: `pool.py` (общий пул и кэш листингов), `scan.py`, `triage.py`, `tracker.py`, `spend.py`, `sources.py` (скрытые каналы и сайты, имена компаний) |
 | `app/worker.py` | воркер очереди на таблице `jobs` |
 | `app/cli.py` | админские команды; главная — завести пользователя |
 | **`frontend/`** | **кабинет**: React SPA (Vite + TypeScript), свой образ с nginx |
 | `frontend/src/api/` | типы контракта, клиент с токеном, хуки SWR |
-| `frontend/src/pages/` | страницы кабинета; `Admin*Page.tsx` — дашборд владельца (`/admin/users`, `/admin/funnel`, `/admin/spend`) |
+| `frontend/src/pages/` | страницы кабинета; `Admin*Page.tsx` — дашборд владельца (`/admin/users`, `/admin/funnel`, `/admin/spend`, `/admin/sources`) |
 | `frontend/src/components/` | строка вакансии, панель отчёта, дифф профиля, тосты |
 | `frontend/src/landing/` | лендинг: разметка в `frontend/index.html`, здесь стили и смена слайдов |
 | `frontend/nginx.conf` | отдача статики и прокси `/api` на контейнер api |

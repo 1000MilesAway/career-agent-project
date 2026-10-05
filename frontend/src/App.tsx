@@ -33,6 +33,7 @@ import {
   AutoThemeIcon,
   ResumeIcon,
   SearchIcon,
+  SourcesIcon,
   StarIcon,
   UsersIcon,
 } from './components/icons'
@@ -61,6 +62,9 @@ const AdminSpendPage = lazyPage(() =>
 )
 const AdminFunnelPage = lazyPage(() =>
   import('./pages/AdminFunnelPage').then((m) => m.AdminFunnelPage),
+)
+const AdminSourcesPage = lazyPage(() =>
+  import('./pages/AdminSourcesPage').then((m) => m.AdminSourcesPage),
 )
 
 export function App() {
@@ -143,6 +147,9 @@ function Cabinet() {
               <NavItem to="/admin/spend" icon={<ChartIcon />}>
                 Траты
               </NavItem>
+              <NavItem to="/admin/sources" icon={<SourcesIcon />}>
+                Источники
+              </NavItem>
             </>
           ) : null}
         </nav>
@@ -188,6 +195,10 @@ function Cabinet() {
             <Route
               path="/admin/spend"
               element={<AdminOnly state={data} page={<AdminSpendPage />} />}
+            />
+            <Route
+              path="/admin/sources"
+              element={<AdminOnly state={data} page={<AdminSourcesPage />} />}
             />
             <Route path="/terms" element={<LegalPage doc="terms" />} />
             <Route path="/privacy" element={<LegalPage doc="privacy" />} />

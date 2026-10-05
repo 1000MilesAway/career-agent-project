@@ -68,6 +68,11 @@ class Board:
     # (Yandex lacks it), and False would drop the whole board under the filter.
     accredited: bool | None = None
 
+    @property
+    def key(self) -> str:
+        """`kind/slug`, the prefix of its postings' ids (`board_key`)."""
+        return f"{self.kind}/{self.slug or self.kind}"
+
 
 @dataclass
 class Collected:
@@ -149,7 +154,7 @@ def _head(title: str, company: str, location: str) -> str:
 
 def _pid(board: Board, native: Any) -> str:
     # Unique across boards: two ATS number their postings independently.
-    return f"{board.kind}/{board.slug or board.kind}/{native}"
+    return f"{board.key}/{native}"
 
 
 # --- Sber -------------------------------------------------------------------
@@ -554,7 +559,7 @@ def collect(
                 out.problems.append({"board": board.name, "why": f"неизвестный тип {board.kind}"})
                 continue
             before = len(out.postings)
-            key = f"{board.kind}/{board.slug or board.kind}"
+            key = board.key
             try:
                 fetcher(board, queries, client, out)
             except (httpx.HTTPError, ValueError) as e:

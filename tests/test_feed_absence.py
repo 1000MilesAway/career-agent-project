@@ -118,7 +118,7 @@ class TestThroughTheScan:
         await session.commit()
         listed = [card("1"), card("2")]
 
-        def fake_collect(queries, groups):
+        def fake_collect(queries, groups, boards=None):
             return employers.Collected(postings=list(listed), complete=[BOARD])
 
         monkeypatch.setattr(employers, "collect", fake_collect)

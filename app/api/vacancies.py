@@ -16,7 +16,7 @@ from core.sources import geekjob
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Vacancy
-from ..services import liveness, scan
+from ..services import liveness, scan, sources
 from ..services import triage as triage_service
 from ..services.tracker import STATUSES, set_status
 from ..services.triage import TriageRequest
@@ -48,15 +48,16 @@ class VacancyResponse(BaseModel):
     hidden_at: datetime | None = None
 
     @classmethod
-    def of(cls, v: Vacancy) -> VacancyResponse:
+    def of(cls, v: Vacancy, switches: sources.Switches | None = None) -> VacancyResponse:
         evaluation = v.evaluations[0] if v.evaluations else None
+        company = switches.company(v.company) if switches else v.company
         return cls(
             id=v.id,
             source=v.source,
             external_id=v.external_id,
             url=v.url,
             title=v.title,
-            company=v.company,
+            company=company,
             qualification=v.qualification,
             salary_text=v.salary_text,
             remote=v.remote,
@@ -129,7 +130,8 @@ async def listing(
         query = query.where(Vacancy.is_saved.is_(saved))
 
     result = await session.execute(query)
-    return [VacancyResponse.of(v) for v in result.scalars()]
+    switches = await sources.load(session)
+    return [VacancyResponse.of(v, switches) for v in result.scalars()]
 
 
 @router.get("/screened")

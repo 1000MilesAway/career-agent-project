@@ -16,6 +16,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/users': 'Пользователи',
   '/admin/spend': 'Траты на модель',
   '/admin/funnel': 'Конверсия',
+  '/admin/sources': 'Источники',
 }
 
 const OPEN_PATHS = new Set(['/verify', '/reset-password', '/terms', '/privacy'])

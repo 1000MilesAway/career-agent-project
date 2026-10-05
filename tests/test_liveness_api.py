@@ -215,7 +215,7 @@ class TestCompanyScan:
         ]
         asked: list[str] = []
 
-        def fake_collect(queries, groups):
+        def fake_collect(queries, groups, boards=None):
             return employers.Collected(postings=cards)
 
         def fake_describe(postings):

@@ -27,7 +27,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as dc_field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -47,6 +47,7 @@ from core.sources.habr_api import Posting
 from ..models import Posting as Pooled
 from ..models import Resume, User, Vacancy
 from . import pool
+from . import sources as switches_db
 from .pool import Sighting
 from .spend import charge, ensure_can_spend
 
@@ -299,7 +300,10 @@ def fetch_hh(query: str, remote: bool = False) -> Batch:
 
 
 def fetch_telegram(
-    channels: list[str] | None, group: str | None, pages: int = TELEGRAM_PAGES
+    channels: list[str] | None,
+    group: str | None,
+    pages: int = TELEGRAM_PAGES,
+    skip: frozenset[str] = frozenset(),
 ) -> Batch:
     """Channel pages through `t.me/s/`: the named channels, or one group's.
 
@@ -309,6 +313,8 @@ def fetch_telegram(
     host, and it is spent on the posts some user's filters keep (`_enrich`).
     """
     names = channels or tg_channels.channel_names(groups=(group or "core",))
+    # Channels the owner hid are not asked at all (services/sources.py).
+    names = [n for n in names if n not in skip]
     posts, problems = telegram.search_many(names, pages=pages)
     sightings = [
         Sighting(
@@ -333,14 +339,16 @@ def fetch_telegram(
     )
 
 
-def fetch_employers(queries: list[str], group: str) -> Batch:
+def fetch_employers(queries: list[str], group: str, skip: frozenset[str] = frozenset()) -> Batch:
     """One group of employers' own career sites (core/sources/employers.py).
 
     Searchable boards are asked the queries; small ATS feeds are read whole.
     Descriptions some boards do not list are fetched later, for the postings
     some user's filters keep, and stored for everyone.
     """
-    result = employers.collect(queries, (group,))
+    # Boards the owner hid are not asked at all (services/sources.py).
+    boards = [b for b in employers.load() if b.key not in skip]
+    result = employers.collect(queries, (group,), boards)
     sightings = [
         Sighting(
             p,
@@ -399,6 +407,10 @@ class Options:
     # refresh (the worker's "refresh" job). A listing the pool has never read
     # is still fetched: there is nothing to answer it with.
     defer_stale: bool = False
+    # Channels and boards the owner hid. Filled by `collect` from the
+    # database; the listing keys leave them out, so a hide takes effect on
+    # matching at once and on fetching from the next re-read.
+    switches: switches_db.Switches = dc_field(default_factory=switches_db.Switches)
 
 
 def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
@@ -451,7 +463,9 @@ def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
         return Plan("company", [
             Listing(
                 pool.listing_key(group=g, queries=queries),
-                lambda g=g: fetch_employers(list(profile.queries), g),
+                lambda g=g: fetch_employers(
+                    list(profile.queries), g, skip=frozenset(options.switches.boards())
+                ),
             )
             for g in options.company_groups
         ], segments=options.company_groups)
@@ -469,13 +483,17 @@ def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
             return Plan("telegram", [
                 Listing(
                     pool.listing_key(channels=channels, pages=pages),
-                    lambda: fetch_telegram(channels, None, pages),
+                    lambda: fetch_telegram(
+                        channels, None, pages, skip=frozenset(options.switches.channels())
+                    ),
                 ),
             ], companies=[f"@{c}" for c in channels])
         return Plan("telegram", [
             Listing(
                 pool.listing_key(group=g, pages=pages),
-                lambda g=g: fetch_telegram(None, g, pages),
+                lambda g=g: fetch_telegram(
+                    None, g, pages, skip=frozenset(options.switches.channels())
+                ),
             )
             for g in options.telegram_groups
         ], segments=options.telegram_groups)
@@ -492,12 +510,16 @@ def _fetch_all(listings: list[Listing]) -> list[Batch]:
     return out
 
 
-async def _candidates(session: AsyncSession, p: Plan, now: datetime) -> list[Pooled]:
-    """Pooled postings this source's scan matches: recent, open, in scope."""
+async def _candidates(
+    session: AsyncSession, p: Plan, now: datetime, switches: switches_db.Switches
+) -> list[Pooled]:
+    """Pooled postings this source's scan matches: recent, open, in scope,
+    and not from a channel or board the owner hid."""
     query = select(Pooled).where(
         Pooled.source == p.source,
         Pooled.last_seen_at >= now - MATCH_WINDOW,
         Pooled.closed_at.is_(None),
+        switches.visible(p.source),
     )
     if p.segments is not None:
         # Rows pooled before segments were recorded carry none; they gain
@@ -562,9 +584,14 @@ async def _enrich(session: AsyncSession, source: str, kept: list[Pooled]) -> int
 
 
 async def _match(
-    session: AsyncSession, user_id: uuid.UUID, p: Plan, profile: SearchProfile, now: datetime
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    p: Plan,
+    profile: SearchProfile,
+    now: datetime,
+    switches: switches_db.Switches,
 ) -> dict[str, Any]:
-    rows = await _candidates(session, p, now)
+    rows = await _candidates(session, p, now, switches)
     screen = PreScreen(profile)
     decided = []
     for row in rows:
@@ -599,7 +626,7 @@ async def collect(
     name next to the counts of the ones that worked, unless `raise_errors`
     (one source asked for by name, where the error is the answer).
     """
-    options = options or Options()
+    options = replace(options or Options(), switches=await switches_db.load(session))
     profile = _profile(search_profile, "все вакансии")
     now = datetime.now(UTC)
 
@@ -653,7 +680,7 @@ async def collect(
             gone += await pool.mark_absent(
                 session, name, batch.complete, {s.posting.id for s in batch.sightings}, now
             )
-        counts = await _match(session, user_id, p, profile, now)
+        counts = await _match(session, user_id, p, profile, now, options.switches)
         if name == "company":
             # Postings this read found taken down from the companies' sites.
             counts["closed"] = gone
@@ -803,9 +830,13 @@ async def explain_screened(
     mine = {v.posting_id: v for v in result.scalars()}
     clusters = {v.posting.cluster_id for v in mine.values() if v.stage != SCREENED_OUT}
 
+    switches = await switches_db.load(session)
+    # A hidden channel or board is not a filter's drop: the owner turned the
+    # source off, as if it were taken out of the list file.
     query = select(Pooled).where(
         Pooled.last_seen_at >= now - MATCH_WINDOW,
         Pooled.closed_at.is_(None),
+        switches.visible_any(),
     ).order_by(Pooled.last_seen_at.desc())
     rows = [r for r in (await session.execute(query)).scalars() if r.id not in mine]
 
@@ -832,7 +863,7 @@ async def explain_screened(
             "source": row.source,
             "url": row.url,
             "title": row.title,
-            "company": row.company,
+            "company": switches.company(row.company),
             "salary_text": row.salary_text,
             "reason": reason,
         })

@@ -486,3 +486,46 @@
     margin-left: 0;
   }
 }
+
+/* ── Sources ─────────────────────────────────────────────────────────── */
+
+/* One tbody per board: its row and the company names under it read as one
+   block, separated from the next board by a stronger line. */
+.sources tbody + tbody tr:first-child td {
+  border-top: 1px solid var(--line-strong);
+}
+
+.sources__off .who__main,
+.sources__off .sources__original,
+.sources__off .table__num {
+  color: var(--muted);
+}
+
+.sources__name td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.sources__rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 240px;
+}
+
+.sources__name .sources__rename {
+  padding-left: 16px;
+}
+
+.sources__original {
+  min-width: 160px;
+  overflow-wrap: anywhere;
+}
+
+.sources__input.input {
+  flex: 1 1 180px;
+  max-width: 280px;
+  height: 30px;
+  font-size: 13px;
+}

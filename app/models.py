@@ -296,6 +296,43 @@ class SourceFetch(Base):
     extra: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
+class SourceSetting(Base, TimestampMixin):
+    """The owner's switch for one part of a source: a Telegram channel or an
+    employer's board.
+
+    `key` is the channel name without "@" for `telegram`, and the board's
+    `kind/slug` (`employers.board_key`) for `company`. A hidden one is neither
+    read nor matched to anyone, and leaves search results it is already in;
+    a vacancy a user saved or bought a report for stays theirs. The lists of
+    channels and boards stay data files: this is a switch over them, not a
+    second copy (services/sources.py).
+    """
+
+    __tablename__ = "source_settings"
+
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    hidden: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+
+
+class CompanyName(Base, TimestampMixin):
+    """What users see instead of a company name as a source wrote it.
+
+    Keyed by the exact string on `postings.company` — "ПАО Сбербанк",
+    "@pythonrabota" — not by board: one board (Sber) lists a dozen legal
+    entities, and the owner renames them one by one. Applied when a vacancy
+    is shown, never written to `postings`: the stored name feeds the dedup
+    key, and a rename must be undoable by deleting this row.
+    """
+
+    __tablename__ = "company_names"
+
+    name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class Vacancy(Base, TimestampMixin):
     """One user's view of a posting: how far it got for them, and their calls.
 

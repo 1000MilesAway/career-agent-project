@@ -168,3 +168,12 @@ export const FunnelIcon = () => (
     <path d="M3 4h14l-5.5 6.5V16l-3 1.5v-7z" />
   </Icon>
 )
+
+/** Stacked layers: where the vacancies come from. */
+export const SourcesIcon = () => (
+  <Icon>
+    <path d="m10 3 7 3.5-7 3.5-7-3.5z" />
+    <path d="m3 10 7 3.5 7-3.5" />
+    <path d="m3 13.5 7 3.5 7-3.5" />
+  </Icon>
+)

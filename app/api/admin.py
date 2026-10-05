@@ -1,10 +1,12 @@
-"""The owner's dashboard: who uses the service, and what the model costs.
+"""The owner's dashboard: who uses the service, what the model costs, and
+which sources users get vacancies from.
 
 Admin only (`AdminDep`), and the one place in the API that answers in money:
 users see shares of their quota and never roubles, the owner sees roubles and
 dollars because paying for the key is their side of the business.
 
-Read-only and free — nothing here calls the model. Every number is an
+Free — nothing here calls the model. Read-only except the source switches
+at the end, which change what users see and nothing they own. Every number is an
 aggregate the database computes; the page never receives raw rows it would
 have to sum itself, so a month of calls is one small payload.
 """
@@ -16,12 +18,30 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
-from sqlalchemy import Date, and_, cast, func, or_, select
+from pydantic import BaseModel, Field
+from sqlalchemy import Date, and_, cast, delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
+from core.sources import employers, tg_channels
+
 from ..core.deps import AdminDep, SessionDep
-from ..models import Application, Artifact, Evaluation, Job, LlmCall, Resume, User, Vacancy
+from ..models import (
+    Application,
+    Artifact,
+    CompanyName,
+    Evaluation,
+    Job,
+    LlmCall,
+    Posting,
+    Resume,
+    SourceFetch,
+    SourceSetting,
+    User,
+    Vacancy,
+)
+from ..services import sources as switches
+from ..services.scan import MATCH_WINDOW
 from ..services.spend import MSK, plan_of, windows
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -451,3 +471,218 @@ async def funnel(
         extras=dict(zip(EXTRAS, total[len(FUNNEL):], strict=True)),
         cohorts=[FunnelCohort(week=row[0], stages=list(row[1:])) for row in by_week],
     )
+
+
+# ---------------------------------------------------------------- sources
+
+# Searched by query, so they have no part to switch off: listed for their
+# numbers only. Russian: the page shows them.
+AGGREGATORS = {"habr": "Хабр Карьера", "hh": "hh.ru", "geekjob": "geekjob"}
+
+# Telegram groups in the order the page lists them; `special` is in the file
+# but no scan reads it, which is worth seeing next to the channels that are.
+CHANNEL_GROUPS = ("core", "adjacent", "special")
+
+
+class SourceStats(BaseModel):
+    postings: int = 0
+    # Open and seen within the match window: what a scan can still hand out.
+    active: int = 0
+    last_seen_at: datetime | None = None
+
+
+class Aggregator(SourceStats):
+    source: str
+    label: str
+    # When any of its listings was last read.
+    fetched_at: datetime | None = None
+
+
+class CompanyAlias(SourceStats):
+    # As the source wrote it, and what users see instead; null — unrenamed.
+    name: str
+    display_name: str | None = None
+
+
+class ChannelItem(CompanyAlias):
+    key: str
+    # The list-file group, or null for a channel only a named scan read.
+    group: str | None
+    hidden: bool
+
+
+class BoardItem(SourceStats):
+    key: str
+    label: str
+    group: str
+    hidden: bool
+    # The company names its postings carry: one for most boards, a dozen
+    # legal entities for Sber.
+    names: list[CompanyAlias]
+
+
+class Sources(BaseModel):
+    aggregators: list[Aggregator]
+    channels: list[ChannelItem]
+    boards: list[BoardItem]
+
+
+def _stats() -> list:
+    active = and_(
+        Posting.closed_at.is_(None),
+        Posting.last_seen_at >= datetime.now(UTC) - MATCH_WINDOW,
+    )
+    return [
+        func.count().label("postings"),
+        func.count().filter(active).label("active"),
+        func.max(Posting.last_seen_at).label("last_seen_at"),
+    ]
+
+
+def _add(into: SourceStats, row) -> None:
+    into.postings += row.postings
+    into.active += row.active
+    if row.last_seen_at and (into.last_seen_at is None or row.last_seen_at > into.last_seen_at):
+        into.last_seen_at = row.last_seen_at
+
+
+@router.get("/sources", response_model=Sources)
+async def sources(session: SessionDep, _: AdminDep) -> Sources:
+    """Aggregators, Telegram channels and employer boards, with pool numbers.
+
+    Channels and boards come from the list files, so one nobody has read yet
+    is listed with zeros; a channel that is only in the pool (read by a named
+    scan) is listed too, or it could not be hidden.
+    """
+    state = await switches.load(session)
+
+    fetched = dict(
+        (await session.execute(
+            select(SourceFetch.source, func.max(SourceFetch.fetched_at))
+            .group_by(SourceFetch.source)
+        )).all()
+    )
+    by_source = {
+        row.source: row
+        for row in await session.execute(
+            select(Posting.source, *_stats())
+            .where(Posting.source.in_(AGGREGATORS))
+            .group_by(Posting.source)
+        )
+    }
+    aggregators = []
+    for source, label in AGGREGATORS.items():
+        item = Aggregator(source=source, label=label, fetched_at=fetched.get(source))
+        if source in by_source:
+            _add(item, by_source[source])
+        aggregators.append(item)
+
+    channels: dict[str, ChannelItem] = {}
+    for group in CHANNEL_GROUPS:
+        for name in tg_channels.channel_names(groups=(group,)):
+            channels.setdefault(name, ChannelItem(
+                key=name, name=f"@{name}", group=group, hidden=False,
+            ))
+    rows = await session.execute(
+        select(Posting.company, *_stats())
+        .where(Posting.source == "telegram")
+        .group_by(Posting.company)
+    )
+    for row in rows:
+        key = switches.channel_of(row.company)
+        if not key:
+            continue
+        item = channels.setdefault(
+            key, ChannelItem(key=key, name=f"@{key}", group=None, hidden=False)
+        )
+        _add(item, row)
+    for item in channels.values():
+        item.hidden = item.key in state.channels()
+        item.display_name = state.names.get(item.name)
+
+    boards = {
+        b.key: BoardItem(key=b.key, label=b.name, group=b.group, hidden=False, names=[])
+        for b in employers.load()
+    }
+    board = func.concat(
+        func.split_part(Posting.external_id, "/", 1),
+        "/",
+        func.split_part(Posting.external_id, "/", 2),
+    )
+    rows = await session.execute(
+        select(board.label("board"), Posting.company, *_stats())
+        .where(Posting.source == "company")
+        .group_by(board, Posting.company)
+        .order_by(func.count().desc())
+    )
+    for row in rows:
+        # A board taken out of the file still has postings in the pool; it is
+        # listed so its switch keeps working while they age out.
+        item = boards.setdefault(
+            row.board, BoardItem(key=row.board, label=row.board, group="", hidden=False, names=[])
+        )
+        _add(item, row)
+        if row.company:
+            alias = CompanyAlias(name=row.company, display_name=state.names.get(row.company))
+            _add(alias, row)
+            item.names.append(alias)
+    for item in boards.values():
+        item.hidden = item.key in state.boards()
+
+    return Sources(
+        aggregators=aggregators,
+        channels=list(channels.values()),
+        boards=list(boards.values()),
+    )
+
+
+class SourceSwitch(BaseModel):
+    source: Literal["telegram", "company"]
+    key: str = Field(min_length=1, max_length=255)
+    hidden: bool
+
+
+@router.put("/sources/hidden", response_model=SourceSwitch)
+async def set_hidden(body: SourceSwitch, session: SessionDep, _: AdminDep) -> SourceSwitch:
+    """Hide a channel or board from every user, or bring it back.
+
+    Takes effect on the next read of the results: hidden rows leave them,
+    except those a user saved, tracked or bought a report for. Nothing is
+    deleted, so showing it again restores the rows as they were.
+    """
+    key = body.key.strip().removeprefix("@") if body.source == "telegram" else body.key.strip()
+    await session.execute(
+        insert(SourceSetting)
+        .values(source=body.source, key=key, hidden=body.hidden)
+        .on_conflict_do_update(
+            index_elements=["source", "key"],
+            set_={"hidden": body.hidden, "updated_at": func.now()},
+        )
+    )
+    await session.commit()
+    return SourceSwitch(source=body.source, key=key, hidden=body.hidden)
+
+
+class CompanyRename(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    # Empty or null — show the name as the source wrote it.
+    display_name: str | None = Field(default=None, max_length=255)
+
+
+@router.put("/sources/name", response_model=CompanyRename)
+async def set_name(body: CompanyRename, session: SessionDep, _: AdminDep) -> CompanyRename:
+    """Show a company under another name, wherever users see it."""
+    shown = (body.display_name or "").strip()
+    if not shown or shown == body.name:
+        await session.execute(delete(CompanyName).where(CompanyName.name == body.name))
+        await session.commit()
+        return CompanyRename(name=body.name, display_name=None)
+    await session.execute(
+        insert(CompanyName)
+        .values(name=body.name, display_name=shown)
+        .on_conflict_do_update(
+            index_elements=["name"], set_={"display_name": shown, "updated_at": func.now()}
+        )
+    )
+    await session.commit()
+    return CompanyRename(name=body.name, display_name=shown)

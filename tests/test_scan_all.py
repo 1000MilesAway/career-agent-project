@@ -138,7 +138,7 @@ class TestScanAllEndpoint:
         fakes(monkeypatch)
         seen = {}
 
-        def employers(queries, group):
+        def employers(queries, group, **kwargs):
             seen.setdefault("groups", []).append(group)
             return batch("company")
 

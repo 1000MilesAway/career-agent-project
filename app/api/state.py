@@ -21,7 +21,7 @@ from core.sources.salary_text import parse_salary
 
 from ..core.deps import SessionDep, UserDep
 from ..models import Evaluation, Posting, Resume, Vacancy
-from ..services import liveness, revisions
+from ..services import liveness, revisions, sources
 from ..services.spend import quota
 from ..services.tracker import STATUSES
 
@@ -122,6 +122,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         .order_by(Vacancy.created_at.desc())
     )
     vacancies = list(vacancies_row.scalars())
+    switches = await sources.load(session)
 
     now = datetime.now(UTC)
     found = []
@@ -129,6 +130,15 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
     with_artifacts = 0
 
     for v in vacancies:
+        # A channel or board the owner hid leaves the results, but not what
+        # the user made theirs: a saved vacancy, a bought report, a tracked one.
+        if (
+            switches.is_hidden(v.source, v.external_id, v.company)
+            and not v.is_saved
+            and not v.evaluations
+            and v.application is None
+        ):
+            continue
         evaluation = next(
             (e for e in v.evaluations if resume and e.resume_id == resume.id),
             v.evaluations[0] if v.evaluations else None,
@@ -146,7 +156,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "id": str(v.id),
                 "url": v.url,
                 "title": v.title,
-                "company": v.company,
+                "company": switches.company(v.company),
                 "qualification": v.qualification,
                 "salary_text": v.salary_text,
                 # The conditions above the list apply to rows already found,
