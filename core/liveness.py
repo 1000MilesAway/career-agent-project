@@ -21,6 +21,10 @@ post; a live one carries `.tgme_widget_message[data-post]`. A vanished or
 renamed channel gives a different error, which is not evidence about the post
 and stays unknown. Channels delete a post when the job is filled, so a deleted
 post is the closest thing Telegram has to an archive banner.
+
+But most channels never delete: `t.me/job_pythonz/647` (2026-08-31) still
+stood a month later while the job was gone. So a live post is "open" here —
+the post exists — and its age is judged separately (`published` below).
 """
 
 from __future__ import annotations
@@ -49,6 +53,8 @@ TELEGRAM_POST = re.compile(r"^https?://t\.me/(?!s/)[A-Za-z0-9_]{4,}/\d+(?:[/?#]|
 class Liveness:
     state: State
     reason: str = ""
+    # When the page says it was published (a Telegram post's widget does).
+    published: str = ""
 
     @property
     def closed(self) -> bool:
@@ -112,7 +118,9 @@ def classify(url: str, status: int, html: str) -> Liveness:
     if is_telegram_post(url):
         tree = HTMLParser(html)
         if tree.css_first(".tgme_widget_message[data-post]") is not None:
-            return Liveness("open")
+            stamp = tree.css_first(".tgme_widget_message_date time[datetime]")
+            when = (stamp.attributes.get("datetime") or "") if stamp is not None else ""
+            return Liveness("open", published=when)
         error = tree.css_first(".tgme_widget_message_error")
         if error is not None and error.text(strip=True) == TELEGRAM_DELETED_MARK:
             return Liveness("closed", "пост удалён из канала")

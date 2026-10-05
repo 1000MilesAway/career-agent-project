@@ -311,7 +311,25 @@ class TestStale:
         from app.services.liveness import stale_reason
 
         assert stale_reason(self._row(HABR_URL, 90)) is None
-        assert stale_reason(self._row("https://t.me/chan/1", 90)) is None
+
+    def test_a_live_telegram_post_still_ages(self):
+        """Channels rarely delete: the post being there says nothing about the job."""
+        from app.services.liveness import stale_reason
+
+        assert "пост опубликован 35 дн. назад" in stale_reason(
+            self._row("https://t.me/job_pythonz/647", 35)
+        )
+        assert stale_reason(self._row("https://t.me/job_pythonz/647", 5)) is None
+
+    def test_a_check_fills_a_missing_date(self):
+        from datetime import UTC, datetime
+
+        from app.services.liveness import _apply
+        from core.liveness import Liveness
+
+        row = PooledPosting(url="https://t.me/chan/1", published=None)
+        _apply(row, Liveness("open", published="2026-08-31T08:08:38+00:00"), datetime.now(UTC))
+        assert row.published == datetime(2026, 8, 31, 8, 8, 38, tzinfo=UTC)
 
 
 @requires_db

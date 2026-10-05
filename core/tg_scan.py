@@ -44,6 +44,9 @@ def as_posting(post: telegram.Post) -> habr_api.Posting:
         salary_to=post.salary_to if rub else None,
         salary_text=salary_label(post),
         currency=post.salary_currency,
+        # The post's date is the only age a Telegram vacancy has: a live post
+        # says nothing about the job (services/liveness.py `stale_reason`).
+        published=post.published,
     )
 
 

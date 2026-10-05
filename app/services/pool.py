@@ -114,7 +114,7 @@ class Sighting:
     description_url: str | None = None
 
 
-def _published(value: str | None) -> datetime | None:
+def parse_published(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -142,7 +142,7 @@ def listing_fields(posting: Posting) -> dict[str, Any]:
         "location": posting.location or None,
         "remote": posting.remote,
         "accredited": posting.accredited,
-        "published": _published(posting.published),
+        "published": parse_published(posting.published),
         "divisions": posting.divisions or None,
         "skills": posting.skills or None,
     }

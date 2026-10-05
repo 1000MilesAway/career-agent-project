@@ -38,6 +38,7 @@ from core import liveness
 from core.sources import employers
 
 from ..models import Posting, Vacancy
+from .pool import parse_published
 from .scan import EVALUATED, SCREENED_OUT, SHORTLIST, TRIAGED_OUT
 
 # A page checked this recently is not asked again: a posting closed an hour
@@ -64,6 +65,10 @@ UNSEEN_AFTER = timedelta(days=7)
 
 def _apply(posting: Posting, verdict: liveness.Liveness, now: datetime) -> None:
     posting.checked_at = now
+    if posting.published is None and verdict.published:
+        # Telegram postings were pooled without their date before 2026-10-05;
+        # the widget page carries it, and the age mark needs it.
+        posting.published = parse_published(verdict.published)
     if verdict.closed:
         if posting.closed_at is None:
             posting.closed_at = now
@@ -148,7 +153,8 @@ def stale_reason(vacancy: Vacancy | Posting, now: datetime | None = None) -> str
     """Why a row that cannot be asked counts as old, or None.
 
     Only for sources `core.liveness` cannot read: a checkable row has a real
-    answer in `closed_at`, and age must not overrule it.
+    answer in `closed_at`, and age must not overrule it. Telegram is the
+    exception: its answer is about the post, not the vacancy.
 
     An employer feed read whole has a real answer too — the company's list
     either still carries the posting or, after enough reads without it, the
@@ -162,11 +168,18 @@ def stale_reason(vacancy: Vacancy | Posting, now: datetime | None = None) -> str
         if unseen <= UNSEEN_AFTER:
             return None
         return f"не встречалась в ленте компании {unseen.days} дн., давно не проверялась"
-    if vacancy.published is None or liveness.can_check(vacancy.url):
+    if vacancy.published is None:
+        return None
+    # A Telegram post can be asked, but only whether the POST is still there:
+    # channels rarely delete, so a live post says nothing about the job.
+    telegram = liveness.is_telegram_post(vacancy.url or "")
+    if liveness.can_check(vacancy.url) and not telegram:
         return None
     age = now - vacancy.published
     if age <= STALE_AFTER:
         return None
+    if telegram:
+        return f"пост опубликован {age.days} дн. назад, канал не сообщает о закрытии"
     return f"опубликована {age.days} дн. назад, проверить у источника нельзя"
 
 

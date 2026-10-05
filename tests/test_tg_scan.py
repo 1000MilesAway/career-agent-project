@@ -53,6 +53,10 @@ class TestAsPosting:
         assert p.qualification == "Middle"
         assert p.skills == ["Python"]
 
+    def test_the_post_date_carries_over(self):
+        """Without it a month-old post never reads as old (services/liveness.py)."""
+        assert tg_scan.as_posting(post("1")).published == "2026-09-15T10:00:00+00:00"
+
 
 class TestCollect:
     def test_without_a_profile_the_starter_template_screens(self, no_network):

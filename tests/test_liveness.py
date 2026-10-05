@@ -60,7 +60,10 @@ class TestClassify:
 
     def test_a_live_telegram_post_is_open(self):
         url = "https://t.me/runello_rus_python/1818?embed=1&mode=tme"
-        assert liveness.classify(url, 200, fixture("telegram_post_open.html")).state == "open"
+        verdict = liveness.classify(url, 200, fixture("telegram_post_open.html"))
+        assert verdict.state == "open"
+        # The post's date travels: the age mark needs it (services/liveness.py).
+        assert verdict.published == "2026-09-28T05:00:36+00:00"
 
     def test_a_missing_channel_is_not_a_deleted_post(self):
         """A renamed channel says nothing about the post; closing it would be a guess."""
