@@ -243,6 +243,20 @@ def city_matches(location: str, cities: list[str]) -> bool:
     return any(re.search(rf"(?<![\w-]){re.escape(n)}", loc) for n in names)
 
 
+def rouble_band(
+    salary_from: int | None, salary_to: int | None, currency: str | None
+) -> tuple[int | None, int | None]:
+    """The band in roubles, or (None, None) when it is in anything else.
+
+    Habr says "rur", hh and the text parser "RUB"; an empty currency next to
+    numbers is a source that states roubles only. A band in dollars compared
+    with a rouble threshold reads 5 000 $ as 5 000 ₽ and drops a well-paid job.
+    """
+    if (currency or "RUB").upper() not in {"RUB", "RUR"}:
+        return None, None
+    return salary_from or None, salary_to or None
+
+
 @dataclass
 class Decision:
     """Why a posting was kept or dropped."""
@@ -344,7 +358,8 @@ class PreScreen:
 
         # 6. Salary. Only judged when the employer stated a figure.
         if self.profile.salary_min:
-            top = p.salary_to or p.salary_from
+            low, high = rouble_band(p.salary_from, p.salary_to, p.currency)
+            top = high or low
             if top and top < self.profile.salary_min:
                 return Decision(False, f"зарплата ниже порога: {p.salary_text}")
 

@@ -216,6 +216,20 @@ class TestPreScreen:
                       salary_text="100 000 – 150 000 ₽")
         assert not PreScreen(prof).check(low).keep
 
+    def test_salary_in_another_currency_is_not_compared(self):
+        """5 000 $ read against a rouble floor is 5 000 ₽ — a well-paid job
+        dropped as underpaid. Habr and hh both carry dollar bands."""
+        prof = SearchProfile(salary_min=250_000)
+        usd = posting("Разработчик", salary_from=4_000, salary_to=5_000,
+                      currency="usd", salary_text="4 000 – 5 000 $")
+        assert PreScreen(prof).check(usd).keep
+
+    def test_habr_rur_is_roubles(self):
+        prof = SearchProfile(salary_min=250_000)
+        low = posting("Разработчик", salary_from=100_000, salary_to=150_000,
+                      currency="rur", salary_text="100 000 – 150 000 ₽")
+        assert not PreScreen(prof).check(low).keep
+
     def test_salary_filter_ignores_unstated_salary(self):
         """No stated figure must never be a rejection — most postings hide it."""
         prof = SearchProfile(salary_min=250_000)

@@ -16,8 +16,8 @@ from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, load_only, selectinload
 
+from core.filters import rouble_band
 from core.profiles import steps_as_list
-from core.sources.salary_text import parse_salary
 
 from ..core.deps import SessionDep, UserDep
 from ..models import Evaluation, Posting, Resume, Vacancy
@@ -28,18 +28,15 @@ from ..services.tracker import STATUSES
 router = APIRouter(prefix="/api", tags=["state"])
 
 
-def salary_band(text: str | None) -> tuple[int | None, int | None]:
+def salary_band(posting: Posting) -> tuple[int | None, int | None]:
     """The stored band as rouble numbers, for the cabinet's own filter.
 
-    Only `salary_text` is stored, so the band is read back from it with the
-    parser Telegram already uses. A band in another currency, or one the
-    parser cannot read, is (None, None): the cabinet then treats it as "no
-    salary stated" — the same pass `PreScreen` gives it.
+    Read from the pool's columns by the same rule `PreScreen` judges with,
+    so the conditions above the list and the scan cannot disagree. A band in
+    another currency, or none stated, is (None, None): the cabinet then
+    treats it as "no salary stated" — the same pass `PreScreen` gives it.
     """
-    band = parse_salary(text or "")
-    if band is None or band.currency != "RUB":
-        return None, None
-    return band.min or None, band.max or None
+    return rouble_band(posting.salary_from, posting.salary_to, posting.currency)
 
 # Versions listed under "История версий". Older ones stay in the database —
 # they back bought reports — but a list longer than this is not read.
@@ -103,6 +100,9 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 Posting.company,
                 Posting.qualification,
                 Posting.salary_text,
+                Posting.salary_from,
+                Posting.salary_to,
+                Posting.currency,
                 Posting.remote,
                 Posting.location,
                 Posting.accredited,
@@ -161,7 +161,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 "salary_text": v.salary_text,
                 # The conditions above the list apply to rows already found,
                 # not only to the next scan; the threshold needs a number.
-                "salary_range": salary_band(v.salary_text),
+                "salary_range": salary_band(v.posting),
                 "remote": v.remote,
                 "location": v.location,
                 "accredited": v.accredited,

@@ -181,15 +181,24 @@ class TestClear:
 class TestSalaryBand:
     """The cabinet filters found rows by salary; it needs the band as numbers."""
 
+    @staticmethod
+    def band(salary_from=None, salary_to=None, currency=None):
+        return salary_band(PooledPosting(
+            salary_from=salary_from, salary_to=salary_to, currency=currency
+        ))
+
     def test_reads_a_rouble_band(self):
-        assert salary_band("150 000 — 250 000 ₽") == (150_000, 250_000)
+        assert self.band(150_000, 250_000, "RUB") == (150_000, 250_000)
+
+    def test_habr_names_the_rouble_rur(self):
+        assert self.band(150_000, None, "rur") == (150_000, None)
 
     def test_an_open_lower_end_is_none(self):
-        assert salary_band("до 300 000 ₽") == (None, 300_000)
+        assert self.band(None, 300_000, "RUB") == (None, 300_000)
 
     def test_another_currency_counts_as_not_stated(self):
         # Compared against a rouble threshold it would cut or pass at random.
-        assert salary_band("от 3000 $") == (None, None)
+        assert self.band(3000, None, "usd") == (None, None)
 
-    def test_no_text_is_not_stated(self):
-        assert salary_band(None) == (None, None)
+    def test_no_numbers_is_not_stated(self):
+        assert self.band() == (None, None)
