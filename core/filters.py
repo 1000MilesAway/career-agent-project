@@ -51,7 +51,9 @@ class SearchProfile:
     # posting passes whatever its location says. See PreScreen.check step 5.
     cities: list[str] = field(default_factory=list)
     salary_min: int | None = None
-    max_age_days: int | None = None
+    # No age limit here: liveness marks a posting older than 30 days as
+    # stale, and the pool matches only postings seen in the last 14 days.
+    # A third threshold nobody could see was removed (docs/decisions.md).
     # Only employers with Russian IT accreditation (deferment, mortgage).
     accredited_only: bool = False
 
@@ -68,7 +70,6 @@ class SearchProfile:
             "remote_only": self.remote_only,
             "cities": self.cities,
             "salary_min": self.salary_min,
-            "max_age_days": self.max_age_days,
             "accredited_only": self.accredited_only,
         }
 
