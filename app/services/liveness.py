@@ -38,7 +38,9 @@ from core import liveness
 from core.sources import employers
 
 from ..models import Posting, Vacancy
-from .pool import parse_published
+from . import pool
+from . import sources as switches_db
+from .pool import Sighting, parse_published
 from .scan import EVALUATED, SCREENED_OUT, SHORTLIST, TRIAGED_OUT
 
 # A page checked this recently is not asked again: a posting closed an hour
@@ -117,6 +119,78 @@ async def _check_rows(rows: list[Posting], now: datetime) -> dict[str, int]:
     return counts
 
 
+def _in_play():
+    """Postings at least one user still looks at: not hidden, and either
+    saved or not dropped."""
+    return select(Vacancy.posting_id).where(
+        Vacancy.hidden_at.is_(None),
+        or_(
+            Vacancy.is_saved.is_(True),
+            Vacancy.stage.notin_((SCREENED_OUT, TRIAGED_OUT)),
+        ),
+    )
+
+
+def _read_feeds(boards: list[employers.Board]) -> tuple[list[Sighting], list[str]]:
+    """Read the feeds whole. Network only. Returns (sightings, complete boards)."""
+    # Feeds list everything the company has open; queries are not asked.
+    result = employers.collect([], tuple({b.group for b in boards}), boards)
+    group = {b.key: b.group for b in boards}
+    sightings = [
+        Sighting(
+            p,
+            text=result.texts.get(p.id),
+            segment=group.get(employers.board_key(p.id)),
+            needs_text=employers.needs_description(p.id) and not result.texts.get(p.id),
+        )
+        for p in result.postings
+    ]
+    return sightings, list(result.complete)
+
+
+async def sweep_feeds(session: AsyncSession) -> dict[str, int]:
+    """Read the ATS feeds whose postings someone has in play, and close the
+    ones the company took down.
+
+    A feed posting closes only by its absence from a full read of the feed
+    (`pool.mark_absent`), and before this ran only a user's scan read it: a
+    week without scans left the posting "давно не проверялась" and open.
+    Free — HTTP only — and bounded to boards someone's list depends on.
+    """
+    now = datetime.now(UTC)
+    result = await session.execute(
+        select(Posting.external_id).where(
+            Posting.id.in_(_in_play()),
+            Posting.source == "company",
+            Posting.closed_at.is_(None),
+        )
+    )
+    wanted = {employers.board_key(ext) for ext in result.scalars()}
+    hidden = set((await switches_db.load(session)).boards())
+    boards = [
+        b for b in employers.load()
+        if b.kind in employers.FEED_KINDS and b.key in wanted and b.key not in hidden
+    ]
+    if not boards:
+        return {"boards": 0, "complete": 0, "closed": 0}
+    sightings, complete = await run_in_threadpool(_read_feeds, boards)
+    # Refresh only what is pooled already. A new posting is left to the next
+    # scan: the scan lane writes the pool at the same time, and two inserts
+    # of one posting race on its unique key (see docs/decisions.md,
+    # 2026-10-03, on why refresh shares the scan lane).
+    known = set((await session.execute(
+        select(Posting.external_id).where(
+            Posting.source == "company",
+            Posting.external_id.in_([s.posting.id for s in sightings]),
+        )
+    )).scalars())
+    await pool.upsert(session, "company", [s for s in sightings if s.posting.id in known], now)
+    closed = await pool.mark_absent(
+        session, "company", complete, {s.posting.id for s in sightings}, now
+    )
+    return {"boards": len(boards), "complete": len(complete), "closed": closed}
+
+
 async def sweep(session: AsyncSession, limit: int = MAX_PER_SWEEP) -> dict[str, int]:
     """One background pass over the postings some user still has in play.
 
@@ -126,17 +200,10 @@ async def sweep(session: AsyncSession, limit: int = MAX_PER_SWEEP) -> dict[str, 
     brings archived postings back.
     """
     now = datetime.now(UTC)
-    in_play = select(Vacancy.posting_id).where(
-        Vacancy.hidden_at.is_(None),
-        or_(
-            Vacancy.is_saved.is_(True),
-            Vacancy.stage.notin_((SCREENED_OUT, TRIAGED_OUT)),
-        ),
-    )
     result = await session.execute(
         select(Posting)
         .where(
-            Posting.id.in_(in_play),
+            Posting.id.in_(_in_play()),
             Posting.source.in_(CHECKABLE_SOURCES),
             _due(now),
         )

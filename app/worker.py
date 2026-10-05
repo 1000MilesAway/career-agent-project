@@ -40,6 +40,11 @@ POLL_SECONDS = 2.0
 # Pause between liveness passes. One pass is a bounded batch, oldest check
 # first; at this pace a few hundred live rows are revisited about twice a day.
 SWEEP_SECONDS = 300.0
+# Pause between reads of the ATS feeds. A feed posting closes after three
+# full reads without it over at least a day (pool.ABSENT_READS/ABSENT_FOR);
+# every four hours closes it in about a day without anyone scanning, at six
+# reads a day of each company's feed.
+FEEDS_SECONDS = 4 * 3600.0
 MAX_ATTEMPTS = 3
 # Kinds that fail on the first error; see `tick`.
 NOT_RETRIED = frozenset({"scan", "refresh", "triage"})
@@ -347,23 +352,41 @@ async def sweep_once() -> dict[str, int]:
         return counts
 
 
-async def sweep_loop(stopping: asyncio.Event) -> None:
-    """Recheck found vacancies in the background until the worker stops.
+async def feeds_once() -> dict[str, int]:
+    async with SessionLocal() as session:
+        counts = await liveness.sweep_feeds(session)
+        await session.commit()
+        return counts
+
+
+async def _every(stopping: asyncio.Event, seconds: float, name: str, once) -> None:
+    """Run `once` in the background every `seconds` until the worker stops.
 
     Failures are logged and the loop goes on: a board that is down now is the
     usual case, not a reason to stop checking the others later.
     """
     while not stopping.is_set():
         try:
-            counts = await sweep_once()
-            if counts["checked"]:
-                log.info("liveness sweep: %s", counts)
+            counts = await once()
+            if any(counts.values()):
+                log.info("%s: %s", name, counts)
         except Exception:
-            log.exception("liveness sweep error")
+            log.exception("%s error", name)
         try:
-            await asyncio.wait_for(stopping.wait(), timeout=SWEEP_SECONDS)
+            await asyncio.wait_for(stopping.wait(), timeout=seconds)
         except TimeoutError:
             pass
+
+
+async def sweep_loop(stopping: asyncio.Event) -> None:
+    """Recheck found vacancies' pages in the background."""
+    await _every(stopping, SWEEP_SECONDS, "liveness sweep", sweep_once)
+
+
+async def feeds_loop(stopping: asyncio.Event) -> None:
+    """Read the ATS feeds in the background, so a taken-down posting closes
+    without waiting for someone's scan."""
+    await _every(stopping, FEEDS_SECONDS, "feeds sweep", feeds_once)
 
 
 async def lane_loop(stopping: asyncio.Event, scans: bool) -> None:
@@ -396,11 +419,14 @@ async def main() -> None:
     if reaped:
         log.warning("failed %s job(s) left running by a previous worker", reaped)
 
-    sweeper = asyncio.create_task(sweep_loop(stopping))
+    sweepers = [
+        asyncio.create_task(sweep_loop(stopping)),
+        asyncio.create_task(feeds_loop(stopping)),
+    ]
     lanes = [asyncio.create_task(lane_loop(stopping, scans)) for scans in (True, False)]
 
     await asyncio.gather(*lanes)
-    await sweeper
+    await asyncio.gather(*sweepers)
     log.info("worker stopped")
 
 

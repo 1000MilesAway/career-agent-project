@@ -162,3 +162,70 @@ class TestStaleForFeeds:
     @pytest.mark.parametrize("ext", ["sber/sber/1", "yandex/yandex/1"])
     def test_a_searchable_board_is_still_judged_by_age(self, ext):
         assert "дн. назад" in liveness.stale_reason(self._posting(ext, 45, 0))
+
+
+@requires_db
+class TestBackgroundFeedSweep:
+    """The worker reads the feeds itself: a week without scans must not leave
+    a taken-down posting open."""
+
+    @staticmethod
+    def fake_feed(monkeypatch, listed: list[Posting], calls: list | None = None):
+        board = employers.Board(kind="greenhouse", name="Acme", slug="acme")
+
+        def fake_collect(queries, groups, boards=None):
+            if calls is not None:
+                calls.append([b.key for b in boards or []])
+            return employers.Collected(postings=list(listed), complete=[BOARD])
+
+        monkeypatch.setattr(employers, "load", lambda *a, **k: [board])
+        monkeypatch.setattr(employers, "collect", fake_collect)
+        monkeypatch.setattr(pool, "ABSENT_READS", 1)
+        monkeypatch.setattr(pool, "ABSENT_FOR", timedelta(0))
+
+    async def _have(self, session, user, *natives: str) -> None:
+        for native in natives:
+            session.add(Vacancy(
+                user_id=user.id, posting=await _row(session, native), stage="shortlist"
+            ))
+        await session.commit()
+
+    async def test_closes_what_the_feed_dropped_without_a_scan(
+        self, session, user, monkeypatch
+    ):
+        await _pool(session, "1", "2")
+        await self._have(session, user, "1", "2")
+        self.fake_feed(monkeypatch, [card("1")])
+
+        result = await liveness.sweep_feeds(session)
+        await session.commit()
+
+        assert result == {"boards": 1, "complete": 1, "closed": 1}
+        assert (await _row(session, "2")).closed_at is not None
+        assert (await _row(session, "1")).closed_at is None
+
+    async def test_a_feed_nobody_has_in_play_is_not_read(self, session, monkeypatch):
+        await _pool(session, "1")
+        await session.commit()
+        calls: list = []
+        self.fake_feed(monkeypatch, [], calls)
+
+        result = await liveness.sweep_feeds(session)
+
+        assert result["boards"] == 0
+        assert calls == []
+
+    async def test_a_new_posting_in_the_feed_is_left_to_the_scan(
+        self, session, user, monkeypatch
+    ):
+        """The scan lane writes the pool at the same time; two inserts of one
+        posting would race on its unique key."""
+        await _pool(session, "1")
+        await self._have(session, user, "1")
+        self.fake_feed(monkeypatch, [card("1"), card("new")])
+
+        await liveness.sweep_feeds(session)
+        await session.commit()
+
+        ids = set((await session.execute(select(PooledPosting.external_id))).scalars())
+        assert ids == {f"{BOARD}/1"}
