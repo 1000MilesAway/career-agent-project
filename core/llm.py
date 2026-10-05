@@ -137,9 +137,15 @@ class LLM:
         # 8000 was enough until each requirement grew a basis and a JD quote:
         # a long posting then truncated mid-string and the whole evaluation
         # failed to parse. Output is billed per token used, not per limit, so
-        # the headroom is free unless it is actually spent.
+        # the headroom is free unless it is actually spent. With thinking on,
+        # the reasoning counts against this limit too: 13.5k of 16k went on it
+        # once and the JSON was cut off, paid for and thrown away.
         max_tokens: int = 16000,
         retries: int = 1,
+        # DeepSeek thinks by default. On a step whose answer is a filled-in
+        # schema the reasoning was ~70% of the output tokens and most of the
+        # latency, and thinking mode also ignores `temperature`.
+        thinking: bool = True,
     ) -> dict:
         """Ask for JSON, validate it, retry once on malformed output."""
         content = user if isinstance(user, list) else [{"type": "text", "text": user}]
@@ -159,6 +165,7 @@ class LLM:
                     response_format={"type": "json_object"},
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    **({} if thinking else {"extra_body": {"thinking": {"type": "disabled"}}}),
                 )
             except Exception as e:  # network, rate limit, auth
                 u.seconds = time.monotonic() - started

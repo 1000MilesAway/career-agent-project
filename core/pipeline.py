@@ -123,6 +123,9 @@ def evaluate(llm: LLM, profile: dict, vacancy_text: str) -> dict:
         system=prompts.EVALUATE,
         user=f"Профиль кандидата:\n{profile_json}\n\nВакансия:\n{vacancy_text}",
         temperature=0.1,
+        # The step most often run and the slowest: with reasoning it took ~50 s
+        # and ~0.9 ₽ against 13 s and 0.17 ₽ measured before thinking was on.
+        thinking=False,
     )
 
 
