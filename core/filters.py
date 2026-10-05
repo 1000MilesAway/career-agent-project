@@ -123,6 +123,10 @@ class _Folded:
     def search(self, text: str):
         return self._re.search(_fold(text))
 
+    def search_folded(self, folded: str):
+        """For text already through `_fold`: a title is folded once, not per keyword."""
+        return self._re.search(folded)
+
 
 class _AndGroup:
     """Several terms that must ALL appear, in any order.
@@ -137,7 +141,10 @@ class _AndGroup:
         self.pattern = pattern
 
     def search(self, text: str):
-        return all(p.search(text) for p in self._parts) or None
+        return self.search_folded(_fold(text))
+
+    def search_folded(self, folded: str):
+        return all(p.search_folded(folded) for p in self._parts) or None
 
 
 # " + " with surrounding whitespace, never a bare "+": splitting on the bare
@@ -185,9 +192,11 @@ def _compile(keyword: str) -> _Folded | _AndGroup:
     return _Folded(re.compile(escaped, re.IGNORECASE))
 
 
-def _any_match(text: str, patterns: list[_Folded]) -> str | None:
+def _any_match(text: str, patterns: list[_Folded | _AndGroup]) -> str | None:
+    # Folding was 70% of a whole PreScreen check while it ran once per keyword.
+    folded = _fold(text)
     for p in patterns:
-        if p.search(text):
+        if p.search_folded(folded):
             return p.pattern
     return None
 
