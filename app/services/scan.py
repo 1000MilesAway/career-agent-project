@@ -581,6 +581,7 @@ async def _enrich(session: AsyncSession, source: str, kept: list[Pooled]) -> int
             )
         elif row.raw_text is None:
             row.raw_text = text
+        pool.mark_fraud(row)
     return sum(1 for row in todo if texts.get(row.external_id))
 
 

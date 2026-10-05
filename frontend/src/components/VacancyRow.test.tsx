@@ -31,6 +31,18 @@ const base: FoundVacancy = {
 }
 
 describe('VacancyRow', () => {
+  it('подозрительная вакансия помечена с причиной, но не приглушена', () => {
+    const { container } = render(
+      <VacancyRow
+        vacancy={{ ...base, fraud: 'похоже на мошенничество: просят внести деньги' }}
+        actions={null}
+      />,
+    )
+
+    expect(screen.getByText('подозрительная').getAttribute('title')).toMatch(/внести деньги/)
+    expect(container.querySelector('.vrow--dim')).toBeNull()
+  })
+
   it('отсеянная вакансия показана, а не спрятана, и несёт причину', () => {
     render(
       <VacancyRow

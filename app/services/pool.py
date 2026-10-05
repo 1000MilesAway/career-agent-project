@@ -28,7 +28,7 @@ from sqlalchemy import or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
-from core import dedup
+from core import dedup, fraud
 from core.sources.habr_api import Posting
 
 from ..models import Posting as Pooled
@@ -280,6 +280,7 @@ async def upsert(
                 row.segment = sighting.segment
             if row.raw_text is None and sighting.text:
                 row.raw_text = sighting.text
+                mark_fraud(row)
             row.last_seen_at = now
             _seen_again(row)
             continue
@@ -301,6 +302,7 @@ async def upsert(
             created_at=now,
             **listing_fields(posting),
         )
+        mark_fraud(row)
         original = originals.find(row, text)
         if original is not None:
             row.duplicate_of_id = original.duplicate_of_id or original.id
@@ -311,6 +313,15 @@ async def upsert(
 
     await session.flush()
     return {"new": new}
+
+
+def mark_fraud(row: Pooled) -> None:
+    """Judge the posting's text for fraud. Call after every write to the text.
+
+    Free (core/fraud.py, no model). Stored rather than computed per request
+    because the list payload deliberately leaves the text unloaded.
+    """
+    row.fraud_reason = fraud.check(row.title, row.raw_text)
 
 
 def _seen_again(row: Pooled) -> None:

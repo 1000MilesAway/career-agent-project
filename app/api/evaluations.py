@@ -16,7 +16,7 @@ from core.pipeline import evaluate, load_vacancy
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Evaluation, Vacancy
-from ..services import liveness, scan
+from ..services import liveness, pool, scan
 from ..services.spend import charge, ensure_can_spend, ledger_totals
 
 router = APIRouter(prefix="/api/evaluations", tags=["evaluations"])
@@ -68,6 +68,7 @@ async def _vacancy_text(vacancy: Vacancy) -> str:
 
     # On the shared posting: the next user to evaluate it reads it from here.
     vacancy.posting.raw_text = text
+    pool.mark_fraud(vacancy.posting)
     return text
 
 

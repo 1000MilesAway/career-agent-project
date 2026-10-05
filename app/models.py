@@ -231,6 +231,10 @@ class Posting(Base, TimestampMixin):
     )
     # Where that description lives, for a Telegram teaser.
     description_url: Mapped[str | None] = mapped_column(String(1024))
+    # Why the text looks like fraud (core/fraud.py), or None. A mark, never a
+    # drop: computed whenever the text is written, because the list payload
+    # does not load the text to judge it there.
+    fraud_reason: Mapped[str | None] = mapped_column(String(256))
 
     # The same vacancy seen elsewhere first (core/dedup.py). Points at the
     # root of the cluster, never at another copy. Who sees which copy is

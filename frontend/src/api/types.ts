@@ -87,9 +87,11 @@ export interface FoundVacancy {
   company: string | null
   qualification: string | null
   salary_text: string | null
-  /** `salary_text` read back as roubles a month, [from, to]; a null end is
-   *  not stated. Absent or both null — no rouble band could be read. */
+  /** The band in roubles a month, [from, to]; a null end is not stated.
+   *  Absent or both null — no rouble band stated. */
   salary_range?: [number | null, number | null] | null
+  /** Why the text looks like fraud; a mark on the card, never a drop. */
+  fraud?: string | null
   remote: boolean | null
   /** The city as the source states it; empty or null — the source is silent. */
   location?: string | null

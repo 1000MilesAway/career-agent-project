@@ -103,6 +103,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 Posting.salary_from,
                 Posting.salary_to,
                 Posting.currency,
+                Posting.fraud_reason,
                 Posting.remote,
                 Posting.location,
                 Posting.accredited,
@@ -162,6 +163,8 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 # The conditions above the list apply to rows already found,
                 # not only to the next scan; the threshold needs a number.
                 "salary_range": salary_band(v.posting),
+                # A mark with its reason, never a drop (core/fraud.py).
+                "fraud": v.posting.fraud_reason,
                 "remote": v.remote,
                 "location": v.location,
                 "accredited": v.accredited,

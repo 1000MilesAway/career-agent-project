@@ -81,6 +81,7 @@ function VacancyRowInner({
   // Closed is marked, not hidden: what was bought for it stays readable. An
   // outdated score still reads against the old profile, so it is marked too.
   const flags = [
+    vacancy.fraud ? { label: 'подозрительная', why: vacancy.fraud } : null,
     mismatch && !dropped ? { label: 'не под условия', why: mismatch } : null,
     vacancy.closed
       ? {
