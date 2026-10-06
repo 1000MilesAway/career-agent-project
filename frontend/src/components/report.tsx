@@ -250,9 +250,6 @@ export function TailoredResumeView({ value }: { value: TailoredResume }) {
       {value.skills?.length ? (
         <p className="muted">Навыки: {value.skills.join(', ')}</p>
       ) : null}
-      {value.ats_keywords?.length ? (
-        <p className="muted">Ключевые слова: {value.ats_keywords.join(', ')}</p>
-      ) : null}
 
       {/* What the model changed, and why. An invention shows up here. */}
       {value.changes?.length ? (

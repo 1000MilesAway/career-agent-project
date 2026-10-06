@@ -141,11 +141,6 @@ class TestTailorResume:
         tailored = {s.lower() for s in load("tailor_resume")["skills"]}
         assert tailored <= profile_skills, tailored - profile_skills
 
-    def test_ats_keywords_are_backed_by_the_profile(self):
-        profile_skills = {s.lower() for s in load("parse_resume")["skills"]}
-        for kw in load("tailor_resume")["ats_keywords"]:
-            assert kw.lower() in profile_skills, kw
-
 
 class TestCoverLetter:
     def test_three_angles_then_one_letter(self):

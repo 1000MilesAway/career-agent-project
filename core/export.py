@@ -230,13 +230,6 @@ def tailored_resume_document(
         doc.add("h2", "Навыки")
         doc.add("para", skills)
 
-    keywords = _join(content.get("ats_keywords"))
-    if keywords:
-        # Kept as a normal line rather than hidden white-on-white text: an ATS
-        # that detects keyword stuffing rejects the candidate outright.
-        doc.add("h2", "Ключевые слова")
-        doc.add("para", keywords)
-
     _add_list_section(doc, "Образование", profile.get("education"))
 
     return doc

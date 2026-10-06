@@ -31,14 +31,6 @@
     "Docker",
     "Django"
   ],
-  "ats_keywords": [
-    "Python",
-    "FastAPI",
-    "asyncio",
-    "PostgreSQL",
-    "SQLAlchemy",
-    "Docker"
-  ],
   "changes": [
     "Вынесла асинхронный биллинг в самое начало summary — это главное требование вакансии",
     "Подняла FastAPI и asyncio выше в списке навыков, Django опустила вниз",

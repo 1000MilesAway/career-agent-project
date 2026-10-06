@@ -117,6 +117,12 @@ class TestTailoredDocument:
         assert "акценты" not in body
         assert "Внедрил CI/CD" in body
 
+    def test_stored_ats_keywords_never_reach_the_file(self):
+        """Resumes tailored before 2026-10-06 still carry `ats_keywords`."""
+        body = "\n".join(texts(tailored_resume_document(TAILORED, profile=PROFILE)))
+        assert "Ключевые слова" not in body
+        assert "микросервисы" not in body
+
     def test_vacancy_title_is_noted(self):
         doc = tailored_resume_document(TAILORED, profile=PROFILE, vacancy_title="Backend-инженер")
         assert any("Backend-инженер" in t for t in texts(doc))

@@ -61,7 +61,6 @@ export interface TailoredResume {
     bullets?: string[]
   }[]
   skills?: string[]
-  ats_keywords?: string[]
   /** What the model changed and why — where an invention would show up. */
   changes?: string[]
 }
