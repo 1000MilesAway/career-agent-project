@@ -217,7 +217,10 @@ IT-роли.
 - [ ] **Разобрать похожие сервисы и взять стоящие фичи** (2026-10-06).
       Мир: Teal, Huntr, Jobright, Careerflow, Simplify. РФ: JobPilot
       (getjobpilot.ru), AIRA (student-aira.com), Quick Offer, hhbro.ru,
-      podustal.ru, hirify.me (часть уже в `01-market.md`). По каждому — что
+      podustal.ru, hirify.me (часть уже в `01-market.md`). Начать со
+      сравнения трёх трекеров:
+      https://www.careerflow.ai/blog/huntr-vs-teal-vs-careerflow
+      (написано Careerflow, то есть с перекосом в свою пользу). По каждому — что
       делает лучше нас и стоит ли перенимать; результат — пункты в этот
       бэклог. Фильтр на входе: автоотклик и рассылка от имени пользователя
       не берутся ни в каком виде, платное — только после бесплатных ступеней.
