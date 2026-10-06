@@ -14,7 +14,7 @@ import type {
   Requirement,
   TailoredResume,
 } from '../api/types'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { formatScore, VERDICT_TITLES } from './ui'
 import './report.css'
 
@@ -163,17 +163,25 @@ export function ReportView({ report }: { report: Report }) {
  *  because what the user checks is how it reads. It leaves the cabinet by
  *  copy and paste into a job board, so copying is one click. */
 export function CoverLetterView({ value }: { value: CoverLetter }) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const letterRef = useRef<HTMLDivElement>(null)
 
   async function copy() {
+    let ok: boolean
     try {
       await navigator.clipboard.writeText(value.letter)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
+      ok = true
     } catch {
-      // Clipboard denied (plain http, an old browser): the text is still
-      // selectable on screen, which is what people fall back to anyway.
+      // The async API rejects without document focus, on plain http and in
+      // some embedded browsers. A silent catch here left the previous letter
+      // in the clipboard while the new one was on screen, and the wrong
+      // letter went to an employer. Copying the selection still works there.
+      ok = copySelection(letterRef.current)
     }
+    // A failure is shown, never swallowed; the text stays selected, so Ctrl+C
+    // is one keystroke away.
+    setCopyState(ok ? 'copied' : 'failed')
+    window.setTimeout(() => setCopyState('idle'), 2500)
   }
 
   return (
@@ -191,12 +199,34 @@ export function CoverLetterView({ value }: { value: CoverLetter }) {
           <span />
         )}
         <button className="btn btn--ghost btn--small" onClick={copy}>
-          {copied ? 'Скопировано ✓' : 'Скопировать'}
+          {copyState === 'copied'
+            ? 'Скопировано ✓'
+            : copyState === 'failed'
+              ? 'Не скопировалось — Ctrl+C'
+              : 'Скопировать'}
         </button>
       </div>
-      <div className="letter">{value.letter}</div>
+      <div className="letter" ref={letterRef}>
+        {value.letter}
+      </div>
     </div>
   )
+}
+
+/** Selects the node's text and copies it the old way. The selection is left
+ *  in place on purpose: if the copy fails, Ctrl+C is all that is left to do. */
+function copySelection(node: HTMLElement | null): boolean {
+  const selection = window.getSelection()
+  if (!node || !selection) return false
+  const range = document.createRange()
+  range.selectNodeContents(node)
+  selection.removeAllRanges()
+  selection.addRange(range)
+  try {
+    return document.execCommand('copy')
+  } catch {
+    return false
+  }
 }
 
 export function TailoredResumeView({ value }: { value: TailoredResume }) {
