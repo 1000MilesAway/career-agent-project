@@ -215,15 +215,45 @@ IT-роли.
          повтор подряд.
       4. Дедуп с зеркалами hh в Telegram-постах (`core/dedup.py`).
 - [ ] **Разобрать похожие сервисы и взять стоящие фичи** (2026-10-06).
-      Мир: Teal, Huntr, Jobright, Careerflow, Simplify. РФ: JobPilot
-      (getjobpilot.ru), AIRA (student-aira.com), Quick Offer, hhbro.ru,
-      podustal.ru, hirify.me (часть уже в `01-market.md`). Начать со
-      сравнения трёх трекеров:
-      https://www.careerflow.ai/blog/huntr-vs-teal-vs-careerflow
-      (написано Careerflow, то есть с перекосом в свою пользу). По каждому — что
-      делает лучше нас и стоит ли перенимать; результат — пункты в этот
-      бэклог. Фильтр на входе: автоотклик и рассылка от имени пользователя
-      не берутся ни в каком виде, платное — только после бесплатных ступеней.
+      По каждому — что делает лучше нас и стоит ли перенимать; результат —
+      пункты в этот бэклог. Фильтр на входе: автоотклик и рассылка от имени
+      пользователя не берутся ни в каком виде, платное — только после
+      бесплатных ступеней. Часть сервисов уже в `01-market.md`.
+
+      Что известно из первого поиска (по выдаче, сами сайты не открывались):
+      - Рынок делится на три класса: автоотклик-движки; трекеры поиска с ИИ
+        (Teal, Huntr, Careerflow, Jobright); конструкторы резюме и писем.
+      - **Teal** — всё в одном: рабочее пространство-трекер + подгонка
+        резюме, письма; бесплатный и платный тариф.
+      - **Huntr** — трекер канбан-доской, конструктор резюме, расширение
+        браузера с автозаполнением форм.
+      - **Careerflow** — резюме, оптимизация LinkedIn-профиля, подбор вакансий.
+      - **Jobright** — персональный подбор «высокой релевантности» + автоотклик
+        (последнее нам не подходит).
+      - **JobPilot** (РФ) — разбор опыта и предложение карьерных направлений,
+        вакансии hh.ru, автоотклик.
+      - **AIRA** (РФ) — «скрытый рынок»: вакансии вне досок, пишет рекрутерам
+        в мессенджерах.
+      - **Quick Offer** (РФ) — сам находит, откликается, пишет письма.
+      - **hh.ru** запустил своего ИИ-помощника для кандидатов — прямой
+        конкурент по функциям внутри hh.
+      - Ещё: Simplify, hhbro.ru, podustal.ru, hirify.me.
+
+      Что проверить в первую очередь: канбан-трекер, расширение браузера
+      (без отправки), оптимизация профиля на площадке, предложение карьерных
+      направлений из резюме, источники «скрытого рынка».
+
+      Ссылки:
+      - https://www.careerflow.ai/blog/huntr-vs-teal-vs-careerflow — сравнение
+        трёх трекеров; написано Careerflow, с перекосом в свою пользу.
+      - https://www.producthunt.com/products/jobright-ai-2/alternatives
+      - https://bestjobsearchapps.com/articles/en/7-best-aiassisted-job-search-sites-for-2026-huntr-simplify-careerflow-more
+      - https://www.toolworthy.ai/blog/best-ai-job-application-tools
+      - https://tripleten.com/blog/posts/ai-job-search-tools
+      - https://getjobpilot.ru/
+      - https://student-aira.com/poisk-skrytyh-vakansij/
+      - https://hh.ru/article/pochemu-ne-nuzhno-boyatsya-ii-pri-poiske-raboty
+      - https://practicum.yandex.ru/blog/kak-ispolzovat-ii-pri-poiske-raboty/
 
 Из разбора после общего пула (2026-10-03), по порядку пользы:
 
