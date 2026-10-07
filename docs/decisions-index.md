@@ -149,6 +149,7 @@ grep -n "Общий пул вакансий" docs/decisions.md   # → номе�
 - Работа прямо в `main`; брошенные worktree и снапшот git-статуса не показывает отставание от origin → 09-22 Уборка: пять брошенных worktree и ветка, отставшая на 34 коммита
 - HTTPS через Caddy (`edge`), Cloudflare «DNS only», том `caddy_data` не терять → 09-29 Домен career-helper.site, HTTPS через Caddy в стеке
 - Тесты: очистка через `DELETE`, а не `TRUNCATE`; bcrypt `rounds=4` в `conftest.py`; xdist не нужен (1 ядро) → 10-07 Ускорение pytest: DELETE вместо TRUNCATE, дешёвый bcrypt в тестах
+- Перед пушем `scripts/quick-check.sh` (затронутые тесты), полная проверка — CI перед деплоем; хук пуш не блокирует → 10-07 Перед пушем — быстрая проверка, полная — в CI
 
 ## Отменено или заменено
 

@@ -6,6 +6,7 @@
       "Bash(uv run ruff check *)",
       "Bash(uv run python -m app.cli calibrate *)",
       "Bash(scripts/check.sh)",
+      "Bash(scripts/quick-check.sh)",
       "Bash(git fetch *)",
       "Bash(git status *)",
       "Bash(git status)",
