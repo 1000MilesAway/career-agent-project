@@ -6,13 +6,23 @@
  * PDF opens the designer: it is the format people send, so the look is chosen
  * on a preview before the file is made. DOCX and MD download at once, in the
  * style last picked there, so a user who chose "Акцент" once does not have to
- * open the designer again for every vacancy.
+ * open the designer again for every vacancy. The «Фото» tick is remembered
+ * the same way.
  */
 
 import { useState, type FocusEvent } from 'react'
-import { downloadExport, type ExportFormat, useResumeStyles } from '../api/hooks'
+import {
+  downloadExport,
+  type ExportFormat,
+  useAppState,
+  useResumeStyles,
+} from '../api/hooks'
 import { ResumeDesigner } from './ResumeDesigner'
-import { DEFAULT_STYLE, useResumeStyleChoice } from './resumeStyleChoice'
+import {
+  DEFAULT_STYLE,
+  useResumePhotoChoice,
+  useResumeStyleChoice,
+} from './resumeStyleChoice'
 import { useToast } from './toast'
 
 const LABELS: Record<ExportFormat, string> = { pdf: 'PDF', docx: 'DOCX', md: 'MD' }
@@ -34,18 +44,23 @@ export function DownloadButtons({
   const [menuOpen, setMenuOpen] = useState(false)
   const [designerOpen, setDesignerOpen] = useState(false)
   const [chosen, choose] = useResumeStyleChoice()
+  const [photoChosen, choosePhoto] = useResumePhotoChoice()
   const { data: styles } = useResumeStyles()
+  const { data: state } = useAppState()
   const toast = useToast()
 
   // A remembered style the server no longer offers would answer 422 on every
   // download; fall back to the default instead of breaking the buttons.
   const style = !styles || styles.some((s) => s.id === chosen) ? chosen : DEFAULT_STYLE
+  // Ticked with nothing uploaded asks for nothing: the URL stays the plain one.
+  const hasPhoto = Boolean(state?.has_photo)
+  const photo = photoChosen && hasPhoto
 
   async function run(fmt: ExportFormat) {
     setMenuOpen(false)
     setBusy(true)
     try {
-      await downloadExport(exportBase, fmt, style)
+      await downloadExport(exportBase, fmt, style, photo)
     } catch (e) {
       toast.error(e)
     } finally {
@@ -124,7 +139,10 @@ export function DownloadButtons({
           exportBase={exportBase}
           style={style}
           onStyleChange={choose}
-          onDownload={(fmt, s) => downloadExport(exportBase, fmt, s)}
+          hasPhoto={hasPhoto}
+          photo={photoChosen}
+          onPhotoChange={choosePhoto}
+          onDownload={(fmt, s, withPhoto) => downloadExport(exportBase, fmt, s, withPhoto)}
           onClose={() => setDesignerOpen(false)}
         />
       ) : null}

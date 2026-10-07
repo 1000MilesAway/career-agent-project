@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -18,12 +19,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.defaults import starter_profile
 from core.llm import LLM, Ledger
 from core.msdoc import DocError
+from core.photo import MAX_BYTES as MAX_PHOTO_BYTES
+from core.photo import PhotoError
+from core.photo import validate as validate_photo
 from core.pipeline import build_search_profile, parse_resume, read_document
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
-from ..models import Resume
+from ..models import Resume, UserPhoto
 from ..services import chat as chat_service
-from ..services import revisions, scan
+from ..services import photos, revisions, scan
 from ..services.spend import charge, ensure_can_spend
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
@@ -397,6 +401,54 @@ async def accept_search_profile(
     await session.commit()
     await session.refresh(resume)
     return ResumeWithRematch(**_as_response(resume).model_dump(), rematch=rematch)
+
+
+# The portrait for the resume header. Free, and outside the revision chain:
+# see `UserPhoto` for why it hangs off the user and not off a CV row.
+
+
+@router.put("/photo", status_code=status.HTTP_204_NO_CONTENT)
+async def upload_photo(
+    session: SessionDep, user: UserDep, file: UploadFile = File(...)
+) -> None:
+    """Store or replace the photo. Replacing is the only edit there is."""
+    # One byte over the cap is enough to refuse; reading the rest of a huge
+    # upload into memory just to measure it is not.
+    payload = await file.read(MAX_PHOTO_BYTES + 1)
+    try:
+        photo = validate_photo(payload)
+    except PhotoError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    row = await session.get(UserPhoto, user.id)
+    if row is None:
+        session.add(UserPhoto(user_id=user.id, data=photo.data, media_type=photo.media_type))
+    else:
+        row.data = photo.data
+        row.media_type = photo.media_type
+    await session.commit()
+
+
+@router.get("/photo")
+async def get_photo(session: SessionDep, user: UserDep) -> Response:
+    photo = await photos.load(session, user.id)
+    if photo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Фото не загружено")
+    # private: a personal photo must not land in a shared proxy cache.
+    return Response(
+        content=photo.data,
+        media_type=photo.media_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@router.delete("/photo", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_photo(session: SessionDep, user: UserDep) -> None:
+    """Deleted outright, not blanked: nothing bought refers to the photo."""
+    row = await session.get(UserPhoto, user.id)
+    if row is not None:
+        await session.delete(row)
+        await session.commit()
 
 
 @router.post("/{resume_id}/restore", response_model=ResumeResponse)

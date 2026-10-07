@@ -7,7 +7,7 @@
  */
 
 import useSWR, { mutate } from 'swr'
-import { api, download, fetcher, fetchText } from './client'
+import { api, download, fetchBlob, fetcher, fetchText } from './client'
 import type {
   AdminFunnel,
   AdminSources,
@@ -226,6 +226,22 @@ export const proposeSearchProfile = () =>
 export const acceptSearchProfile = (profile: SearchProfile) =>
   api<ResumeWithRematch>('/api/resumes/search-profile', { method: 'PUT', json: profile })
 
+/** The portrait for the resume header. Free; one per user, outside the CV's
+ *  versions. Read as a blob: an <img src> cannot carry the token. */
+export const PHOTO_KEY = '/api/resumes/photo'
+
+export function usePhoto(enabled: boolean) {
+  return useSWR<Blob>(enabled ? PHOTO_KEY : null, fetchBlob, { revalidateOnFocus: false })
+}
+
+export function uploadPhoto(photo: Blob): Promise<null> {
+  const form = new FormData()
+  form.append('file', photo, photo.type === 'image/png' ? 'photo.png' : 'photo.jpg')
+  return api<null>(PHOTO_KEY, { method: 'PUT', form })
+}
+
+export const deletePhoto = () => api<null>(PHOTO_KEY, { method: 'DELETE' })
+
 /** Downloads. Free — they render JSON that was already paid for. */
 
 export type ExportFormat = 'pdf' | 'docx' | 'md'
@@ -252,16 +268,24 @@ export const profileExportBase = '/api/export/resume'
 export const tailoredExportBase = (vacancyId: string) =>
   `/api/export/vacancy/${vacancyId}/tailor`
 
-const exportPath = (base: string, fmt: ExportFormat | 'html', style: string) =>
-  `${base}.${fmt}?style=${encodeURIComponent(style)}`
+const exportPath = (
+  base: string,
+  fmt: ExportFormat | 'html',
+  style: string,
+  photo = false,
+) => `${base}.${fmt}?style=${encodeURIComponent(style)}${photo ? '&photo=true' : ''}`
 
-export const downloadExport = (base: string, fmt: ExportFormat, style: string) =>
-  download(exportPath(base, fmt, style), `resume.${fmt}`)
+export const downloadExport = (
+  base: string,
+  fmt: ExportFormat,
+  style: string,
+  photo = false,
+) => download(exportPath(base, fmt, style, photo), `resume.${fmt}`)
 
-/** The preview is the very HTML the PDF is made from, keyed by style so
- *  flipping back to a seen preset is instant. */
-export function useResumePreview(base: string | null, style: string) {
-  return useSWR<string>(base ? exportPath(base, 'html', style) : null, fetchText, {
+/** The preview is the very HTML the PDF is made from, keyed by style and
+ *  photo so flipping back to a seen variant is instant. */
+export function useResumePreview(base: string | null, style: string, photo = false) {
+  return useSWR<string>(base ? exportPath(base, 'html', style, photo) : null, fetchText, {
     revalidateOnFocus: false,
     keepPreviousData: true,
   })

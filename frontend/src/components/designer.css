@@ -111,6 +111,33 @@
   line-height: 1.4;
 }
 
+.designer__photo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.designer__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.designer__check input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.designer__check:has(input:disabled) {
+  color: var(--muted);
+  cursor: default;
+}
+
 .designer__actions {
   display: flex;
   flex-wrap: wrap;

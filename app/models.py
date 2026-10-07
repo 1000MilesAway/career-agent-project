@@ -30,6 +30,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -170,6 +171,25 @@ class Resume(Base, TimestampMixin):
             postgresql_where=is_active.is_(True),
         ),
     )
+
+
+class UserPhoto(Base, TimestampMixin):
+    """The portrait the resume header can carry, one per user.
+
+    On the user, not on `resumes`: a CV is re-uploaded and every edit makes a
+    new revision row, and the photo would have to be copied along each time or
+    silently vanish from the download. A table of its own rather than a column
+    on `users`, because the user row is loaded on every request and the bytes
+    are needed only to render a resume.
+    """
+
+    __tablename__ = "user_photos"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Posting(Base, TimestampMixin):

@@ -24,6 +24,7 @@ from io import BytesIO
 from typing import Any, Literal
 
 from core.contacts import Contact
+from core.photo import Photo
 from core.resume_styles import DEFAULT_STYLE, DocxTheme, get_style
 
 Format = Literal["pdf", "docx", "md", "html"]
@@ -322,8 +323,26 @@ def _contact_html(block: Block) -> str:
     return f'<span class="{cls}">{label}</span>'
 
 
-def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
-    """The document as a standalone HTML page: the PDF source and the preview."""
+def _photo_html(photo: Photo) -> str:
+    """The portrait as a background, not an <img>: it adds nothing to the text
+    stream an ATS extracts, and `background-size` lets each style crop or fit
+    it the way the career-ops template does (`contain`, anchored left-bottom,
+    so a cut-out grows to the header's height and is never clipped).
+
+    No style may position it, or the header, with `position`: WeasyPrint paints
+    positioned boxes after the flow, and the header's text — name, contacts —
+    then lands at the END of the PDF's text stream, after the whole CV.
+    Verified by extracting both variants. Styles use a table cell or a float.
+    """
+    return f'<div class="photo" style="background-image: url({photo.data_uri()})"></div>'
+
+
+def to_html(doc: Document, style: str = DEFAULT_STYLE, photo: Photo | None = None) -> str:
+    """The document as a standalone HTML page: the PDF source and the preview.
+
+    `photo` goes into the header; with no header (a document that does not
+    open with a name) there is nowhere for it, and it is left out.
+    """
     theme = get_style(style)
     parts: list[str] = []
     in_list = False
@@ -350,7 +369,14 @@ def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
         return f"<p>{text}</p>"
 
     if header_end:
-        parts.append('<header class="resume-header">')
+        if photo is not None:
+            # The text gets a wrapper of its own, so a style can set the photo
+            # and the text side by side as two cells.
+            parts.append('<header class="resume-header resume-header--photo">')
+            parts.append(_photo_html(photo))
+            parts.append('<div class="header-main">')
+        else:
+            parts.append('<header class="resume-header">')
         header = blocks[:header_end]
         contacts = [b for b in header if b.kind == "contact"]
         placed = False
@@ -366,6 +392,8 @@ def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
                     '<p class="contacts">' + sep.join(_contact_html(c) for c in contacts) + "</p>"
                 )
                 placed = True
+        if photo is not None:
+            parts.append("</div>")
         parts.append("</header>")
 
     i = header_end
@@ -403,7 +431,7 @@ def to_html(doc: Document, style: str = DEFAULT_STYLE) -> str:
     )
 
 
-def to_pdf(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
+def to_pdf(doc: Document, style: str = DEFAULT_STYLE, photo: Photo | None = None) -> bytes:
     """Render to PDF.
 
     WeasyPrint is imported here, not at module scope, for two reasons: it pulls
@@ -413,7 +441,7 @@ def to_pdf(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
     """
     from weasyprint import HTML  # noqa: PLC0415
 
-    return HTML(string=to_html(doc, style)).write_pdf()
+    return HTML(string=to_html(doc, style, photo)).write_pdf()
 
 
 # --- DOCX -----------------------------------------------------------------
@@ -454,7 +482,7 @@ def _apply_docx_theme(document: Any, theme: DocxTheme) -> None:
     font("List Bullet", theme.body_pt, "222222")
 
 
-def to_docx(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
+def to_docx(doc: Document, style: str = DEFAULT_STYLE, photo: Photo | None = None) -> bytes:
     """Render to DOCX using the built-in styles, tinted by the chosen style.
 
     Built-in style names ("Heading 1", "List Bullet") rather than hand-rolled
@@ -462,12 +490,18 @@ def to_docx(doc: Document, style: str = DEFAULT_STYLE) -> bytes:
     document sees a heading where a heading is meant, not 14pt bold text.
     """
     import docx  # noqa: PLC0415
-    from docx.shared import Pt, RGBColor  # noqa: PLC0415
+    from docx.shared import Cm, Pt, RGBColor  # noqa: PLC0415
 
     theme = get_style(style).docx
     document = docx.Document()
     document.core_properties.title = doc.title
     _apply_docx_theme(document, theme)
+
+    if photo is not None:
+        # Inline, in its own paragraph above the name: a floating picture is
+        # a drawing anchor that some ATS parsers trip over, an inline one is
+        # simply skipped by text extraction.
+        document.add_picture(BytesIO(photo.data), width=Cm(3))
 
     contacts = " · ".join(b.text for b in doc.blocks if b.kind == "contact")
     for block in doc.blocks:
@@ -559,14 +593,17 @@ def to_markdown(doc: Document) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def render(doc: Document, fmt: Format, style: str = DEFAULT_STYLE) -> bytes:
-    """The file in `fmt`. Markdown ignores `style`: it is plain text by design."""
+def render(
+    doc: Document, fmt: Format, style: str = DEFAULT_STYLE, photo: Photo | None = None
+) -> bytes:
+    """The file in `fmt`. Markdown ignores `style` and `photo`: it is plain text
+    by design."""
     if fmt == "md":
         return to_markdown(doc)
     if fmt == "pdf":
-        return to_pdf(doc, style)
+        return to_pdf(doc, style, photo)
     if fmt == "docx":
-        return to_docx(doc, style)
+        return to_docx(doc, style, photo)
     if fmt == "html":
-        return to_html(doc, style).encode("utf-8")
+        return to_html(doc, style, photo).encode("utf-8")
     raise ValueError(f"unknown format: {fmt}")

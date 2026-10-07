@@ -348,3 +348,35 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Photo ───────────────────────────────────────────────────────────── */
+
+.photo-card__body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 3:4, the proportion of a passport-style portrait. */
+.photo-card__frame {
+  flex: none;
+  width: 72px;
+  height: 96px;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.photo-card__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.photo-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

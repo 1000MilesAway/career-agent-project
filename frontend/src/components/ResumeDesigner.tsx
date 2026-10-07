@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { type ExportFormat, useResumePreview, useResumeStyles } from '../api/hooks'
 import { CloseIcon } from './icons'
+import { PhotoUploadButton } from './PhotoPicker'
 import { useToast } from './toast'
 import './designer.css'
 
@@ -33,6 +34,9 @@ export function ResumeDesigner({
   exportBase,
   style,
   onStyleChange,
+  hasPhoto,
+  photo,
+  onPhotoChange,
   onDownload,
   onClose,
 }: {
@@ -41,12 +45,18 @@ export function ResumeDesigner({
   exportBase: string
   style: string
   onStyleChange: (style: string) => void
-  onDownload: (fmt: ExportFormat, style: string) => Promise<void>
+  /** A photo is uploaded; without one the tick cannot be set. */
+  hasPhoto: boolean
+  /** The remembered «Фото» tick, whether or not a photo exists. */
+  photo: boolean
+  onPhotoChange: (on: boolean) => void
+  onDownload: (fmt: ExportFormat, style: string, photo: boolean) => Promise<void>
   onClose: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const { data: styles } = useResumeStyles(open)
-  const preview = useResumePreview(open ? exportBase : null, style)
+  const withPhoto = photo && hasPhoto
+  const preview = useResumePreview(open ? exportBase : null, style, withPhoto)
   const [busy, setBusy] = useState<ExportFormat | null>(null)
   const toast = useToast()
 
@@ -75,7 +85,7 @@ export function ResumeDesigner({
   async function download(fmt: ExportFormat) {
     setBusy(fmt)
     try {
-      await onDownload(fmt, style)
+      await onDownload(fmt, style, withPhoto)
     } catch (e) {
       toast.error(e)
     } finally {
@@ -134,6 +144,19 @@ export function ResumeDesigner({
               <p className="muted">Загружаю стили…</p>
             )}
           </fieldset>
+
+          <div className="designer__photo">
+            <label className="designer__check">
+              <input
+                type="checkbox"
+                checked={withPhoto}
+                disabled={!hasPhoto}
+                onChange={(event) => onPhotoChange(event.target.checked)}
+              />
+              Фото
+            </label>
+            {hasPhoto ? null : <PhotoUploadButton />}
+          </div>
 
           <div className="designer__actions">
             {FORMATS.map(({ fmt, label }) => (

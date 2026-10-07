@@ -21,7 +21,7 @@ from core.profiles import steps_as_list
 
 from ..core.deps import SessionDep, UserDep
 from ..models import Evaluation, Posting, Resume, Vacancy
-from ..services import liveness, revisions, sources
+from ..services import liveness, photos, revisions, sources
 from ..services.spend import quota
 from ..services.tracker import STATUSES
 
@@ -213,6 +213,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
     return {
         "has_resume": resume is not None,
         "resume_name": resume.filename if resume else None,
+        "has_photo": await photos.has_photo(session, user.id),
         "profile": resume.profile if resume else None,
         "search_profile": resume.search_profile if resume else None,
         "resume_history": await _resume_history(session, user.id),

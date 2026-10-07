@@ -417,3 +417,72 @@ class TestContactsAndSections:
         assert ".contact--telegram::before" in css
         assert "%2329a8e0" in css  # "#29a8e0", url-encoded inside the data URI
         assert "IBM Plex Sans" in css
+
+
+class TestPhoto:
+    """The portrait is opt-in, sits in the header, and adds no text."""
+
+    def photo(self):
+        from core.photo import validate
+        from tests.test_photo import png
+
+        return validate(png())
+
+    def test_without_a_photo_the_header_has_none(self):
+        html = to_html(profile_document(PROFILE), "graphite")
+        body = html[html.index("<body>") :]
+        assert 'class="photo"' not in body
+        assert "resume-header--photo" not in body
+
+    @pytest.mark.parametrize("style", sorted(STYLES))
+    def test_the_photo_is_inlined_into_the_header(self, style):
+        html = to_html(profile_document(PROFILE), style, self.photo())
+        header = html[html.index('<header class="resume-header resume-header--photo">') :]
+        header = header[: header.index("</header>")]
+        assert "data:image/png;base64," in header
+        assert ".photo" in html  # the style positions it
+
+    def test_the_photo_adds_no_text_to_the_stream(self):
+        """A background, not an <img alt>: an ATS reads the same text either way."""
+        import re
+
+        def text(html: str) -> str:
+            body = html[html.index("<body>") :]
+            return re.sub(r"<[^>]+>", "", body)
+
+        doc = profile_document(PROFILE)
+        assert text(to_html(doc, "classic", self.photo())) == text(to_html(doc, "classic"))
+
+    @pytest.mark.parametrize("style", sorted(STYLES))
+    def test_no_style_takes_the_header_out_of_the_text_order(self, style):
+        """WeasyPrint paints `position`ed and `overflow`-clipped boxes after the
+        flow: either one on the header moved the name and contacts to the end
+        of the PDF's text stream, behind the whole CV. Verified by extraction."""
+        import re
+
+        css = re.sub(r"/\*.*?\*/", "", get_style(style).stylesheet(), flags=re.S)
+        assert not re.search(r"(?<![-\w])position\s*:", css)
+        assert not re.search(r"overflow\s*:\s*(hidden|clip|auto|scroll)", css)
+
+    def test_graphite_takes_the_career_ops_portrait_column(self):
+        sheet = get_style("graphite").stylesheet()
+        assert "display: table-cell; width: 132px" in sheet
+        assert "padding: 22px 40px 20px 16px" in sheet  # 132 + 16 = the template's 148px
+        assert "background-size: contain" in sheet
+
+    def test_no_header_means_no_photo(self):
+        doc = Document(title="x")
+        doc.add("h2", "Опыт")
+        assert "data:image" not in to_html(doc, "classic", self.photo())
+
+    def test_docx_gets_the_picture_above_the_name(self):
+        import docx
+
+        parsed = docx.Document(BytesIO(to_docx(profile_document(PROFILE), "classic", self.photo())))
+        assert len(parsed.inline_shapes) == 1
+        assert parsed.paragraphs[0].text == ""  # the picture's own paragraph
+        assert parsed.paragraphs[1].text == "Иванов Иван"
+
+    def test_markdown_ignores_the_photo(self):
+        doc = profile_document(PROFILE)
+        assert render(doc, "md", photo=self.photo()) == render(doc, "md")

@@ -208,6 +208,8 @@ export interface ResumeVersion {
 export interface AppState {
   has_resume: boolean
   resume_name: string | null
+  /** A portrait is uploaded for the resume header. */
+  has_photo: boolean
   profile: ResumeProfile | null
   search_profile: SearchProfile | null
   /** Every version of the CV, newest first. */

@@ -21,6 +21,7 @@ import type { ResumeProfile, ResumeVersion, SearchProfile } from '../api/types'
 import { useToast } from '../components/toast'
 import { Card, Chips, PageHead, Skeleton } from '../components/ui'
 import { DownloadButtons } from '../components/DownloadButtons'
+import { PhotoCard } from '../components/PhotoPicker'
 import { ProfileEditor } from '../components/ProfileEditor'
 import { setTourStep } from '../components/tourStep'
 import { rematchText } from './rematchText'
@@ -168,6 +169,8 @@ export function ResumePage() {
         </div>
 
         <aside className="resume__side">
+          <PhotoCard hasPhoto={data.has_photo} />
+
           <section className="card">
             <h2 className="card__title">Файл</h2>
             <p className="resume__file">{data.resume_name}</p>

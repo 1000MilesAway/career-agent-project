@@ -221,7 +221,7 @@ class TestProfileExport:
         """
         import core.export
 
-        def no_pango(doc, style):
+        def no_pango(doc, style, photo=None):
             raise OSError(
                 "cannot load library 'libpangoft2-1.0-0': "
                 "libpangoft2-1.0-0: cannot open shared object file"
@@ -241,7 +241,7 @@ class TestProfileExport:
         """The other half: no wheel at all, so the import itself fails."""
         import core.export
 
-        def no_weasyprint(doc, style):
+        def no_weasyprint(doc, style, photo=None):
             raise ImportError("No module named 'weasyprint'")
 
         monkeypatch.setattr(core.export, "to_pdf", no_weasyprint)
@@ -359,3 +359,109 @@ class TestTailoredExport:
         )
 
         assert r.status_code == 404
+
+
+@requires_db
+class TestPhoto:
+    """Upload, read back, delete; and the download only carries it on request."""
+
+    @staticmethod
+    def _png() -> bytes:
+        from tests.test_photo import png
+
+        return png()
+
+    async def _upload(self, client, auth_headers, data: bytes, name: str = "me.png"):
+        return await client.put(
+            "/api/resumes/photo",
+            headers=auth_headers,
+            files={"file": (name, data, "image/png")},
+        )
+
+    async def test_upload_read_back_and_delete(self, client, user, auth_headers):
+        assert (await client.get("/api/resumes/photo", headers=auth_headers)).status_code == 404
+
+        assert (await self._upload(client, auth_headers, self._png())).status_code == 204
+        r = await client.get("/api/resumes/photo", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "image/png"
+        assert r.content == self._png()
+        assert "no-store" in r.headers["cache-control"]
+
+        state = await client.get("/api/state", headers=auth_headers)
+        assert state.json()["has_photo"] is True
+
+        assert (await client.delete("/api/resumes/photo", headers=auth_headers)).status_code == 204
+        assert (await client.get("/api/resumes/photo", headers=auth_headers)).status_code == 404
+        state = await client.get("/api/state", headers=auth_headers)
+        assert state.json()["has_photo"] is False
+
+    async def test_a_second_upload_replaces_the_first(self, client, user, auth_headers):
+        from tests.test_photo import png
+
+        await self._upload(client, auth_headers, png(2, 3))
+        await self._upload(client, auth_headers, png(4, 5))
+
+        r = await client.get("/api/resumes/photo", headers=auth_headers)
+        assert r.content == png(4, 5)
+
+    async def test_not_a_picture_is_refused_by_its_bytes(self, client, user, auth_headers):
+        r = await self._upload(client, auth_headers, b"%PDF-1.7 ...", name="me.png")
+        assert r.status_code == 400
+        assert "JPEG и PNG" in r.json()["detail"]
+
+    async def test_the_preview_carries_it_only_when_asked(
+        self, client, session, user, auth_headers
+    ):
+        await _resume(session, user)
+        await self._upload(client, auth_headers, self._png())
+
+        plain = await client.get("/api/export/resume.html?style=graphite", headers=auth_headers)
+        with_photo = await client.get(
+            "/api/export/resume.html?style=graphite&photo=true", headers=auth_headers
+        )
+
+        assert "data:image/png;base64," not in plain.text
+        assert "data:image/png;base64," in with_photo.text
+
+    async def test_asked_for_but_never_uploaded_renders_without(
+        self, client, session, user, auth_headers
+    ):
+        await _resume(session, user)
+
+        r = await client.get("/api/export/resume.html?photo=true", headers=auth_headers)
+
+        assert r.status_code == 200
+        assert "data:image" not in r.text
+
+    async def test_the_docx_gets_the_picture(self, client, session, user, auth_headers):
+        import docx
+
+        await _resume(session, user)
+        await self._upload(client, auth_headers, self._png())
+
+        r = await client.get("/api/export/resume.docx?photo=true", headers=auth_headers)
+
+        assert r.status_code == 200
+        assert len(docx.Document(BytesIO(r.content)).inline_shapes) == 1
+
+    async def test_the_tailored_cv_takes_it_too(self, client, session, user, auth_headers):
+        resume = await _resume(session, user)
+        vacancy = await _vacancy_with_tailored(session, user, resume)
+        await self._upload(client, auth_headers, self._png())
+
+        r = await client.get(
+            f"/api/export/vacancy/{vacancy.id}/tailor.html?photo=true", headers=auth_headers
+        )
+
+        assert "data:image/png;base64," in r.text
+
+    async def test_deleting_the_account_takes_the_photo(self, client, session, user, auth_headers):
+        from sqlalchemy import select
+
+        from app.models import UserPhoto
+
+        await self._upload(client, auth_headers, self._png())
+        await client.delete("/api/auth/me", headers=auth_headers)
+
+        assert (await session.scalars(select(UserPhoto))).first() is None

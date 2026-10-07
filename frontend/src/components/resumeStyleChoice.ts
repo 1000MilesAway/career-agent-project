@@ -40,3 +40,36 @@ export function useResumeStyleChoice(): [string, (style: string) => void] {
 
   return [data ?? DEFAULT_STYLE, choose]
 }
+
+const PHOTO_STORAGE_KEY = 'resume-photo'
+const PHOTO_SWR_KEY = 'local:resume-photo'
+
+function loadPhoto(): boolean {
+  try {
+    // On unless switched off: the user who uploaded a photo meant to use it.
+    return localStorage.getItem(PHOTO_STORAGE_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+/** Whether the downloads put the uploaded photo into the header. The same
+ *  per-browser memory as the style, for the same reasons. */
+export function useResumePhotoChoice(): [boolean, (on: boolean) => void] {
+  const { data, mutate } = useSWR<boolean>(PHOTO_SWR_KEY, loadPhoto, {
+    fallbackData: loadPhoto(),
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  })
+
+  function choose(on: boolean) {
+    try {
+      localStorage.setItem(PHOTO_STORAGE_KEY, on ? 'on' : 'off')
+    } catch {
+      // Still applied for this session through SWR's cache.
+    }
+    void mutate(on, { revalidate: false })
+  }
+
+  return [data ?? true, choose]
+}

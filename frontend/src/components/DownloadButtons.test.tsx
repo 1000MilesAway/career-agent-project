@@ -17,12 +17,13 @@ const STYLES = [
   { id: 'accent', name: 'Акцент', description: 'Оранжевая плашка' },
 ]
 
-function mockApi() {
+function mockApi({ hasPhoto = false } = {}) {
   const calls: string[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     calls.push(url)
     if (url === '/api/export/styles') return new Response(JSON.stringify(STYLES))
+    if (url === '/api/state') return new Response(JSON.stringify({ has_photo: hasPhoto }))
     if (url.includes('.html?')) return new Response(`<html><body>${url}</body></html>`)
     return new Response(new Blob(['%PDF']), {
       headers: { 'Content-Disposition': 'attachment' },
@@ -116,5 +117,51 @@ describe('DownloadButtons', () => {
 
     await waitFor(() => expect(calls).toContain('/api/export/resume.md?style=classic'))
     expect(calls.some((c) => c.includes('style=neon'))).toBe(false)
+  })
+
+  it('с загруженным фото галочка «Фото» стоит, и фото идёт в превью и файл', async () => {
+    const calls = mockApi({ hasPhoto: true })
+    renderButtons()
+
+    pick('PDF')
+    const tick = await screen.findByRole('checkbox', { name: 'Фото' })
+    await waitFor(() => expect((tick as HTMLInputElement).disabled).toBe(false))
+    expect((tick as HTMLInputElement).checked).toBe(true)
+    await waitFor(() =>
+      expect(calls).toContain('/api/export/resume.html?style=classic&photo=true'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Скачать PDF' }))
+    await waitFor(() =>
+      expect(calls).toContain('/api/export/resume.pdf?style=classic&photo=true'),
+    )
+  })
+
+  it('снятая галочка запоминается и убирает фото из быстрых кнопок', async () => {
+    const calls = mockApi({ hasPhoto: true })
+    renderButtons()
+
+    pick('PDF')
+    const tick = await screen.findByRole('checkbox', { name: 'Фото' })
+    await waitFor(() => expect((tick as HTMLInputElement).disabled).toBe(false))
+    fireEvent.click(tick)
+    expect(localStorage.getItem('resume-photo')).toBe('off')
+
+    pick('DOCX')
+    await waitFor(() => expect(calls).toContain('/api/export/resume.docx?style=classic'))
+    expect(calls.some((c) => c.includes('.docx?') && c.includes('photo'))).toBe(false)
+  })
+
+  it('без фото галочку не поставить, зато можно загрузить', async () => {
+    const calls = mockApi()
+    renderButtons()
+
+    pick('PDF')
+    expect(
+      (await screen.findByRole<HTMLInputElement>('checkbox', { name: 'Фото' })).disabled,
+    ).toBe(true)
+    expect(screen.getByText('Загрузить')).toBeTruthy()
+    await waitFor(() => expect(calls).toContain('/api/export/resume.html?style=classic'))
+    expect(calls.some((c) => c.includes('photo=true'))).toBe(false)
   })
 })

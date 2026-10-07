@@ -179,6 +179,30 @@ export async function fetchText(path: string): Promise<string> {
   return text
 }
 
+/** Bytes with the token: the portrait is shown from a blob URL, because an
+ *  <img src> cannot carry the Authorization header either. */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const response = await fetch(path, { headers })
+
+  if (response.status === 401) {
+    setToken(null)
+    throw new ApiError('Нужно войти заново', 401)
+  }
+  if (!response.ok) {
+    let data: unknown = null
+    try {
+      data = await response.json()
+    } catch {
+      data = null
+    }
+    throw new ApiError(errorMessage(data, response.status), response.status)
+  }
+  return response.blob()
+}
+
 /** The name out of Content-Disposition, preferring RFC 5987 `filename*`. */
 function filenameFrom(header: string | null): string | null {
   if (!header) return null

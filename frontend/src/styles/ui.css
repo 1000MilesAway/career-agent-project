@@ -137,6 +137,17 @@
     transform 0.05s;
 }
 
+/* A file input's <label> styled as a button: it needs the pointer and the
+   disabled look a <button> gets for free. */
+label.btn {
+  cursor: pointer;
+}
+
+label.btn.is-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .btn:visited {
   color: var(--on-ink);
 }

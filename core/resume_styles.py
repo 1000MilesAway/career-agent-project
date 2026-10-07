@@ -39,6 +39,14 @@ p { orphans: 2; widows: 2; }
 /* Contacts: plain text with " · " between them unless a style opts into
    icons through `contact_icons`. */
 .contacts { margin: 0; }
+/* The portrait, when the user asked for one (`core.export._photo_html`).
+   Floated or a table cell, never `position`ed: see `_photo_html`. The header
+   holds its float through `flow-root`, not `overflow: hidden` — WeasyPrint
+   paints a clipping box as a layer of its own, and that too moved the name
+   and contacts to the end of the text stream. Verified by extraction. */
+.resume-header--photo { display: flow-root; }
+.photo { background-repeat: no-repeat; background-size: cover;
+         background-position: center top; }
 """
 
 # Screen-only: the cabinet shows this page in an A4-wide iframe and draws the
@@ -178,6 +186,7 @@ h3 { font-size: 11pt; margin: 9pt 0 1pt; }
 p { margin: 0 0 4pt; }
 ul { margin: 2pt 0 6pt; padding-left: 4pt; }
 li { margin: 0 0 2pt; }
+.photo { float: right; width: 25mm; height: 32mm; margin: 0 0 4pt 6mm; border-radius: 2pt; }
 """,
     screen_padding="18mm 16mm",
     docx=DocxTheme(
@@ -224,6 +233,7 @@ p { margin: 0 0 5px; }
 ul { padding: 0; margin: 7px 0 0; }
 li { margin: 0 0 5px; }
 li::marker { color: #e2611e; }
+.photo { float: right; width: 90px; height: 112px; margin: 0 0 0 24px; border-radius: 4px; }
 """,
     screen_padding="0 44px 44px",
     docx=DocxTheme(
@@ -260,6 +270,7 @@ h3 { font-size: 10.5pt; font-weight: 700; margin: 3mm 0 0.8mm; }
 p { margin: 0 0 1.5mm; }
 ul { margin: 0 0 2mm; padding-left: 1mm; }
 li { margin-bottom: 0.9mm; }
+.photo { float: right; width: 20mm; height: 26mm; margin: 0 0 1mm 5mm; border-radius: 1.5pt; }
 """,
     screen_padding="11mm 12mm",
     docx=DocxTheme(
@@ -281,7 +292,7 @@ GRAPHITE = ResumeStyle(
     css="""
 /* From the user's pandoc template. The header bleeds to the top and side
    edges of page one; later pages keep a top margin. Colours and sizes are
-   the template's own; the portrait column is left out (no photo is stored). */
+   the template's own, the portrait column included. */
 @page { size: A4; margin: 26px 0; }
 @page :first { margin: 0 0 26px; }
 html { background: #fcf9f8; }
@@ -310,6 +321,17 @@ ul { padding: 0; margin: 0; }
 li { margin: 0 0 3px; padding-left: 14px; text-indent: -10px; }
 /* The template has no level/experience line: it is derived, not written. */
 .resume-header .meta { display: none; }
+/* The template's portrait column. The template takes it out of the flow
+   with `position: absolute`, which here would move the header's text to the
+   end of the PDF's text stream; two table cells give the same picture: the
+   photo cell is as tall as the text beside it, and `contain` anchored
+   left-bottom lets a cut-out grow to the header's full height without ever
+   being clipped. The header's padding moves onto the text cell so the photo
+   reaches the band's edges; 132 + 16 = the template's 148px text inset. */
+.resume-header--photo { padding: 0; }
+.photo { display: table-cell; width: 132px; min-width: 132px;
+         background-size: contain; background-position: left bottom; }
+.header-main { display: table-cell; vertical-align: top; padding: 22px 40px 20px 16px; }
 """
     + contact_icons("#f9f8f6", {"telegram": "#29a8e0"}),
     screen_padding="0 40px 26px",

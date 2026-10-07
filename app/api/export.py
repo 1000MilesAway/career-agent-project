@@ -32,10 +32,12 @@ from core.export import (
     render,
     tailored_resume_document,
 )
+from core.photo import Photo
 from core.resume_styles import DEFAULT_STYLE, STYLES
 
 from ..core.deps import ResumeDep, SessionDep, UserDep
 from ..models import Artifact, Evaluation, Vacancy
+from ..services import photos
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -47,9 +49,20 @@ Format = Literal["pdf", "docx", "md", "html"]
 # KeyError deep in the renderer.
 StyleId = Literal[tuple(STYLES)]  # type: ignore[valid-type]
 StyleQuery = Query(DEFAULT_STYLE, description="Оформление: id из /api/export/styles")
+# Off by default: a photo on a CV is a choice (many employers in IT would rather
+# not see one), so a download nobody configured stays without it.
+PhotoQuery = Query(False, description="Поставить в шапку загруженное фото")
 
 
-def _file_response(doc: Document, fmt: Format, stem: str, style: str) -> Response:
+async def _photo(session: SessionDep, user: UserDep, wanted: bool) -> Photo | None:
+    """The stored photo when asked for. Asked for but never uploaded is not an
+    error: the file renders without it, as the designer's preview shows."""
+    return await photos.load(session, user.id) if wanted else None
+
+
+def _file_response(
+    doc: Document, fmt: Format, stem: str, style: str, photo: Photo | None
+) -> Response:
     """Send the bytes as an attachment.
 
     Both `filename` and `filename*` are set: the plain one is ASCII for old
@@ -57,7 +70,7 @@ def _file_response(doc: Document, fmt: Format, stem: str, style: str) -> Respons
     RFC 5987. Sending only the plain one turns "Иванов.pdf" into mojibake in
     the save dialog.
     """
-    content = render(doc, fmt, style)
+    content = render(doc, fmt, style, photo)
     if fmt == "html":
         # Shown in the cabinet, not saved: no attachment header. The cabinet
         # puts it into a sandboxed iframe, and all user text is escaped.
@@ -76,14 +89,16 @@ def _file_response(doc: Document, fmt: Format, stem: str, style: str) -> Respons
     )
 
 
-async def _render(doc: Document, fmt: Format, stem: str, style: str) -> Response:
+async def _render(
+    doc: Document, fmt: Format, stem: str, style: str, photo: Photo | None = None
+) -> Response:
     """Render off the event loop.
 
     WeasyPrint is synchronous and CPU-bound for a second or so on a long CV;
     run inline it would block every other request on the worker for that time.
     """
     try:
-        return await run_in_threadpool(_file_response, doc, fmt, stem, style)
+        return await run_in_threadpool(_file_response, doc, fmt, stem, style, photo)
     except (ImportError, OSError) as exc:
         # WeasyPrint loads Pango/Cairo through cffi and raises OSError — NOT
         # ImportError — when the system libraries are absent; the import
@@ -105,13 +120,18 @@ async def list_styles(_user: UserDep) -> list[dict[str, str]]:
 
 @router.get("/resume.{fmt}")
 async def export_profile(
-    fmt: Format, resume: ResumeDep, style: StyleId = StyleQuery
+    fmt: Format,
+    session: SessionDep,
+    user: UserDep,
+    resume: ResumeDep,
+    style: StyleId = StyleQuery,
+    photo: bool = PhotoQuery,
 ) -> Response:
     """The CV the user uploaded, as parsed into a profile."""
     # Contacts are read from the uploaded text, not asked of the model: see
     # core/contacts.py. Free, and it covers resumes parsed before they existed.
     doc = profile_document(resume.profile, contacts=extract_contacts(resume.raw_text))
-    return await _render(doc, fmt, doc.title, style)
+    return await _render(doc, fmt, doc.title, style, await _photo(session, user, photo))
 
 
 @router.get("/vacancy/{vacancy_id}/tailor.{fmt}")
@@ -122,6 +142,7 @@ async def export_tailored(
     user: UserDep,
     resume: ResumeDep,
     style: StyleId = StyleQuery,
+    photo: bool = PhotoQuery,
 ) -> Response:
     """The tailored CV bought for one vacancy.
 
@@ -163,4 +184,4 @@ async def export_tailored(
     # The company in the file name is what the user sees in their downloads
     # folder three days later, when "resume.pdf" tells them nothing.
     stem = " — ".join(p for p in (doc.title, vacancy.company or vacancy.title) if p)
-    return await _render(doc, fmt, stem, style)
+    return await _render(doc, fmt, stem, style, await _photo(session, user, photo))
