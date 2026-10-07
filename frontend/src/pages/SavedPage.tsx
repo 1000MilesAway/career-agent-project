@@ -241,6 +241,17 @@ export function SavedPage() {
                             ? 'Отчёт'
                             : 'Оценить'}
                       </button>
+                      {/* The chat opens with this vacancy attached to the next
+                        message: "what do I answer this recruiter" needs to
+                        know which posting, and a company name typed in a
+                        sentence is a guess. */}
+                      <Link
+                        className="btn btn--quiet btn--small"
+                        to={`/chat?vacancy=${vacancy.id}`}
+                        title="Обсудить вакансию с помощником"
+                      >
+                        Обсудить
+                      </Link>
                       {vacancy.outdated ? (
                         <button
                           className="btn btn--quiet btn--small"

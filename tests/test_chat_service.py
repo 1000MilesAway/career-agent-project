@@ -92,6 +92,35 @@ class TestSplitRequirements:
         assert [r["text"] for r in out["missing"]] == ["X"]
 
 
+class TestQueryMatch:
+    """`list_vacancies` is searched with whatever the model took from a chat
+    message, and people write companies in the case the sentence needs."""
+
+    @pytest.mark.parametrize(
+        ("query", "company"),
+        [
+            ("Сбера", "Сбер"),
+            ("Яндексе", "Яндекс"),
+            ("ООО Ромашка", "Ромашка"),
+            ("ромашку", "ООО «Ромашка»"),
+            ("Озон", "OZON / Озон"),
+        ],
+    )
+    def test_a_declined_or_decorated_name_still_finds_the_company(self, query, company):
+        assert chat_service.query_match(query, "Разработчик", company) > 0
+
+    def test_a_legal_form_alone_matches_nothing(self):
+        assert chat_service.query_match("ООО", "Разработчик", "ООО Ромашка") == 0
+
+    def test_an_unrelated_name_matches_nothing(self):
+        assert chat_service.query_match("Сбер", "Python разработчик", "Ромашка") == 0
+
+    def test_the_exact_name_outranks_a_shared_word(self):
+        exact = chat_service.query_match("Python разработчик", "Python разработчик", "A")
+        partial = chat_service.query_match("Python разработчик", "Python аналитик", "B")
+        assert exact > partial > 0
+
+
 class TestEnabledTools:
     def test_without_a_cv_the_profile_tools_are_withheld(self):
         """Offering them anyway produces a confident call that fails, and the

@@ -230,14 +230,12 @@ class ToolRunner:
         )
         rows = list(result.scalars())
 
-        needle = str(arguments.get("query") or "").strip().casefold()
+        needle = str(arguments.get("query") or "").strip()
         if needle:
-            rows = [
-                v
-                for v in rows
-                if needle in (v.title or "").casefold()
-                or needle in (v.company or "").casefold()
-            ]
+            scored = [(query_match(needle, v.title, v.company), v) for v in rows]
+            # Stable sort: among equal matches the newest stays first.
+            scored.sort(key=lambda pair: -pair[0])
+            rows = [v for score, v in scored if score > 0]
         if arguments.get("only_evaluated"):
             rows = [v for v in rows if v.evaluations]
 
@@ -394,6 +392,52 @@ class ToolRunner:
             proposed={"saved": saved},
             rationale=f"{vacancy.title}: {'в избранное' if saved else 'убрать из избранного'}",
         )
+
+
+# Words that name the legal form, not the company: "ООО Ромашка" and
+# "Ромашка" are one employer, and matching on "ооо" would find every row.
+_LEGAL_FORMS = frozenset(
+    {"ооо", "оао", "зао", "пао", "ао", "ип", "нко", "llc", "inc", "ltd", "gmbh", "компания"}
+)
+
+
+def _words(text: str | None) -> list[str]:
+    return re.findall(r"\w+", (text or "").casefold().replace("ё", "е"))
+
+
+def _stem(word: str) -> str:
+    """A word without its likely Russian ending.
+
+    The user writes "ответили из Сбера" or "в Яндексе", the row says "Сбер"
+    and "Яндекс". Cutting the last one or two letters is crude, but it is
+    only a filter in front of the model, which still sees the names and picks.
+    """
+    if len(word) <= 4:
+        return word
+    return word[: max(4, len(word) - 2)]
+
+
+def query_match(query: str, title: str | None, company: str | None) -> int:
+    """How well `query` names this vacancy; 0 is no match.
+
+    The whole query found as is ranks above any word match, so an exact
+    company name is not outranked by a title that happens to share a word.
+    Each significant word of the query counts once if some word of the title
+    or company starts with its stem.
+    """
+    significant = [w for w in _words(query) if len(w) >= 3 and w not in _LEGAL_FORMS]
+    if not significant:
+        return 0
+    haystack = f"{title or ''} {company or ''}".casefold().replace("ё", "е")
+    exact = query.strip().casefold().replace("ё", "е")
+    score = 100 if exact in haystack else 0
+
+    words = _words(haystack)
+    for word in significant:
+        stem = _stem(word)
+        if any(w.startswith(stem) for w in words):
+            score += 1
+    return score
 
 
 def _employer_key(name: str) -> str:

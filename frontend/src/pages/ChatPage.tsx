@@ -10,7 +10,8 @@
  * rule this screen exists to make visible.
  */
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
 import {
   CHAT_KEY,
@@ -24,8 +25,10 @@ import {
   useChat,
   useProposals,
 } from '../api/hooks'
+import type { FoundVacancy } from '../api/types'
 import { ProposalCard } from '../components/ProposalCard'
 import { useToast } from '../components/toast'
+import { CloseIcon } from '../components/icons'
 import { ErrorNote, PageHead, Skeleton } from '../components/ui'
 import '../components/chat.css'
 
@@ -47,6 +50,7 @@ const EXAMPLES = [
   'Забыл написать — я год настраивал Kubernetes в последней компании.',
   'Что мне не хватает по вакансии, которую я сохранил?',
   'Почему ты отсеял вакансии про аналитику?',
+  'Мне ответили из Ромашки, вот их сообщение: «…». Что ответить?',
 ]
 
 export function ChatPage() {
@@ -57,33 +61,61 @@ export function ChatPage() {
   const toast = useToast()
 
   const [text, setText] = useState('')
-  const [isSending, startSending] = useTransition()
+  // The message on its way, shown as a bubble until the history comes back
+  // with it. Plain state, not a transition: a transition defers its updates,
+  // so the box stayed full and nothing moved until the answer arrived — the
+  // "Думаю…" line was there but the screen looked frozen.
+  const [sending, setSending] = useState<{ text: string; vacancy?: FoundVacancy } | null>(
+    null,
+  )
+  const isSending = sending !== null
   const endRef = useRef<HTMLDivElement>(null)
+
+  // "Обсудить" in Избранном opens the chat with `?vacancy=<id>`; the next
+  // message goes with it attached. A stale id (the row was removed) attaches
+  // nothing rather than a vacancy the user cannot see.
+  const [params, setParams] = useSearchParams()
+  const attachedId = params.get('vacancy')
+  const attached = attachedId ? state?.found?.find((v) => v.id === attachedId) : undefined
+
+  function detach() {
+    setParams(
+      (prev) => {
+        prev.delete('vacancy')
+        return prev
+      },
+      { replace: true },
+    )
+  }
 
   // Follow the conversation as it grows, the way a chat is expected to behave.
   // Guarded: scrollIntoView is missing in jsdom and in older mobile browsers,
   // and an absent nicety must not take the whole screen down with it.
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
-  }, [messages?.length, proposals?.length])
+  }, [messages?.length, proposals?.length, sending])
 
   /** Sends the box, or `answer` when a choice button was pressed. */
-  function send(answer?: string) {
+  async function send(answer?: string) {
     const value = (answer ?? text).trim()
     if (!value || isSending) return
-    startSending(async () => {
-      try {
-        // Cleared before the request, not after: leaving the text in the box
-        // while the answer is on its way invites a second send of the same
-        // message, and each one costs money.
-        setText('')
-        await sendMessage(value)
-        await Promise.all([mutate(CHAT_KEY), mutate(PROPOSALS_KEY)])
-      } catch (e) {
-        setText(value)
-        toast.error(e)
-      }
-    })
+    // Cleared before the request, not after: leaving the text in the box
+    // while the answer is on its way invites a second send of the same
+    // message, and each one costs money.
+    setText('')
+    setSending({ text: value, vacancy: attached })
+    try {
+      await sendMessage(value, attached?.id)
+      // The vacancy is in the history now; the next message is free to be
+      // about something else.
+      if (attached) detach()
+      await Promise.all([mutate(CHAT_KEY), mutate(PROPOSALS_KEY)])
+    } catch (e) {
+      setText(value)
+      toast.error(e)
+    } finally {
+      setSending(null)
+    }
   }
 
   async function accept(id: string) {
@@ -153,7 +185,7 @@ export function ChatPage() {
       <div className="chat">
         {isLoading ? <Skeleton rows={3} /> : null}
 
-        {!isLoading && !hasMessages ? (
+        {!isLoading && !hasMessages && !attached && !isSending ? (
           <div className="chat__empty">
             <p className="eyebrow">Можно начать, например, так</p>
             <div className="stack">
@@ -182,6 +214,11 @@ export function ChatPage() {
               key={`${message.created_at}-${index}`}
               className={message.role === 'user' ? 'bubble bubble--me' : 'bubble'}
             >
+              {message.vacancy ? (
+                <p className="bubble__vacancy">
+                  {vacancyLabel(message.vacancy.title, message.vacancy.company)}
+                </p>
+              ) : null}
               {message.tools.length ? (
                 <p className="bubble__tools">
                   {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
@@ -209,15 +246,25 @@ export function ChatPage() {
           </div>
         ) : null}
 
-        {isSending ? (
-          <p className="chat__thinking" role="status">
-            <span className="typing" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            Думаю…
-          </p>
+        {sending !== null ? (
+          <>
+            <div className="bubble bubble--me">
+              {sending.vacancy ? (
+                <p className="bubble__vacancy">
+                  {vacancyLabel(sending.vacancy.title, sending.vacancy.company)}
+                </p>
+              ) : null}
+              <p className="bubble__text">{sending.text}</p>
+            </div>
+            <p className="chat__thinking" role="status">
+              <span className="typing" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              Думаю…
+            </p>
+          </>
         ) : null}
 
         {pending.length ? (
@@ -242,12 +289,28 @@ export function ChatPage() {
       </div>
 
       <div className="chat__dock">
+        {attached ? (
+          <div className="chat__attached">
+            <span className="chat__attached-label">
+              {vacancyLabel(attached.title, attached.company)}
+            </span>
+            <button
+              className="btn btn--quiet btn--small btn--icon"
+              onClick={detach}
+              disabled={isSending}
+              title="Не прикреплять вакансию"
+              aria-label="Не прикреплять вакансию"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        ) : null}
         <div className="chat__compose">
           <textarea
             className="chat__input"
             rows={2}
             value={text}
-            placeholder="Напишите сообщение"
+            placeholder={attached ? 'Что обсудить по этой вакансии?' : 'Напишите сообщение'}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               // Enter sends, Shift+Enter breaks the line: the box is a chat
@@ -269,6 +332,10 @@ export function ChatPage() {
       </div>
     </div>
   )
+}
+
+function vacancyLabel(title: string, company: string | null | undefined) {
+  return company ? `${title} — ${company}` : title
 }
 
 /** `**bold**` from the model, and nothing else.

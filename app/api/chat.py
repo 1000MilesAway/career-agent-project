@@ -40,6 +40,14 @@ MAX_MESSAGE_CHARS = 4000
 
 class MessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    # The vacancy the message is about — set by "Обсудить" on a saved row.
+    vacancy_id: uuid.UUID | None = None
+
+
+class VacancyRef(BaseModel):
+    id: str
+    title: str
+    company: str | None = None
 
 
 class ProposalResponse(BaseModel):
@@ -78,6 +86,8 @@ class MessageResponse(BaseModel):
     # Answers to pick when the turn ended on a question (`ask_choice`). The
     # screen offers them as buttons; typing an answer of one's own still works.
     choices: list[str] = []
+    # The vacancy a user message was written about, shown on its bubble.
+    vacancy: VacancyRef | None = None
 
 
 class ChatResponse(BaseModel):
@@ -112,6 +122,16 @@ def _visible(message: ChatMessage) -> MessageResponse | None:
         created_at=message.created_at,
         tools=_tool_names(message),
         choices=question["options"] if question else [],
+        vacancy=_vacancy_ref(payload),
+    )
+
+
+def _vacancy_ref(payload: dict) -> VacancyRef | None:
+    ref = payload.get(chat_core.VACANCY_KEY)
+    if not isinstance(ref, dict) or not ref.get("id"):
+        return None
+    return VacancyRef(
+        id=str(ref["id"]), title=str(ref.get("title") or ""), company=ref.get("company")
     )
 
 
@@ -213,11 +233,26 @@ async def send(
     stored = await _history(session, user.id)
     history_payload = [row.payload for row in stored]
 
+    payload: dict[str, Any] = {"role": chat_core.USER, "content": text}
+    if body.vacancy_id is not None:
+        vacancy = await session.get(Vacancy, body.vacancy_id)
+        if vacancy is None or vacancy.user_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Вакансия не найдена"
+            )
+        # Kept apart from the text: the bubble shows what the user typed, and
+        # `fold_events` hands the model the reference in an envelope.
+        payload[chat_core.VACANCY_KEY] = {
+            "id": str(vacancy.id),
+            "title": vacancy.title,
+            "company": vacancy.company,
+        }
+
     seq = await chat_service.next_seq(session, user.id)
     question = ChatMessage(
         user_id=user.id,
         role=chat_core.USER,
-        payload={"role": chat_core.USER, "content": text},
+        payload=payload,
         seq=seq,
     )
     session.add(question)

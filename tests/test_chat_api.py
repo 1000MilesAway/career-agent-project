@@ -146,6 +146,53 @@ class TestSend:
         texts = [m["text"] for m in response.json()]
         assert texts == ["первое", "раз", "второе", "два"]
 
+    async def test_an_attached_vacancy_reaches_the_model_and_the_bubble(
+        self, client, auth_headers, session, user, reply
+    ):
+        vacancy = await _vacancy(session, user)
+        seen = reply(says("Ответьте так: ..."))
+        response = await client.post(
+            "/api/chat",
+            json={"text": "что ответить рекрутеру?", "vacancy_id": str(vacancy.id)},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+
+        sent = seen[0]["history"][-1]
+        assert sent["role"] == "user"
+        assert "<attached_vacancy>" in sent["content"]
+        assert str(vacancy.id) in sent["content"]
+
+        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        assert shown[0]["text"] == "что ответить рекрутеру?"
+        assert shown[0]["vacancy"]["id"] == str(vacancy.id)
+        assert shown[0]["vacancy"]["company"] == "ООО Ромашка"
+        assert shown[1]["vacancy"] is None
+
+    async def test_a_vacancy_that_is_not_yours_is_refused(
+        self, client, auth_headers, session, user, reply
+    ):
+        reply(says("не должно быть вызвано"))
+        response = await client.post(
+            "/api/chat",
+            json={"text": "что ответить?", "vacancy_id": str(uuid.uuid4())},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404
+        assert not list((await session.execute(select(ChatMessage))).scalars())
+
+    async def test_a_company_named_in_passing_is_found(
+        self, client, auth_headers, session, user, reply
+    ):
+        """"Мне ответили из Ромашки" — the model passes the word as written."""
+        vacancy = await _vacancy(session, user)
+        seen = reply(calls("list_vacancies", {"query": "Ромашки"}), says("Нашёл."))
+        await client.post(
+            "/api/chat", json={"text": "мне ответили из Ромашки"}, headers=auth_headers
+        )
+        result = seen[1]["history"][-1]["content"]
+        assert str(vacancy.id) in result
+
     async def test_tool_results_are_not_shown_to_the_user(
         self, client, auth_headers, session, user, reply
     ):

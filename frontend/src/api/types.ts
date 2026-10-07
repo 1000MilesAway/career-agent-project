@@ -351,6 +351,8 @@ export interface ChatMessage {
   tools: string[]
   /** Answers to pick when the assistant ended its turn on a question. */
   choices?: string[]
+  /** The vacancy a user message was written about ("Обсудить" in Избранном). */
+  vacancy?: { id: string; title: string; company: string | null } | null
 }
 
 /** What the chat prepared and the user has to confirm.

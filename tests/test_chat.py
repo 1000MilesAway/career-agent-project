@@ -382,3 +382,29 @@ class TestFoldEvents:
             {"role": "tool", "tool_call_id": "1", "content": "r"},
         ]
         assert chat.fold_events(history) == history
+
+
+class TestAttachedVacancy:
+    """"Обсудить" on a saved row sends the message with the vacancy attached."""
+
+    def test_the_model_gets_the_reference_in_an_envelope(self):
+        ref = {"id": "v1", "title": "Python разработчик", "company": "Ромашка"}
+        out = chat.fold_events([
+            {"role": "user", "content": "что ответить?", "vacancy": ref},
+        ])
+        assert out[0]["content"].startswith("<attached_vacancy>")
+        assert '"id": "v1"' in out[0]["content"]
+        assert out[0]["content"].endswith("что ответить?")
+
+    def test_no_key_the_api_does_not_know_reaches_it(self):
+        """The stored payload is replayed as is; an extra field on a message
+        is a shape an OpenAI-compatible server may refuse."""
+        out = chat.fold_events([
+            {"role": "user", "content": "q", "vacancy": {"id": "v1", "title": "t"}},
+        ])
+        assert set(out[0]) == {"role", "content"}
+
+    def test_the_stored_payload_is_not_changed(self):
+        message = {"role": "user", "content": "q", "vacancy": {"id": "v1", "title": "t"}}
+        chat.fold_events([message])
+        assert "vacancy" in message

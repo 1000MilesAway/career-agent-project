@@ -116,7 +116,10 @@ LIST_VACANCIES = Tool(
         {
             "only_saved": {"type": "boolean", "description": "только избранное"},
             "only_evaluated": {"type": "boolean", "description": "только с готовой оценкой"},
-            "query": {"type": "string", "description": "поиск по названию или компании"},
+            "query": {
+                "type": "string",
+                "description": "компания или должность, как её называют: «Сбер», «Python»",
+            },
         }
     ),
 )

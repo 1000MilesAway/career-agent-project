@@ -3,6 +3,7 @@
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FoundVacancy } from '../api/types'
 
@@ -100,13 +101,13 @@ describe('SavedPage', () => {
   })
 
   it('строка, брошенная на этап, переезжает на него', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     carry('Вакансия a', 'Откликнулся')
     expect(mocks.moveVacancy).toHaveBeenCalledWith('a', 'applied')
   })
 
   it('пока строку несут, под курсором её карточка, а курсор — рука', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     press('Вакансия a')
     pointAt(stage('HR-интервью'))
     fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
@@ -123,13 +124,13 @@ describe('SavedPage', () => {
   })
 
   it('на свой же этап — ничего не пишет', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     carry('Вакансия b', 'Откликнулся')
     expect(mocks.moveVacancy).not.toHaveBeenCalled()
   })
 
   it('отпущенная мимо этапов или по Esc — остаётся где была', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     press('Вакансия a')
     pointAt(document.body)
     fireEvent.pointerMove(window, { clientX: 120, clientY: 60 })
@@ -145,7 +146,7 @@ describe('SavedPage', () => {
   })
 
   it('щелчок без движения — не перетаскивание', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     press('Вакансия a')
     pointAt(stage('Откликнулся'))
     fireEvent.pointerMove(window, { clientX: 102, clientY: 301 })
@@ -156,7 +157,7 @@ describe('SavedPage', () => {
   it('палец, сдвинувшийся до долгого нажатия, листает, а не тащит', () => {
     vi.useFakeTimers()
     try {
-      render(<SavedPage />)
+      render(<SavedPage />, { wrapper: MemoryRouter })
       press('Вакансия a', 'touch')
       pointAt(stage('Откликнулся'))
       fireEvent.pointerMove(window, { clientX: 100, clientY: 200 })
@@ -181,13 +182,13 @@ describe('SavedPage: статусы', () => {
   })
 
   it('без фильтра нажат шаг «Все», а не первый этап', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     expect(stage('Все').getAttribute('aria-pressed')).toBe('true')
     expect(stage('Не решено').getAttribute('aria-pressed')).toBe('false')
   })
 
   it('статус виден и у неоценённой вакансии', () => {
-    render(<SavedPage />)
+    render(<SavedPage />, { wrapper: MemoryRouter })
     const values = screen
       .getAllByRole('combobox', { name: 'Статус отклика' })
       .map((select) => (select as HTMLSelectElement).value)

@@ -287,8 +287,11 @@ export function useProposals(enabled = true) {
   })
 }
 
-export const sendMessage = (text: string) =>
-  api<ChatResponse>('/api/chat', { method: 'POST', json: { text } })
+export const sendMessage = (text: string, vacancyId?: string) =>
+  api<ChatResponse>('/api/chat', {
+    method: 'POST',
+    json: vacancyId ? { text, vacancy_id: vacancyId } : { text },
+  })
 
 export const acceptProposal = (id: string) =>
   api<ChatProposal>(`/api/chat/proposals/${id}/accept`, { method: 'POST' })

@@ -46,6 +46,10 @@ TOOL = "tool"
 # its own kind; turned into user-turn text on the way to the model.
 EVENT = "event"
 
+# A user turn written about one vacancy — the "Обсудить" button on a saved
+# row — carries it under this key in the stored payload.
+VACANCY_KEY = "vacancy"
+
 
 class ToolHandler(Protocol):
     """Runs one tool call. Implemented in `app/`, where the data lives."""
@@ -223,6 +227,8 @@ def fold_events(history: list[dict]) -> list[dict]:
     for message in history:
         if message.get("role") == EVENT:
             message = {"role": USER, "content": envelope("event", message.get("content", ""))}
+        elif message.get("role") == USER and VACANCY_KEY in message:
+            message = attach_vacancy(message)
         previous = out[-1] if out else None
         if (
             previous is not None
@@ -235,6 +241,23 @@ def fold_events(history: list[dict]) -> list[dict]:
             continue
         out.append(message)
     return out
+
+
+def attach_vacancy(message: dict) -> dict:
+    """A user turn with its attached vacancy turned into text the API takes.
+
+    The reference is stored apart from what the user typed, so the bubble
+    shows their words and not an envelope; the model gets both. Title and
+    company come off a posting, so they travel as data in an envelope, and
+    the model still opens the vacancy with `get_vacancy` rather than
+    reasoning from a title.
+    """
+    message = dict(message)
+    ref = message.pop(VACANCY_KEY) or {}
+    if not isinstance(ref, dict) or not ref.get("id"):
+        return message
+    note = envelope("attached_vacancy", ref)
+    return {**message, "content": f"{note}\n\n{message.get('content', '')}"}
 
 
 def build_messages(system: str, history: list[dict]) -> list[dict]:

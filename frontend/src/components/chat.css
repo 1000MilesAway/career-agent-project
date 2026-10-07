@@ -165,6 +165,38 @@
   content: '↳ ';
 }
 
+/* The vacancy a message was written about — "Обсудить" in Избранном. */
+.bubble__vacancy {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.bubble__vacancy::before {
+  content: 'Вакансия: ';
+}
+
+/* The vacancy the next message goes with, above the input. */
+.chat__attached {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 4px 4px 4px 12px;
+  background: var(--accent-soft);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.chat__attached-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── A change waiting for a decision ──────────────────────────────────── */
 
 .chat__pending {
