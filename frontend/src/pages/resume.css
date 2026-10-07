@@ -353,8 +353,18 @@
 
 .photo-card__body {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  align-items: stretch;
+  gap: 12px;
+}
+
+/* As tall as the thumbnail beside it, and the whole width when there is none. */
+.photo-card__drop {
+  flex: 1;
+  min-width: 0;
+}
+
+.photo-card__remove {
+  margin-top: 8px;
 }
 
 /* 3:4, the proportion of a passport-style portrait. */
@@ -375,8 +385,7 @@
   object-position: center top;
 }
 
-.photo-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.drop.is-disabled {
+  opacity: 0.6;
+  pointer-events: none;
 }

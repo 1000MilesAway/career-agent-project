@@ -61,6 +61,24 @@ describe('PhotoCard', () => {
     expect(((put.body as FormData).get('file') as File).size).toBe(shrunk.size)
   })
 
+  it('брошенный в зону файл загружается сразу, без подтверждения', async () => {
+    const calls = mockApi()
+    renderCard(false)
+
+    const zone = screen.getByText('Перетащите фото сюда').closest('label')!
+    const original = new File(['huge'], 'IMG_0002.png', { type: 'image/png' })
+    fireEvent.dragOver(zone)
+    expect(zone.className).toContain('drop--over')
+    fireEvent.drop(zone, { dataTransfer: { files: [original] } })
+
+    await waitFor(() =>
+      expect(calls).toContainEqual(
+        expect.objectContaining({ url: '/api/resumes/photo', method: 'PUT' }),
+      ),
+    )
+    expect(zone.className).not.toContain('drop--over')
+  })
+
   it('показывает загруженное фото и удаляет его', async () => {
     const calls = mockApi()
     renderCard(true)
@@ -68,7 +86,7 @@ describe('PhotoCard', () => {
     expect(((await screen.findByAltText('Ваше фото')) as HTMLImageElement).src).toBe(
       'blob:photo',
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить фото' }))
 
     await waitFor(() =>
       expect(calls).toContainEqual(

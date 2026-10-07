@@ -4,7 +4,7 @@
  * user who ticks «Фото» there can add one without leaving the preview.
  */
 
-import { useEffect, useMemo, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import { PHOTO_KEY, STATE_KEY, deletePhoto, uploadPhoto, usePhoto } from '../api/hooks'
 import { shrinkPhoto } from './shrinkPhoto'
@@ -97,6 +97,51 @@ function usePhotoUrl(hasPhoto: boolean): string | null {
   return url
 }
 
+/** A drop zone in the look of the CV uploader. Unlike the CV, a dropped photo
+ *  goes up at once: it is free, so there is nothing to confirm. */
+function PhotoDrop({
+  title,
+  busy,
+  onFile,
+}: {
+  title: string
+  busy: boolean
+  onFile: (file: File) => void
+}) {
+  const [dragging, setDragging] = useState(false)
+
+  return (
+    <label
+      className={`drop photo-card__drop${dragging ? ' drop--over' : ''}${busy ? ' is-disabled' : ''}`}
+      aria-disabled={busy}
+      onDragOver={(event) => {
+        event.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault()
+        setDragging(false)
+        const file = event.dataTransfer.files?.[0]
+        if (file && !busy) onFile(file)
+      }}
+    >
+      <input
+        type="file"
+        className="sr-only"
+        accept="image/jpeg,image/png"
+        disabled={busy}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) onFile(file)
+        }}
+      />
+      <span className="drop__title">{busy ? 'Загружаю…' : title}</span>
+    </label>
+  )
+}
+
 export function PhotoCard({ hasPhoto }: { hasPhoto: boolean }) {
   const { busy, upload, remove } = usePhotoActions()
   const url = usePhotoUrl(hasPhoto)
@@ -110,20 +155,21 @@ export function PhotoCard({ hasPhoto }: { hasPhoto: boolean }) {
             {url ? <img src={url} alt="Ваше фото" className="photo-card__img" /> : null}
           </div>
         ) : null}
-        <div className="photo-card__actions">
-          <UploadButton
-            label={hasPhoto ? 'Заменить' : 'Загрузить фото'}
-            busy={busy}
-            onFile={upload}
-            small
-          />
-          {hasPhoto ? (
-            <button className="btn btn--quiet btn--small" onClick={remove} disabled={busy}>
-              Удалить
-            </button>
-          ) : null}
-        </div>
+        <PhotoDrop
+          title={hasPhoto ? 'Заменить фото' : 'Перетащите фото сюда'}
+          busy={busy}
+          onFile={upload}
+        />
       </div>
+      {hasPhoto ? (
+        <button
+          className="btn btn--quiet btn--small photo-card__remove"
+          onClick={remove}
+          disabled={busy}
+        >
+          Удалить фото
+        </button>
+      ) : null}
     </section>
   )
 }
