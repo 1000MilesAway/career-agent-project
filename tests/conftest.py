@@ -35,6 +35,8 @@ os.environ.setdefault("DEEPSEEK_API_KEY", "test-only-no-calls-are-made")
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from pwdlib import PasswordHash  # noqa: E402
+from pwdlib.hashers.bcrypt import BcryptHasher  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
@@ -42,7 +44,14 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
+from app.core import security  # noqa: E402
 from tests.dbmark import DB_AVAILABLE, TEST_DATABASE_URL  # noqa: E402
+
+# The fewest bcrypt rounds the algorithm allows. At the production cost of 12
+# a hash takes ~0.3 s on a one-core box, and the `user` fixture plus the login in
+# `auth_headers` cost two of them for every API test — a third of the whole
+# run. The hash stays a real bcrypt hash; only its cost differs.
+security._hasher = PasswordHash((BcryptHasher(rounds=4),))
 
 ADMIN_URL = TEST_DATABASE_URL.rsplit("/", 1)[0] + "/postgres"
 DB_NAME = TEST_DATABASE_URL.rsplit("/", 1)[1]
@@ -92,13 +101,19 @@ async def engine():
 
 @pytest_asyncio.fixture
 async def clean_tables(engine):
-    """Empty the tables after each test, so tests cannot see each other."""
+    """Empty the tables after each test, so tests cannot see each other.
+
+    DELETE, children first, rather than TRUNCATE: TRUNCATE of the 15 tables
+    took ~0.55 s even when they held a row or two, DELETE ~0.01 s, and this
+    runs after every database test. Keys are UUIDs, so there is no identity
+    to restart.
+    """
     yield
     from app.core.db import Base
 
     async with engine.begin() as conn:
-        tables = ", ".join(f'"{t}"' for t in Base.metadata.tables)
-        await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
 
 
 @pytest_asyncio.fixture
