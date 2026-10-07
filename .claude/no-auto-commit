@@ -1,0 +1,3 @@
+Opts this repository out of the global Stop hook ~/.claude/hooks/auto-commit.sh.
+Work here is committed straight to main, and every push to main deploys to prod,
+so commits are made deliberately after scripts/check.sh, never by the hook.
