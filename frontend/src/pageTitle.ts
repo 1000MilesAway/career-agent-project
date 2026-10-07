@@ -6,6 +6,7 @@ const SITE_NAME = 'Career Helper'
 
 const PAGE_TITLES: Record<string, string> = {
   '/search': 'Поиск вакансий',
+  '/added': 'Мои вакансии',
   '/saved': 'Избранное',
   '/chat': 'Помощник',
   '/resume': 'Моё резюме',

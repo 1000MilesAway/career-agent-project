@@ -25,7 +25,7 @@ from ..core.security import (
     verify_password,
 )
 from ..models import User
-from ..services import mail
+from ..services import added, mail
 from ..services.spend import plan_of
 
 log = logging.getLogger(__name__)
@@ -374,6 +374,9 @@ async def delete_me(user: UserDep, session: SessionDep) -> None:
     # SQL, not session.delete(): the ORM would lazy-load every relationship
     # to delete it by hand, which async SQLAlchemy refuses. The database's
     # own cascades do the same work in one statement.
+    # Pasted vacancy texts hang off the shared pool, not the user, so the
+    # cascade does not reach them; they are the user's words all the same.
+    await added.delete_texts(session, user.id)
     await session.execute(delete(User).where(User.id == user.id))
     await session.commit()
 

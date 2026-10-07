@@ -142,6 +142,18 @@ export const startTriage = (ids?: string[]) =>
     json: { kind: 'triage', payload: { ids: ids ?? null } },
   })
 
+/** A vacancy by its link or text. Free; the page is read here, so a link
+ *  that cannot be read says so now, not at the paid evaluation. */
+export const addVacancy = (source: string) =>
+  api<{ vacancy: { id: string }; created: boolean }>('/api/vacancies/add', {
+    method: 'POST',
+    json: { source },
+  })
+
+/** Only an added vacancy; its report and materials go with it. */
+export const deleteVacancy = (vacancyId: string) =>
+  api<null>(`/api/vacancies/${vacancyId}`, { method: 'DELETE' })
+
 export const clearFound = () =>
   api<{ deleted: number }>('/api/vacancies/clear', { method: 'POST' })
 

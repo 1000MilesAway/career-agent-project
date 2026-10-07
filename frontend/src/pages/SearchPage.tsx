@@ -171,7 +171,13 @@ export function SearchPage() {
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
   // useMemo below recompute, which is the opposite of what they are for.
-  const rows = data?.found ?? EMPTY_ROWS
+  // Without the vacancies the user added by hand: those live in «Мои
+  // вакансии», and neither triage nor «Очистить» touches them.
+  const found = data?.found
+  const rows = useMemo(
+    () => (found ? found.filter((row) => !row.added_at) : EMPTY_ROWS),
+    [found],
+  )
 
   // One pass over the list: the split feeds the counters, the bucket filter
   // and the rendered rows alike. `base` keeps the payload's order, so a

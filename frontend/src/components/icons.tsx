@@ -47,6 +47,14 @@ export const ResumeIcon = () => (
   </Icon>
 )
 
+/** A page with a plus: a vacancy the user brought. */
+export const AddedIcon = () => (
+  <Icon>
+    <path d="M5 2.5h7l3.5 3.5v11.5h-10.5z" />
+    <path d="M12 2.5V6h3.5M10 9v6M7 12h6" />
+  </Icon>
+)
+
 export const SearchIcon = () => (
   <Icon>
     <circle cx="9" cy="9" r="5.5" />

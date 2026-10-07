@@ -8,15 +8,15 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from core.sources import geekjob
+from core.sources import geekjob, user_added
 
-from ..core.deps import ResumeDep, SessionDep, UserDep
+from ..core.deps import OptionalResumeDep, ResumeDep, SessionDep, UserDep
 from ..models import Vacancy
-from ..services import liveness, scan, sources
+from ..services import added, liveness, scan, sources
 from ..services import triage as triage_service
 from ..services.tracker import STATUSES, set_status
 from ..services.triage import TriageRequest
@@ -46,6 +46,7 @@ class VacancyResponse(BaseModel):
     closed_reason: str | None = None
     checked_at: datetime | None = None
     hidden_at: datetime | None = None
+    added_at: datetime | None = None
 
     @classmethod
     def of(cls, v: Vacancy, switches: sources.Switches | None = None) -> VacancyResponse:
@@ -73,6 +74,7 @@ class VacancyResponse(BaseModel):
             closed_reason=v.closed_reason,
             checked_at=v.checked_at,
             hidden_at=v.hidden_at,
+            added_at=v.added_at,
         )
 
 
@@ -293,14 +295,67 @@ async def clear(session: SessionDep, user: UserDep) -> dict[str, int]:
     labelled "clear the list of results" would be data loss the label never
     warned about.
     """
+    # Nor what the user brought by hand: «Мои вакансии» is not a search result.
     result = await session.execute(
-        select(Vacancy).where(Vacancy.user_id == user.id, Vacancy.is_saved.is_(False))
+        select(Vacancy).where(
+            Vacancy.user_id == user.id,
+            Vacancy.is_saved.is_(False),
+            Vacancy.added_at.is_(None),
+        )
     )
     rows = list(result.scalars())
     for row in rows:
         await session.delete(row)
     await session.commit()
     return {"deleted": len(rows)}
+
+
+class AddRequest(BaseModel):
+    # A link or the vacancy's text; which one is told by the content.
+    source: str = Field(max_length=user_added.MAX_TEXT_CHARS * 2)
+
+
+class AddResponse(BaseModel):
+    vacancy: VacancyResponse
+    # False: the user already had it — found by a scan or added before.
+    created: bool
+
+
+@router.post("/add", response_model=AddResponse)
+async def add(
+    body: AddRequest, session: SessionDep, user: UserDep, resume: OptionalResumeDep
+) -> AddResponse:
+    """Bring a vacancy by its link or its text. Free: no model is called.
+
+    The page of a link is read once, here, so the user learns now that it
+    cannot be read — not after paying for an evaluation of nothing.
+    """
+    try:
+        vacancy, created = await added.add(session, user, resume, body.source)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
+    await session.commit()
+    return AddResponse(vacancy=VacancyResponse.of(await _owned(session, user, vacancy.id)),
+                       created=created)
+
+
+@router.delete("/{vacancy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove(vacancy_id: uuid.UUID, session: SessionDep, user: UserDep) -> None:
+    """Delete a vacancy the user added, with its report and materials.
+
+    Only an added one: a scan's row is folded with "Скрыть" and comes back
+    with one click, and deleting it would only make the next scan bring it
+    back. An added one has no scan to bring it back, so it is the user's to
+    delete — the cabinet asks first.
+    """
+    vacancy = await _owned(session, user, vacancy_id)
+    if vacancy.added_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Удалить можно только добавленную вами вакансию; найденную — скрыть.",
+        )
+    await added.remove(session, vacancy)
+    await session.commit()
 
 
 @router.get("/statuses")

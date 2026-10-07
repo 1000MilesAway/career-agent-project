@@ -91,3 +91,14 @@ async def active_resume(session: SessionDep, user: UserDep) -> Resume:
 
 
 ResumeDep = Annotated[Resume, Depends(active_resume)]
+
+
+async def optional_resume(session: SessionDep, user: UserDep) -> Resume | None:
+    """The active CV, or None where a step works without one."""
+    result = await session.execute(
+        select(Resume).where(Resume.user_id == user.id, Resume.is_active.is_(True))
+    )
+    return result.scalar_one_or_none()
+
+
+OptionalResumeDep = Annotated[Resume | None, Depends(optional_resume)]

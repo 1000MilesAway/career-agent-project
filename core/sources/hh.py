@@ -196,8 +196,8 @@ def as_text(v: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def fetch_vacancy(url: str) -> tuple[str, dict[str, Any]]:
-    """Full text of one hh vacancy, for evaluation. Raises when there is none."""
+def fetch_card(url: str) -> dict[str, Any]:
+    """One hh vacancy as the provider describes it. Raises when there is none."""
     vid = vacancy_id(url)
     if vid is None:
         raise ValueError(f"не ссылка на вакансию hh.ru: {url}")
@@ -207,5 +207,10 @@ def fetch_vacancy(url: str) -> tuple[str, dict[str, Any]]:
         raise ValueError("вакансия на hh.ru не найдена — её удалили")
     if status == "restricted":
         raise ValueError("hh.ru показывает эту вакансию только избранным соискателям")
-    v = data["vacancy"]
+    return data["vacancy"]
+
+
+def fetch_vacancy(url: str) -> tuple[str, dict[str, Any]]:
+    """Full text of one hh vacancy, for evaluation. Raises when there is none."""
+    v = fetch_card(url)
     return as_text(v), {"url": v["url"], "title": v["title"], "archived": v.get("archived")}

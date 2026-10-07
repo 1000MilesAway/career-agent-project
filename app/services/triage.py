@@ -66,6 +66,9 @@ async def run(
         # Hidden by the user: "not interested" is already a verdict, and a
         # paid one on top of it buys nothing.
         Vacancy.hidden_at.is_(None),
+        # Added by hand: the user asked about it by name, and the evaluation
+        # is the click they came for. Triage is the scan list's sieve.
+        Vacancy.added_at.is_(None),
     )
     if ids is not None:
         query = query.where(Vacancy.id.in_(ids))

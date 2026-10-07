@@ -401,6 +401,12 @@ class Vacancy(Base, TimestampMixin):
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # The user brought this vacancy themselves — a link or a pasted text —
+    # rather than a scan finding it. Such a row lives in «Мои вакансии», not
+    # in the search list, and nothing a scan or a profile change does removes
+    # it (services/added.py).
+    added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     user: Mapped[User] = relationship(back_populates="vacancies")
     posting: Mapped[Posting] = relationship(lazy="joined", innerjoin=True)
     evaluations: Mapped[list[Evaluation]] = relationship(

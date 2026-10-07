@@ -824,8 +824,8 @@ REMATCH_REASONS = 3
 def _untouched(user_id: uuid.UUID):
     """The user's rows nothing but a free filter put there.
 
-    A triage verdict, an evaluation, a tracker stage, a save or a hide is the
-    user's investment (or money spent on their behalf); a profile change must
+    A triage verdict, an evaluation, a tracker stage, a save, a hide or a
+    vacancy the user added by hand is the user's investment (or money spent on their behalf); a profile change must
     not take any of those away.
     """
     return select(Vacancy).where(
@@ -834,6 +834,7 @@ def _untouched(user_id: uuid.UUID):
         Vacancy.triage_verdict.is_(None),
         Vacancy.is_saved.is_(False),
         Vacancy.hidden_at.is_(None),
+        Vacancy.added_at.is_(None),
         ~exists().where(Evaluation.vacancy_id == Vacancy.id),
         ~exists().where(Application.vacancy_id == Vacancy.id),
     )

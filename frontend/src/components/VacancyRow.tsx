@@ -75,7 +75,8 @@ function VacancyRowInner({
     vacancy.qualification || 'грейд не указан',
     vacancy.remote ? 'удалённо' : null,
     vacancy.accredited ? 'ИТ-аккредитация' : null,
-    sourceLabel ?? null,
+    // In «Избранное» an added row sits among found ones; this says whose pick it was.
+    vacancy.added_at ? 'добавлена вами' : (sourceLabel ?? null),
   ].filter(Boolean)
 
   // Closed is marked, not hidden: what was bought for it stays readable. An

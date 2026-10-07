@@ -120,6 +120,8 @@ export interface FoundVacancy {
   /** Hidden by the user; folded, never deleted. */
   hidden?: boolean
   published?: string | null
+  /** Brought by the user (a link or a text): lives in «Мои вакансии». */
+  added_at?: string | null
 }
 
 export interface ResumeProfile {

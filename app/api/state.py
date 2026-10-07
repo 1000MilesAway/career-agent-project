@@ -90,6 +90,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 Vacancy.triage_verdict,
                 Vacancy.is_saved,
                 Vacancy.hidden_at,
+                Vacancy.added_at,
                 Vacancy.created_at,
                 raiseload=True,
             ),
@@ -206,6 +207,8 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 # list folds it with the closed ones, and says why.
                 "stale": None if v.closed_at else liveness.stale_reason(v, now),
                 "hidden": v.hidden_at is not None,
+                # Brought by the user: lives in «Мои вакансии», not in search.
+                "added_at": v.added_at.isoformat() if v.added_at else None,
                 "published": v.published.isoformat() if v.published else None,
             }
         )
