@@ -81,6 +81,30 @@
   color: inherit;
 }
 
+.login__consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.login__consent input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--ink);
+}
+
+.login__consent.login__consent a,
+.login__consent.login__consent a:visited {
+  color: inherit;
+}
+
 .login__form-title {
   font-family: var(--font-serif);
   font-weight: 400;

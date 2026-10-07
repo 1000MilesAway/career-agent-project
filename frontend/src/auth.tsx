@@ -11,7 +11,8 @@ import { api, getToken, onTokenChange, setToken } from './api/client'
 interface AuthValue {
   token: string | null
   login: (email: string, password: string) => Promise<void>
-  loginTelegram: (idToken: string) => Promise<void>
+  /** `consent` is read only when the login would create the account. */
+  loginTelegram: (idToken: string, consent?: boolean) => Promise<void>
   /** Opens a letter's link: confirms the address and logs in. */
   verifyEmail: (token: string) => Promise<void>
   /** Opens a reset letter's link: sets the new password and logs in. */
@@ -34,10 +35,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.access_token)
   }, [])
 
-  const loginTelegram = useCallback(async (idToken: string) => {
+  const loginTelegram = useCallback(async (idToken: string, consent = false) => {
     const response = await api<{ access_token: string }>('/api/auth/telegram', {
       method: 'POST',
-      json: { id_token: idToken },
+      json: { id_token: idToken, consent },
     })
     setToken(response.access_token)
   }, [])

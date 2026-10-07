@@ -4,19 +4,24 @@
  * letter is on its way" after either letter. Signing up and resetting are
  * offered only when the server can send mail; without it the way in for a
  * newcomer is Telegram.
+ *
+ * An account is created only with the consent box ticked (152-FZ wants it as
+ * an act of its own). Telegram's button cannot tell a newcomer from a
+ * returning user, so a newcomer without the tick lands on a consent step
+ * that sends the same token again.
  */
 
 import { useState, useTransition, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import useSWR from 'swr'
-import { api, fetcher } from '../api/client'
+import { ApiError, api, fetcher } from '../api/client'
 import { useAuth } from '../auth'
 import { BrandMark } from '../components/icons'
 import { TelegramButton, useTelegramConfig } from '../components/TelegramLogin'
 import { ErrorNote } from '../components/ui'
 import './login.css'
 
-type Mode = 'login' | 'signup' | 'sent' | 'forgot' | 'forgot-sent'
+type Mode = 'login' | 'signup' | 'sent' | 'forgot' | 'forgot-sent' | 'telegram-consent'
 
 interface SignupConfig {
   enabled: boolean
@@ -33,6 +38,9 @@ export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [sentTo, setSentTo] = useState('')
+  const [consent, setConsent] = useState(false)
+  // The id_token of a newcomer who came without the tick, kept for the retry.
+  const [pendingTelegram, setPendingTelegram] = useState<string | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -60,7 +68,7 @@ export function LoginPage() {
   async function signup() {
     const data = await api<{ email: string }>('/api/auth/signup', {
       method: 'POST',
-      json: { email: email.trim(), password },
+      json: { email: email.trim(), password, consent },
     })
     setSentTo(data.email)
     setMode('sent')
@@ -95,7 +103,25 @@ export function LoginPage() {
   }
 
   function onTelegram(idToken: string) {
-    run(() => loginTelegram(idToken))
+    run(async () => {
+      try {
+        await loginTelegram(idToken, mode === 'signup' && consent)
+      } catch (e) {
+        // 409: this Telegram has no account yet, and creating one needs the tick.
+        if (e instanceof ApiError && e.status === 409) {
+          setPendingTelegram(idToken)
+          setMode('telegram-consent')
+          return
+        }
+        throw e
+      }
+    })
+  }
+
+  function onTelegramConsent(event: FormEvent) {
+    event.preventDefault()
+    const idToken = pendingTelegram
+    if (idToken) run(() => loginTelegram(idToken, true))
   }
 
   return (
@@ -103,7 +129,33 @@ export function LoginPage() {
       <LoginHome />
 
       <section className="login__form">
-        {mode === 'forgot' ? (
+        {mode === 'telegram-consent' ? (
+          <>
+            <h2 className="login__form-title">Новая учётка</h2>
+            <p style={{ margin: 0 }}>
+              Через этот Telegram сюда ещё не входили — создадим для него учётку.
+            </p>
+            <form className="stack" style={{ gap: 14 }} onSubmit={onTelegramConsent}>
+              <ConsentCheck checked={consent} onChange={setConsent} />
+              <button
+                className="btn"
+                type="submit"
+                disabled={isPending}
+                style={{ height: 44 }}
+              >
+                {isPending ? 'Создаю…' : 'Создать учётку'}
+              </button>
+            </form>
+            <ErrorNote error={error} />
+            <p className="login__legal">
+              Создавая учётку, вы принимаете{' '}
+              <Link to="/terms">пользовательское соглашение</Link>.
+            </p>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              <SwitchLink onClick={() => switchTo('login')}>Ко входу</SwitchLink>
+            </p>
+          </>
+        ) : mode === 'forgot' ? (
           <>
             <h2 className="login__form-title">Сброс пароля</h2>
             <p style={{ margin: 0 }}>
@@ -235,6 +287,9 @@ export function LoginPage() {
                   </span>
                 ) : null}
               </label>
+              {mode === 'signup' ? (
+                <ConsentCheck checked={consent} onChange={setConsent} />
+              ) : null}
               <button
                 className="btn"
                 type="submit"
@@ -270,12 +325,13 @@ export function LoginPage() {
             <ErrorNote error={error} />
 
             {/* At sign-up only: that is where the account, and the agreement,
-                begin. A returning user already accepted it. */}
+                begin. A returning user already accepted it. The consent to
+                process personal data is the box above, not this line: the law
+                wants it apart from other documents. */}
             {mode === 'signup' ? (
               <p className="login__legal">
                 Регистрируясь, вы принимаете{' '}
-                <Link to="/terms">пользовательское соглашение</Link> и{' '}
-                <Link to="/privacy">политику конфиденциальности</Link>.
+                <Link to="/terms">пользовательское соглашение</Link>.
               </p>
             ) : null}
 
@@ -300,6 +356,32 @@ export function LoginPage() {
         )}
       </section>
     </main>
+  )
+}
+
+/** Unticked by default and required: the consent must be the person's own act. */
+function ConsentCheck({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="login__consent">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        required
+      />
+      <span>
+        Даю согласие на обработку моих персональных данных на условиях{' '}
+        <Link to="/privacy" target="_blank">
+          политики конфиденциальности
+        </Link>
+      </span>
+    </label>
   )
 }
 

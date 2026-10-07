@@ -14,37 +14,57 @@ const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   verifyEmail: vi.fn(),
   resetPassword: vi.fn(),
+  loginTelegram: vi.fn(),
+  telegram: null as { client_id: number } | null,
 }))
 
 vi.mock('swr', () => ({
   default: () => ({ data: { enabled: mocks.signupEnabled } }),
 }))
 
-vi.mock('../api/client', () => ({ api: mocks.api, fetcher: vi.fn() }))
+vi.mock('../api/client', () => ({
+  api: mocks.api,
+  fetcher: vi.fn(),
+  ApiError: class ApiError extends Error {
+    readonly status: number
+    constructor(message: string, status: number) {
+      super(message)
+      this.status = status
+    }
+  },
+}))
 
 vi.mock('../auth', () => ({
   useAuth: () => ({
     login: vi.fn(),
-    loginTelegram: vi.fn(),
+    loginTelegram: mocks.loginTelegram,
     verifyEmail: mocks.verifyEmail,
     resetPassword: mocks.resetPassword,
   }),
 }))
 
+// The popup is Telegram's; the stand-in hands over a token on click.
 vi.mock('../components/TelegramLogin', () => ({
-  useTelegramConfig: () => null,
-  TelegramButton: () => null,
+  useTelegramConfig: () => mocks.telegram,
+  TelegramButton: ({ onToken }: { onToken: (token: string) => void }) => (
+    <button type="button" onClick={() => onToken('tg-token')}>
+      Telegram
+    </button>
+  ),
 }))
 
 const { LoginPage } = await import('./LoginPage')
 const { VerifyPage } = await import('./VerifyPage')
 const { ResetPasswordPage } = await import('./ResetPasswordPage')
+const { ApiError } = await import('../api/client')
 
 beforeEach(() => {
   mocks.signupEnabled = true
   mocks.api.mockReset()
   mocks.verifyEmail.mockReset()
   mocks.resetPassword.mockReset()
+  mocks.loginTelegram.mockReset()
+  mocks.telegram = null
 })
 
 describe('LoginPage', () => {
@@ -65,14 +85,42 @@ describe('LoginPage', () => {
     fireEvent.change(container.querySelector('input[type=password]')!, {
       target: { value: 'long enough' },
     })
+    fireEvent.click(screen.getByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
 
     await screen.findByText('Проверьте почту')
     expect(screen.getByText('new@example.com')).toBeTruthy()
     expect(mocks.api).toHaveBeenCalledWith('/api/auth/signup', {
       method: 'POST',
-      json: { email: 'New@Example.com', password: 'long enough' },
+      json: { email: 'New@Example.com', password: 'long enough', consent: true },
     })
+  })
+
+  it('согласие на ПД — отдельная галочка, по умолчанию снята и обязательна', () => {
+    renderLogin()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    const box = screen.getByRole('checkbox') as HTMLInputElement
+    expect(box.checked).toBe(false)
+    expect(box.required).toBe(true)
+  })
+
+  it('новичок из Telegram без галочки попадает на шаг согласия, тот же токен уходит снова', async () => {
+    mocks.telegram = { client_id: 1 }
+    mocks.loginTelegram
+      .mockRejectedValueOnce(new ApiError('нужно согласие', 409))
+      .mockResolvedValueOnce(undefined)
+    renderLogin()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Telegram' }))
+    await screen.findByText('Новая учётка')
+    expect(mocks.loginTelegram).toHaveBeenLastCalledWith('tg-token', false)
+
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Создать учётку' }))
+    await waitFor(() =>
+      expect(mocks.loginTelegram).toHaveBeenLastCalledWith('tg-token', true),
+    )
   })
 })
 

@@ -114,6 +114,13 @@ class SignupRequest(BaseModel):
     # bcrypt reads only the first 72 bytes; a longer password would be
     # accepted and silently cut.
     password: str = Field(min_length=8, max_length=72)
+    # The ticked box on the form. 152-FZ wants consent to be its own act, so it
+    # is a field of its own rather than implied by pressing "sign up".
+    consent: bool = False
+
+
+# One wording for both ways in, so the form and the API agree on what was asked.
+CONSENT_REQUIRED = "Без согласия на обработку персональных данных учётку не создать"
 
 
 class SignupResponse(BaseModel):
@@ -145,6 +152,8 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
     """
     if not mail.mail_enabled():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Регистрация по почте не настроена")
+    if not body.consent:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, CONSENT_REQUIRED)
     email = body.email.lower()
     sent = SignupResponse(
         email=email,
@@ -170,7 +179,7 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
 
     password_hash = hash_password(body.password)
     if user is None:
-        user = User(email=email, password_hash=password_hash)
+        user = User(email=email, password_hash=password_hash, consent_at=now)
         session.add(user)
         try:
             await session.flush()
@@ -181,6 +190,8 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
             return sent
     else:
         user.password_hash = password_hash
+        if user.consent_at is None:
+            user.consent_at = now
 
     link = f"{get_settings().public_url.rstrip('/')}/verify?token=" + create_email_token(
         user.id, email, password_hash
@@ -265,8 +276,7 @@ async def request_password_reset(body: ResetRequest, session: SessionDep) -> Sig
         or not user.is_active
         or user.password_hash is None
         or (
-            user.verification_sent_at is not None
-            and now - user.verification_sent_at < RESEND_AFTER
+            user.verification_sent_at is not None and now - user.verification_sent_at < RESEND_AFTER
         )
     ):
         return sent
@@ -390,6 +400,8 @@ class TelegramConfig(BaseModel):
 
 class TelegramToken(BaseModel):
     id_token: str
+    # Read only when the login would create an account; see telegram_login_endpoint.
+    consent: bool = False
 
 
 async def _telegram_identity(body: TelegramToken) -> telegram_login.TelegramIdentity:
@@ -403,9 +415,7 @@ async def _telegram_identity(body: TelegramToken) -> telegram_login.TelegramIden
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Вход через Telegram не настроен")
     try:
         # Off the event loop: fetching Telegram's keys is blocking urllib.
-        identity = await asyncio.to_thread(
-            telegram_login.verify_id_token, body.id_token, client_id
-        )
+        identity = await asyncio.to_thread(telegram_login.verify_id_token, body.id_token, client_id)
     except telegram_login.TelegramUnavailable:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -436,12 +446,23 @@ async def telegram_login_endpoint(body: TelegramToken, session: SessionDep) -> T
     password. What bounds a stranger's cost is the free plan's quota, per account.
     A disabled account is refused rather than re-created — the Telegram id is
     still its, so a fresh account would undo `user-off`.
+
+    Creating one needs `consent`, as signing up by email does. Without it a
+    newcomer gets 409 and no account: the button on the login form does not
+    know whether the person behind it is new, so the form asks only then and
+    sends the same id_token again (its nonce lives for an hour).
     """
     identity = await _telegram_identity(body)
     result = await session.execute(select(User).where(User.telegram_id == identity.id))
     user = result.scalar_one_or_none()
     if user is None:
-        user = User(telegram_id=identity.id, telegram_name=identity.name)
+        if not body.consent:
+            raise HTTPException(status.HTTP_409_CONFLICT, CONSENT_REQUIRED)
+        user = User(
+            telegram_id=identity.id,
+            telegram_name=identity.name,
+            consent_at=datetime.now(UTC),
+        )
         session.add(user)
         try:
             await session.commit()

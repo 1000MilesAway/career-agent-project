@@ -119,8 +119,8 @@ def bot(monkeypatch):
     return settings
 
 
-def body(token: str | None = None) -> dict[str, str]:
-    return {"id_token": token or id_token()}
+def body(token: str | None = None, *, consent: bool = True) -> dict[str, object]:
+    return {"id_token": token or id_token(), "consent": consent}
 
 
 @requires_db
@@ -159,6 +159,27 @@ class TestTelegramEndpoints:
         assert again.status_code == 200
         count = await session.scalar(select(func.count()).select_from(User))
         assert count == 1
+
+    async def test_a_newcomer_without_consent_gets_no_account(self, client, bot, session):
+        from sqlalchemy import func, select
+
+        from app.models import User
+
+        token = id_token()
+        r = await client.post("/api/auth/telegram", json=body(token, consent=False))
+        assert r.status_code == 409
+        assert await session.scalar(select(func.count()).select_from(User)) == 0
+
+        # The form asks, then sends the same token again with the answer.
+        again = await client.post("/api/auth/telegram", json=body(token))
+        assert again.status_code == 200
+        user = await session.scalar(select(User))
+        assert user is not None and user.consent_at is not None
+
+    async def test_a_known_account_logs_in_without_being_asked(self, client, bot):
+        await client.post("/api/auth/telegram", json=body())
+        r = await client.post("/api/auth/telegram", json=body(consent=False))
+        assert r.status_code == 200
 
     async def test_a_telegram_sign_up_cannot_unlink_its_only_login(self, client, bot):
         token = (await client.post("/api/auth/telegram", json=body())).json()["access_token"]

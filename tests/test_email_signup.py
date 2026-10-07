@@ -40,7 +40,7 @@ def link_token(letter: dict[str, str]) -> str:
     return match.group(1)
 
 
-SIGNUP = {"email": "New@Example.com", "password": "long enough"}
+SIGNUP = {"email": "New@Example.com", "password": "long enough", "consent": True}
 
 
 class TestTokens:
@@ -130,9 +130,30 @@ class TestSignup:
         assert (await client.post("/api/auth/verify", json={"token": token})).status_code == 200
         assert (await client.post("/api/auth/verify", json={"token": token})).status_code == 200
 
+    async def test_no_account_without_consent(self, client, session, outbox):
+        from sqlalchemy import func, select
+
+        from app.models import User
+
+        r = await client.post("/api/auth/signup", json={**SIGNUP, "consent": False})
+        assert r.status_code == 422
+        assert "согласия" in r.json()["detail"]
+        assert outbox == []
+        assert await session.scalar(select(func.count()).select_from(User)) == 0
+
+    async def test_consent_is_stamped_at_signup(self, client, session, outbox):
+        from sqlalchemy import select
+
+        from app.models import User
+
+        await client.post("/api/auth/signup", json=SIGNUP)
+        user = await session.scalar(select(User).where(User.email == "new@example.com"))
+        assert user is not None and user.consent_at is not None
+
     async def test_a_short_password_is_refused(self, client, outbox):
         r = await client.post(
-            "/api/auth/signup", json={"email": "a@example.com", "password": "short"}
+            "/api/auth/signup",
+            json={"email": "a@example.com", "password": "short", "consent": True},
         )
         assert r.status_code == 422
         assert outbox == []
@@ -142,7 +163,8 @@ class TestSignup:
     ):
         """Same answer as a new signup, no letter, and the owner's password stands."""
         r = await client.post(
-            "/api/auth/signup", json={"email": user.email, "password": "hijacker pass"}
+            "/api/auth/signup",
+            json={"email": user.email, "password": "hijacker pass", "consent": True},
         )
         assert r.status_code == 202
         assert outbox == []
@@ -170,7 +192,8 @@ class TestSignup:
         )
         await session.commit()
         r = await client.post(
-            "/api/auth/signup", json={"email": SIGNUP["email"], "password": "second password"}
+            "/api/auth/signup",
+            json={"email": SIGNUP["email"], "password": "second password", "consent": True},
         )
         assert r.status_code == 202
         assert len(outbox) == 2

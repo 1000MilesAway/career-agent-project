@@ -138,9 +138,7 @@ class TestReset:
 
     async def test_junk_and_confirmation_tokens_are_refused(self, client, user):
         junk = {"token": "junk", "password": "brand new one"}
-        assert (
-            await client.post("/api/auth/password-reset/confirm", json=junk)
-        ).status_code == 400
+        assert (await client.post("/api/auth/password-reset/confirm", json=junk)).status_code == 400
         confirmation = create_email_token(user.id, user.email, user.password_hash)
         r = await client.post(
             "/api/auth/password-reset/confirm",
@@ -180,15 +178,14 @@ class TestReset:
         )
         assert (await client.get("/api/auth/me", headers=bearer(old))).status_code == 401
 
-    async def test_an_unconfirmed_signup_is_confirmed_by_the_reset(
-        self, client, session, outbox
-    ):
+    async def test_an_unconfirmed_signup_is_confirmed_by_the_reset(self, client, session, outbox):
         from sqlalchemy import update
 
         from app.models import User
 
         await client.post(
-            "/api/auth/signup", json={"email": "late@example.com", "password": "forgotten"}
+            "/api/auth/signup",
+            json={"email": "late@example.com", "password": "forgotten", "consent": True},
         )
         # Past the throttle the signup letter set.
         await session.execute(
