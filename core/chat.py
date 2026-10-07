@@ -159,15 +159,32 @@ MAX_OPTIONS = 4
 
 
 def choice_of(call: ToolCall) -> dict | None:
-    """The question and options of a well-formed `ask_choice`, else None."""
-    if not call.ok or call.name != tools.ASK_CHOICE.name:
+    """The question of a well-formed ASK call, else None.
+
+    `ask_choice` yields `options` (answers as text); `choose_vacancy` yields
+    `vacancy_ids` — the screen turns those into cards read from the database,
+    so the model never writes what a card says.
+    """
+    if not call.ok or tools.BY_NAME.get(call.name) is None:
+        return None
+    if not tools.BY_NAME[call.name].ends_turn:
         return None
     question = str(call.arguments.get("question") or "").strip()
+    if not question:
+        return None
+    if call.name == tools.CHOOSE_VACANCY.name:
+        raw = call.arguments.get("vacancy_ids")
+        ids = [str(i).strip() for i in raw if str(i).strip()] if isinstance(raw, list) else []
+        # Order kept, repeats dropped: one card per vacancy.
+        ids = list(dict.fromkeys(ids))
+        if not 1 <= len(ids) <= tools.MAX_VACANCY_CHOICES:
+            return None
+        return {"question": question, "options": [], "vacancy_ids": ids}
     raw = call.arguments.get("options")
     options = [str(o).strip() for o in raw if str(o).strip()] if isinstance(raw, list) else []
-    if not question or not 2 <= len(options) <= MAX_OPTIONS:
+    if not 2 <= len(options) <= MAX_OPTIONS:
         return None
-    return {"question": question, "options": options}
+    return {"question": question, "options": options, "vacancy_ids": []}
 
 
 def _ask(call: ToolCall) -> dict:
@@ -178,6 +195,13 @@ def _ask(call: ToolCall) -> dict:
     answers to pick.
     """
     if choice_of(call) is None:
+        if call.name == tools.CHOOSE_VACANCY.name:
+            return {
+                "error": (
+                    f"нужен вопрос и от 1 до {tools.MAX_VACANCY_CHOICES} id вакансий "
+                    "из list_vacancies"
+                )
+            }
         return {"error": f"нужен вопрос и от 2 до {MAX_OPTIONS} вариантов ответа"}
     return {"status": "shown", "note": "Вопрос показан пользователю, ответ придёт сообщением."}
 

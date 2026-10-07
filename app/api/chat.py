@@ -9,6 +9,10 @@ Accepting a proposal is a separate request from making one. That split is the
 whole confirmation layer: `core/proposals.py` returns the new value and the
 caller writes it, and here the caller is an explicit POST the user makes.
 Silence is refusal — a pending proposal nobody touches changes nothing.
+
+A user has several threads; the history, the model's context and "clear"
+are all per thread. Proposals stay listed for the whole account, because the
+badge in the navigation counts every change waiting for a decision.
 """
 
 from __future__ import annotations
@@ -20,14 +24,15 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from core import chat as chat_core
 from core import tools
 from core.llm import LLM, Ledger
 
 from ..core.deps import SessionDep, UserDep
-from ..models import ChatMessage, Proposal, Resume, Vacancy
+from ..models import ChatMessage, ChatThread, Proposal, Resume, Vacancy
 from ..services import chat as chat_service
 from ..services import revisions
 from ..services.spend import charge, ensure_can_spend
@@ -50,8 +55,42 @@ class VacancyRef(BaseModel):
     company: str | None = None
 
 
+class VacancyCard(BaseModel):
+    """A vacancy offered to pick, as the database has it — never as the
+    model described it."""
+
+    id: str
+    title: str
+    company: str | None = None
+    salary_text: str | None = None
+    location: str | None = None
+    remote: bool | None = None
+    score: float | None = None
+    saved: bool = False
+    url: str | None = None
+
+
+class ThreadResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    vacancy: VacancyRef | None = None
+    last_message_at: datetime
+    # Changes proposed in this thread and still waiting for a decision.
+    pending: int = 0
+
+
+class NewThreadRequest(BaseModel):
+    # Set by "Обсудить": the thread of this vacancy, made on first use.
+    vacancy_id: uuid.UUID | None = None
+
+
+class RenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
 class ProposalResponse(BaseModel):
     id: uuid.UUID
+    thread_id: uuid.UUID | None = None
     kind: str
     status: str
     arguments: dict[str, Any]
@@ -61,9 +100,10 @@ class ProposalResponse(BaseModel):
     created_at: datetime
 
     @classmethod
-    def of(cls, p: Proposal) -> ProposalResponse:
+    def of(cls, p: Proposal, thread_id: uuid.UUID | None = None) -> ProposalResponse:
         return cls(
             id=p.id,
+            thread_id=thread_id,
             kind=p.kind,
             status=p.status,
             arguments=p.arguments,
@@ -88,15 +128,20 @@ class MessageResponse(BaseModel):
     choices: list[str] = []
     # The vacancy a user message was written about, shown on its bubble.
     vacancy: VacancyRef | None = None
+    # Vacancies to pick from when the turn ended on `choose_vacancy`.
+    vacancies: list[VacancyCard] = []
 
 
 class ChatResponse(BaseModel):
+    thread: ThreadResponse
     reply: str
     messages: list[MessageResponse]
     proposals: list[ProposalResponse]
 
 
-def _visible(message: ChatMessage) -> MessageResponse | None:
+def _visible(
+    message: ChatMessage, cards: dict[str, VacancyCard] | None = None
+) -> MessageResponse | None:
     """What of a stored turn the user should see.
 
     Tool results are not shown: they are the model's working notes, and a
@@ -123,6 +168,9 @@ def _visible(message: ChatMessage) -> MessageResponse | None:
         tools=_tool_names(message),
         choices=question["options"] if question else [],
         vacancy=_vacancy_ref(payload),
+        vacancies=[
+            cards[i] for i in (question["vacancy_ids"] if question else []) if i in (cards or {})
+        ],
     )
 
 
@@ -149,10 +197,12 @@ def _tool_names(message: ChatMessage) -> list[str]:
         for c in (message.payload or {}).get("tool_calls") or []
     ]
     # A question is the reply itself, not something the chat looked at.
-    return [n for n in names if n and n != tools.ASK_CHOICE.name]
+    return [n for n in names if n and not (n in tools.BY_NAME and tools.BY_NAME[n].ends_turn)]
 
 
-def _as_conversation(stored: list[ChatMessage]) -> list[MessageResponse]:
+def _as_conversation(
+    stored: list[ChatMessage], cards: dict[str, VacancyCard] | None = None
+) -> list[MessageResponse]:
     """The turns worth showing, with the tool names folded into them.
 
     A round where the model only asked for tools carries no text — showing it
@@ -164,7 +214,7 @@ def _as_conversation(stored: list[ChatMessage]) -> list[MessageResponse]:
     carried: list[str] = []
     for row in stored:
         carried.extend(_tool_names(row))
-        visible = _visible(row)
+        visible = _visible(row, cards)
         if visible is None:
             continue
         # De-duplicated, order kept: two get_profile calls in one exchange are
@@ -178,8 +228,8 @@ def _as_conversation(stored: list[ChatMessage]) -> list[MessageResponse]:
     return out
 
 
-async def _history(session: SessionDep, user_id: uuid.UUID) -> list[ChatMessage]:
-    """The tail of the conversation, in order.
+async def _history(session: SessionDep, thread_id: uuid.UUID) -> list[ChatMessage]:
+    """The tail of one thread, in order.
 
     Ordered by `seq`, not by `created_at`: every message of one exchange is
     written in the same transaction and shares a timestamp, so sorting by time
@@ -187,41 +237,211 @@ async def _history(session: SessionDep, user_id: uuid.UUID) -> list[ChatMessage]
     """
     result = await session.execute(
         select(ChatMessage)
-        .where(ChatMessage.user_id == user_id)
+        .where(ChatMessage.thread_id == thread_id)
         .order_by(ChatMessage.seq.desc())
         .limit(chat_service.HISTORY_LIMIT)
     )
     return list(reversed(list(result.scalars())))
 
 
-@router.get("", response_model=list[MessageResponse])
-async def history(session: SessionDep, user: UserDep) -> list[MessageResponse]:
-    """The conversation so far. Free."""
-    return _as_conversation(await _history(session, user.id))
+async def _cards(
+    session: SessionDep, user_id: uuid.UUID, rows: list[ChatMessage]
+) -> dict[str, VacancyCard]:
+    """Cards for every vacancy the rows offered to pick, in one query.
+
+    Read from the database, and only this user's: an id the model made up or
+    one of another account shows no card, rather than a card with words the
+    model wrote. The score is the one judged against the CV in force now.
+    """
+    wanted: set[uuid.UUID] = set()
+    for row in rows:
+        question = _question(row)
+        for raw in question["vacancy_ids"] if question else []:
+            try:
+                wanted.add(uuid.UUID(raw))
+            except ValueError:
+                continue
+    if not wanted:
+        return {}
+    resume_id = (
+        await session.execute(
+            select(Resume.id).where(Resume.user_id == user_id, Resume.is_active.is_(True))
+        )
+    ).scalar_one_or_none()
+    result = await session.execute(
+        select(Vacancy)
+        .where(Vacancy.id.in_(wanted), Vacancy.user_id == user_id)
+        .options(selectinload(Vacancy.evaluations))
+    )
+    out: dict[str, VacancyCard] = {}
+    for v in result.scalars():
+        evaluation = next((e for e in v.evaluations if e.resume_id == resume_id), None)
+        out[str(v.id)] = VacancyCard(
+            id=str(v.id),
+            title=v.title,
+            company=v.company,
+            salary_text=v.salary_text,
+            location=v.location,
+            remote=v.remote,
+            score=evaluation.score if evaluation else None,
+            saved=v.is_saved,
+            url=v.url,
+        )
+    return out
+
+
+async def _owned_thread(session: SessionDep, user: UserDep, thread_id: uuid.UUID) -> ChatThread:
+    thread = await session.get(ChatThread, thread_id)
+    if thread is None or thread.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Разговор не найден")
+    return thread
+
+
+async def _thread_vacancy(session: SessionDep, thread: ChatThread) -> VacancyRef | None:
+    if thread.vacancy_id is None:
+        return None
+    vacancy = await session.get(Vacancy, thread.vacancy_id)
+    if vacancy is None:
+        return None
+    return VacancyRef(id=str(vacancy.id), title=vacancy.title, company=vacancy.company)
+
+
+async def _thread_response(session: SessionDep, thread: ChatThread) -> ThreadResponse:
+    pending = await session.execute(
+        select(func.count(Proposal.id))
+        .join(ChatMessage, Proposal.message_id == ChatMessage.id)
+        .where(ChatMessage.thread_id == thread.id, Proposal.status == chat_service.PENDING)
+    )
+    return ThreadResponse(
+        id=thread.id,
+        title=thread.title,
+        vacancy=await _thread_vacancy(session, thread),
+        last_message_at=thread.last_message_at,
+        pending=int(pending.scalar_one()),
+    )
+
+
+@router.get("/threads", response_model=list[ThreadResponse])
+async def threads(session: SessionDep, user: UserDep) -> list[ThreadResponse]:
+    """The user's conversations, the one written in last first. Free."""
+    result = await session.execute(
+        select(ChatThread)
+        .where(ChatThread.user_id == user.id)
+        .order_by(ChatThread.last_message_at.desc(), ChatThread.created_at.desc())
+    )
+    rows = list(result.scalars())
+    pending = await session.execute(
+        select(ChatMessage.thread_id, func.count(Proposal.id))
+        .join(ChatMessage, Proposal.message_id == ChatMessage.id)
+        .where(Proposal.user_id == user.id, Proposal.status == chat_service.PENDING)
+        .group_by(ChatMessage.thread_id)
+    )
+    counts = dict(pending.all())
+    vacancy_ids = [t.vacancy_id for t in rows if t.vacancy_id is not None]
+    refs: dict[uuid.UUID, VacancyRef] = {}
+    if vacancy_ids:
+        found = await session.execute(select(Vacancy).where(Vacancy.id.in_(vacancy_ids)))
+        refs = {
+            v.id: VacancyRef(id=str(v.id), title=v.title, company=v.company)
+            for v in found.scalars()
+        }
+    return [
+        ThreadResponse(
+            id=t.id,
+            title=t.title,
+            vacancy=refs.get(t.vacancy_id) if t.vacancy_id else None,
+            last_message_at=t.last_message_at,
+            pending=int(counts.get(t.id, 0)),
+        )
+        for t in rows
+    ]
+
+
+@router.post("/threads", response_model=ThreadResponse)
+async def new_thread(
+    body: NewThreadRequest, session: SessionDep, user: UserDep
+) -> ThreadResponse:
+    """Start a conversation. Free — nothing is said to the model yet.
+
+    With a vacancy, the thread of that vacancy is returned if it exists: one
+    vacancy, one conversation, however many times "Обсудить" is pressed.
+    """
+    vacancy: Vacancy | None = None
+    if body.vacancy_id is not None:
+        vacancy = await session.get(Vacancy, body.vacancy_id)
+        if vacancy is None or vacancy.user_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Вакансия не найдена"
+            )
+        existing = await session.execute(
+            select(ChatThread).where(
+                ChatThread.user_id == user.id, ChatThread.vacancy_id == vacancy.id
+            )
+        )
+        thread = existing.scalar_one_or_none()
+        if thread is not None:
+            return await _thread_response(session, thread)
+
+    thread = ChatThread(
+        user_id=user.id,
+        vacancy_id=vacancy.id if vacancy else None,
+        title=chat_service.thread_title("", vacancy) if vacancy else "",
+    )
+    session.add(thread)
+    await session.commit()
+    await session.refresh(thread)
+    return await _thread_response(session, thread)
+
+
+@router.get("/threads/{thread_id}", response_model=list[MessageResponse])
+async def history(
+    thread_id: uuid.UUID, session: SessionDep, user: UserDep
+) -> list[MessageResponse]:
+    """One conversation so far. Free."""
+    thread = await _owned_thread(session, user, thread_id)
+    stored = await _history(session, thread.id)
+    return _as_conversation(stored, await _cards(session, user.id, stored))
+
+
+@router.patch("/threads/{thread_id}", response_model=ThreadResponse)
+async def rename(
+    thread_id: uuid.UUID, body: RenameRequest, session: SessionDep, user: UserDep
+) -> ThreadResponse:
+    thread = await _owned_thread(session, user, thread_id)
+    title = " ".join(body.title.split())
+    if not title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пустое название")
+    thread.title = title
+    await session.commit()
+    await session.refresh(thread)
+    return await _thread_response(session, thread)
 
 
 @router.get("/proposals", response_model=list[ProposalResponse])
 async def pending(session: SessionDep, user: UserDep) -> list[ProposalResponse]:
-    """What is waiting for a decision. Free."""
+    """What is waiting for a decision, in every thread. Free."""
     result = await session.execute(
-        select(Proposal)
+        select(Proposal, ChatMessage.thread_id)
+        .outerjoin(ChatMessage, Proposal.message_id == ChatMessage.id)
         .where(Proposal.user_id == user.id, Proposal.status == chat_service.PENDING)
         .order_by(Proposal.created_at)
     )
-    return [ProposalResponse.of(p) for p in result.scalars()]
+    return [ProposalResponse.of(p, thread_id) for p, thread_id in result.all()]
 
 
-@router.post("", response_model=ChatResponse)
+@router.post("/threads/{thread_id}/messages", response_model=ChatResponse)
 async def send(
+    thread_id: uuid.UUID,
     body: MessageRequest,
     session: SessionDep,
     user: UserDep,
 ) -> ChatResponse:
-    """Say something to the chat and get the answer.
+    """Say something in a thread and get the answer.
 
     Costs money — a reply is a model call — so the budget is checked before it,
     never after.
     """
+    thread = await _owned_thread(session, user, thread_id)
     ensure_can_spend(user)
 
     text = body.text.strip()
@@ -230,16 +450,24 @@ async def send(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Пустое сообщение"
         )
 
-    stored = await _history(session, user.id)
+    stored = await _history(session, thread.id)
     history_payload = [row.payload for row in stored]
 
     payload: dict[str, Any] = {"role": chat_core.USER, "content": text}
-    if body.vacancy_id is not None:
-        vacancy = await session.get(Vacancy, body.vacancy_id)
+    # In a vacancy's thread every message is about it unless another one is
+    # attached: the first message may have scrolled out of the replayed tail,
+    # and the model must not lose what the thread is about.
+    vacancy_id = body.vacancy_id or thread.vacancy_id
+    vacancy: Vacancy | None = None
+    if vacancy_id is not None:
+        vacancy = await session.get(Vacancy, vacancy_id)
         if vacancy is None or vacancy.user_id != user.id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Вакансия не найдена"
-            )
+            if body.vacancy_id is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Вакансия не найдена"
+                )
+            vacancy = None
+    if vacancy is not None:
         # Kept apart from the text: the bubble shows what the user typed, and
         # `fold_events` hands the model the reference in an envelope.
         payload[chat_core.VACANCY_KEY] = {
@@ -248,9 +476,14 @@ async def send(
             "company": vacancy.company,
         }
 
+    if not thread.title:
+        thread.title = chat_service.thread_title(text)
+    thread.last_message_at = datetime.now(UTC)
+
     seq = await chat_service.next_seq(session, user.id)
     question = ChatMessage(
         user_id=user.id,
+        thread_id=thread.id,
         role=chat_core.USER,
         payload=payload,
         seq=seq,
@@ -284,6 +517,7 @@ async def send(
     for offset, payload in enumerate(appended, start=1):
         row = ChatMessage(
             user_id=user.id,
+            thread_id=thread.id,
             role=payload.get("role", chat_core.ASSISTANT),
             payload=payload,
             seq=seq + offset,
@@ -309,11 +543,13 @@ async def send(
             proposal.message_id = assistant_row.id
 
     await session.commit()
+    await session.refresh(thread)
 
     return ChatResponse(
+        thread=await _thread_response(session, thread),
         reply=reply,
-        messages=_as_conversation(rows),
-        proposals=[ProposalResponse.of(p) for p in runner.proposals],
+        messages=_as_conversation(rows, await _cards(session, user.id, rows)),
+        proposals=[ProposalResponse.of(p, thread.id) for p in runner.proposals],
     )
 
 
@@ -415,30 +651,33 @@ async def reject(
     return ProposalResponse.of(proposal)
 
 
-@router.post("/clear")
-async def clear(session: SessionDep, user: UserDep) -> dict[str, int]:
-    """Forget the conversation. Pending proposals go with it.
+@router.delete("/threads/{thread_id}")
+async def delete_thread(
+    thread_id: uuid.UUID, session: SessionDep, user: UserDep
+) -> dict[str, int]:
+    """Forget one conversation. Its pending proposals go with it.
 
-    Leaving them behind would mean a user who cleared the chat still has
-    changes waiting from a conversation they can no longer read.
+    Leaving them behind would mean a user who deleted the thread still has
+    changes waiting from a conversation they can no longer read. Accepted and
+    rejected ones stay: they are the record of what changed the CV.
     """
+    thread = await _owned_thread(session, user, thread_id)
     proposals = await session.execute(
-        select(Proposal).where(
-            Proposal.user_id == user.id, Proposal.status == chat_service.PENDING
-        )
+        select(Proposal)
+        .join(ChatMessage, Proposal.message_id == ChatMessage.id)
+        .where(ChatMessage.thread_id == thread.id, Proposal.status == chat_service.PENDING)
     )
     dropped = 0
     for proposal in proposals.scalars():
         await session.delete(proposal)
         dropped += 1
 
-    messages = await session.execute(
-        select(ChatMessage).where(ChatMessage.user_id == user.id)
-    )
-    removed = 0
-    for message in messages.scalars():
-        await session.delete(message)
-        removed += 1
-
+    removed = (
+        await session.execute(
+            select(func.count(ChatMessage.id)).where(ChatMessage.thread_id == thread.id)
+        )
+    ).scalar_one()
+    # Messages go by the foreign key's cascade.
+    await session.delete(thread)
     await session.commit()
-    return {"messages": removed, "proposals": dropped}
+    return {"messages": int(removed), "proposals": dropped}

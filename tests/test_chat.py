@@ -317,6 +317,38 @@ class TestAskChoice:
         assert len(llm.seen) == 1
 
 
+class TestChooseVacancy:
+    """Vacancies offered as cards to pick. The model names ids only; the
+    screen reads what a card says from the database."""
+
+    def test_it_is_a_free_question(self):
+        assert tools.CHOOSE_VACANCY.rub == 0.0
+        assert not tools.CHOOSE_VACANCY.writes
+        assert tools.CHOOSE_VACANCY.ends_turn
+
+    def test_a_choice_ends_the_turn_and_keeps_the_order(self):
+        args = {"question": "Какую разберём?", "vacancy_ids": ["b", "a", "b"]}
+        llm = FakeLLM([assistant(calls=[call("choose_vacancy", args)]), assistant("нет")])
+        text, _a, made = chat.converse(llm, [{"role": "user", "content": "..."}], None)
+        assert text == "Какую разберём?"
+        assert len(llm.seen) == 1
+        assert chat.asked(made)["vacancy_ids"] == ["b", "a"]
+
+    def test_too_many_or_none_is_sent_back(self):
+        for ids in ([], [str(i) for i in range(tools.MAX_VACANCY_CHOICES + 1)]):
+            llm = FakeLLM(
+                [
+                    assistant(
+                        calls=[call("choose_vacancy", {"question": "Какую?", "vacancy_ids": ids})]
+                    ),
+                    assistant("Уточните."),
+                ]
+            )
+            text, appended, _m = chat.converse(llm, [{"role": "user", "content": "..."}], None)
+            assert text == "Уточните."
+            assert "error" in appended[1]["content"]
+
+
 class TestPromptGuards:
     """The prompt is the thing under test, as `test_prompt_shapes.py` puts it."""
 

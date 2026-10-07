@@ -238,6 +238,34 @@ ASK_CHOICE = Tool(
     ),
 )
 
+MAX_VACANCY_CHOICES = 6
+
+CHOOSE_VACANCY = Tool(
+    name="choose_vacancy",
+    kind=ASK,
+    title="Выбор вакансии",
+    description=(
+        "Показать пользователю вакансии карточками и спросить, какую взять: он выберет "
+        "кнопкой или напишет сам. После вызова ход заканчивается. Используй вместо "
+        "перечисления вакансий текстом, когда пользователю нужно выбрать одну из "
+        "нескольких. id бери из list_vacancies; карточки покажут данные из базы, "
+        "название и условия в вопросе не повторяй."
+    ),
+    parameters=_object(
+        {
+            "question": {"type": "string", "description": "вопрос, одной фразой"},
+            "vacancy_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": MAX_VACANCY_CHOICES,
+                "description": "id вакансий в том порядке, в каком их показать",
+            },
+        },
+        ["question", "vacancy_ids"],
+    ),
+)
+
 SET_VACANCY_STATUS = Tool(
     name="set_vacancy_status",
     kind=PROPOSE,
@@ -286,6 +314,7 @@ TOOLS: tuple[Tool, ...] = (
     OPEN_GAPS,
     GET_SPEND,
     ASK_CHOICE,
+    CHOOSE_VACANCY,
     PROPOSE_PROFILE_PATCH,
     SET_VACANCY_STATUS,
     SAVE_VACANCY,

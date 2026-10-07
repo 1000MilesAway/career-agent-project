@@ -49,6 +49,14 @@ def reply(monkeypatch):
     return install
 
 
+@pytest.fixture
+async def thread(client, auth_headers) -> str:
+    """A fresh conversation's URL; messages are posted to `{thread}/messages`."""
+    response = await client.post("/api/chat/threads", json={}, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    return f"/api/chat/threads/{response.json()['id']}"
+
+
 def says(text: str) -> dict:
     return {"role": "assistant", "content": text}
 
@@ -113,46 +121,50 @@ async def _vacancy(session, user) -> Vacancy:
 @requires_db
 class TestAuth:
     async def test_the_chat_is_behind_a_login(self, client):
-        assert (await client.get("/api/chat")).status_code == 401
-        assert (await client.post("/api/chat", json={"text": "привет"})).status_code == 401
+        assert (await client.get("/api/chat/threads")).status_code == 401
+        assert (await client.post("/api/chat/threads", json={})).status_code == 401
 
 
 @requires_db
 class TestSend:
     async def test_a_plain_reply_is_stored_and_returned(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         reply(says("Здравствуйте"))
-        response = await client.post("/api/chat", json={"text": "привет"}, headers=auth_headers)
+        response = await client.post(
+            f"{thread}/messages", json={"text": "привет"}, headers=auth_headers
+        )
         assert response.status_code == 200, response.text
         assert response.json()["reply"] == "Здравствуйте"
 
         stored = list((await session.execute(select(ChatMessage))).scalars())
         assert [m.role for m in stored] == ["user", "assistant"]
 
-    async def test_an_empty_message_is_refused(self, client, auth_headers):
-        response = await client.post("/api/chat", json={"text": "   "}, headers=auth_headers)
+    async def test_an_empty_message_is_refused(self, client, auth_headers, thread):
+        response = await client.post(
+            f"{thread}/messages", json={"text": "   "}, headers=auth_headers
+        )
         assert response.status_code in (400, 422)
 
     async def test_history_comes_back_in_order(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         reply(says("раз"))
-        await client.post("/api/chat", json={"text": "первое"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "первое"}, headers=auth_headers)
         reply(says("два"))
-        await client.post("/api/chat", json={"text": "второе"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "второе"}, headers=auth_headers)
 
-        response = await client.get("/api/chat", headers=auth_headers)
+        response = await client.get(thread, headers=auth_headers)
         texts = [m["text"] for m in response.json()]
         assert texts == ["первое", "раз", "второе", "два"]
 
     async def test_an_attached_vacancy_reaches_the_model_and_the_bubble(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         vacancy = await _vacancy(session, user)
         seen = reply(says("Ответьте так: ..."))
         response = await client.post(
-            "/api/chat",
+            f"{thread}/messages",
             json={"text": "что ответить рекрутеру?", "vacancy_id": str(vacancy.id)},
             headers=auth_headers,
         )
@@ -163,18 +175,18 @@ class TestSend:
         assert "<attached_vacancy>" in sent["content"]
         assert str(vacancy.id) in sent["content"]
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert shown[0]["text"] == "что ответить рекрутеру?"
         assert shown[0]["vacancy"]["id"] == str(vacancy.id)
         assert shown[0]["vacancy"]["company"] == "ООО Ромашка"
         assert shown[1]["vacancy"] is None
 
     async def test_a_vacancy_that_is_not_yours_is_refused(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         reply(says("не должно быть вызвано"))
         response = await client.post(
-            "/api/chat",
+            f"{thread}/messages",
             json={"text": "что ответить?", "vacancy_id": str(uuid.uuid4())},
             headers=auth_headers,
         )
@@ -182,19 +194,19 @@ class TestSend:
         assert not list((await session.execute(select(ChatMessage))).scalars())
 
     async def test_a_company_named_in_passing_is_found(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
-        """"Мне ответили из Ромашки" — the model passes the word as written."""
+        """ "Мне ответили из Ромашки" — the model passes the word as written."""
         vacancy = await _vacancy(session, user)
         seen = reply(calls("list_vacancies", {"query": "Ромашки"}), says("Нашёл."))
         await client.post(
-            "/api/chat", json={"text": "мне ответили из Ромашки"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "мне ответили из Ромашки"}, headers=auth_headers
         )
         result = seen[1]["history"][-1]["content"]
         assert str(vacancy.id) in result
 
     async def test_tool_results_are_not_shown_to_the_user(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """They are the model's working notes; a posting's raw text pasted
         into the conversation would be noise."""
@@ -202,7 +214,7 @@ class TestSend:
         reply(calls("get_profile", {}), says("В профиле только Python."))
 
         response = await client.post(
-            "/api/chat", json={"text": "что в профиле?"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "что в профиле?"}, headers=auth_headers
         )
         messages = response.json()["messages"]
         assert "tool" not in [m["role"] for m in messages]
@@ -212,7 +224,7 @@ class TestSend:
         assert messages[0]["tools"] == ["get_profile"]
 
     async def test_a_turn_without_text_is_not_an_empty_bubble(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """Found on a live run: the assistant message that asks for a tool has
         no content, and the conversation showed two blank turns before the
@@ -223,15 +235,15 @@ class TestSend:
             calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}, "b"),
             says("Готово, подтвердите."),
         )
-        await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "знаю go"}, headers=auth_headers)
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert all(m["text"].strip() for m in shown)
         assert [m["text"] for m in shown] == ["знаю go", "Готово, подтвердите."]
         assert shown[1]["tools"] == ["get_profile", "propose_profile_patch"]
 
     async def test_a_question_is_shown_with_its_answers(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """The model asks with the tool alone; the question is the reply, and
         its options come back for the screen to show as buttons."""
@@ -242,39 +254,39 @@ class TestSend:
         }
         seen = reply(calls("ask_choice", question), says("не должно прозвучать"))
         response = await client.post(
-            "/api/chat", json={"text": "добавь Claude Code"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "добавь Claude Code"}, headers=auth_headers
         )
         body = response.json()
         assert body["reply"] == question["question"]
         assert body["proposals"] == []
         assert len(seen) == 1
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert shown[-1]["text"] == question["question"]
         assert shown[-1]["choices"] == question["options"]
         # Asking is the reply itself, not something the chat looked at.
         assert shown[-1]["tools"] == []
 
     async def test_the_answer_continues_a_valid_history(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """The API requires a tool result right after the call; the answer
         then arrives as an ordinary user message."""
         await _resume(session, user)
         question = {"question": "Как?", "options": ["так", "иначе"]}
         reply(calls("ask_choice", question))
-        await client.post("/api/chat", json={"text": "добавь"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "добавь"}, headers=auth_headers)
 
         seen = reply(says("Понял."))
-        await client.post("/api/chat", json={"text": "так"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "так"}, headers=auth_headers)
         roles = [m["role"] for m in seen[0]["history"]]
         assert roles == ["user", "assistant", "tool", "user"]
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert [m["text"] for m in shown] == ["добавь", "Как?", "так", "Понял."]
 
     async def test_open_gaps_lists_unmet_requirements_of_the_current_cv(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """What lets the chat name the vacancy an edit closes a gap in.
         Reports against an older CV are left out: judged against another
@@ -305,7 +317,9 @@ class TestSend:
         await session.commit()
 
         reply(calls("open_gaps", {}), says("ок"))
-        await client.post("/api/chat", json={"text": "что не закрыто?"}, headers=auth_headers)
+        await client.post(
+            f"{thread}/messages", json={"text": "что не закрыто?"}, headers=auth_headers
+        )
 
         result = (
             await session.execute(select(ChatMessage).where(ChatMessage.role == "tool"))
@@ -318,18 +332,18 @@ class TestSend:
         assert str(stale.id) not in content
 
     async def test_without_a_cv_the_profile_tools_are_not_offered(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         seen = reply(says("Загрузите резюме."))
-        await client.post("/api/chat", json={"text": "привет"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "привет"}, headers=auth_headers)
         offered = {t.name for t in seen[0]["enabled"]}
         assert "propose_profile_patch" not in offered
 
     async def test_the_cost_is_charged_to_the_account(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         reply(says("ок"))
-        await client.post("/api/chat", json={"text": "привет"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "привет"}, headers=auth_headers)
         await session.refresh(user)
         # The mocked ledger spends nothing, but the field must survive the path.
         assert float(user.spent_rub) >= 0
@@ -338,7 +352,7 @@ class TestSend:
 @requires_db
 class TestProposalsRequireConfirmation:
     async def test_a_proposed_patch_does_not_touch_the_resume(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         resume = await _resume(session, user)
         reply(
@@ -347,7 +361,7 @@ class TestProposalsRequireConfirmation:
         )
 
         response = await client.post(
-            "/api/chat", json={"text": "я знаю kubernetes"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "я знаю kubernetes"}, headers=auth_headers
         )
         assert len(response.json()["proposals"]) == 1
 
@@ -355,7 +369,7 @@ class TestProposalsRequireConfirmation:
         assert resume.profile["skills"] == ["Python"]
 
     async def test_accepting_applies_the_patch(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         await _resume(session, user)
         reply(
@@ -363,7 +377,7 @@ class TestProposalsRequireConfirmation:
             says("Готово к подтверждению."),
         )
         created = await client.post(
-            "/api/chat", json={"text": "знаю kubernetes"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "знаю kubernetes"}, headers=auth_headers
         )
         proposal_id = created.json()["proposals"][0]["id"]
 
@@ -377,7 +391,7 @@ class TestProposalsRequireConfirmation:
         assert active.profile["provenance"]["skills"][0]["source"] == "user-stated"
 
     async def test_accepting_makes_a_new_revision_and_keeps_the_old_one(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """Editing in place would leave bought reports describing a profile that
         no longer exists, and the same resume_id would keep serving the old
@@ -389,7 +403,9 @@ class TestProposalsRequireConfirmation:
             calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
             says("Готово."),
         )
-        created = await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        created = await client.post(
+            f"{thread}/messages", json={"text": "знаю go"}, headers=auth_headers
+        )
         proposal_id = created.json()["proposals"][0]["id"]
         await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
 
@@ -405,7 +421,7 @@ class TestProposalsRequireConfirmation:
         assert resume.profile["skills"] == ["Python"]
 
     async def test_a_score_bought_before_the_edit_is_marked_outdated(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """The report stays on screen — it was paid for — but the row says it
         was judged against the old profile, which is what offers a re-score."""
@@ -434,7 +450,9 @@ class TestProposalsRequireConfirmation:
             calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
             says("Готово."),
         )
-        created = await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        created = await client.post(
+            f"{thread}/messages", json={"text": "знаю go"}, headers=auth_headers
+        )
         proposal_id = created.json()["proposals"][0]["id"]
         await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
 
@@ -443,7 +461,7 @@ class TestProposalsRequireConfirmation:
         assert after["outdated"] is True
 
     async def test_accepting_clears_the_cached_archetypes(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """Triage screens against them; keeping them would judge the user by
         a CV that no longer describes them."""
@@ -456,7 +474,7 @@ class TestProposalsRequireConfirmation:
             says("Готово."),
         )
         created = await client.post(
-            "/api/chat", json={"text": "знаю go"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "знаю go"}, headers=auth_headers
         )
         proposal_id = created.json()["proposals"][0]["id"]
         await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
@@ -464,7 +482,7 @@ class TestProposalsRequireConfirmation:
         assert (await _active(session, user)).archetypes is None
 
     async def test_rejecting_changes_nothing(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         resume = await _resume(session, user)
         reply(
@@ -472,7 +490,7 @@ class TestProposalsRequireConfirmation:
             says("Подтвердите."),
         )
         created = await client.post(
-            "/api/chat", json={"text": "..."}, headers=auth_headers
+            f"{thread}/messages", json={"text": "..."}, headers=auth_headers
         )
         proposal_id = created.json()["proposals"][0]["id"]
 
@@ -485,25 +503,21 @@ class TestProposalsRequireConfirmation:
         assert "Rust" not in resume.profile["skills"]
 
     async def test_a_decided_proposal_cannot_be_decided_twice(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         await _resume(session, user)
         reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
-        created = await client.post("/api/chat", json={"text": "."}, headers=auth_headers)
+        created = await client.post(f"{thread}/messages", json={"text": "."}, headers=auth_headers)
         proposal_id = created.json()["proposals"][0]["id"]
 
-        first = await client.post(
-            f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers
-        )
+        first = await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
         assert first.status_code == 200
         second = await client.post(
             f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers
         )
         assert second.status_code == 409
 
-    async def test_a_proposal_that_is_not_ours_is_a_404(
-        self, client, auth_headers
-    ):
+    async def test_a_proposal_that_is_not_ours_is_a_404(self, client, auth_headers):
         """Ownership is part of the lookup, so a proposal belonging to someone
         else is indistinguishable from one that does not exist."""
         response = await client.post(
@@ -541,7 +555,7 @@ class TestProposalsRequireConfirmation:
         assert theirs.status == "pending"
 
     async def test_a_status_proposal_moves_the_tracker_only_once_accepted(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         vacancy = await _vacancy(session, user)
         reply(
@@ -552,7 +566,7 @@ class TestProposalsRequireConfirmation:
             says("Подтвердите."),
         )
         created = await client.post(
-            "/api/chat", json={"text": "я откликнулся"}, headers=auth_headers
+            f"{thread}/messages", json={"text": "я откликнулся"}, headers=auth_headers
         )
         proposal_id = created.json()["proposals"][0]["id"]
 
@@ -564,11 +578,11 @@ class TestProposalsRequireConfirmation:
         assert vacancy.application.status == "applied"
 
     async def test_pending_proposals_are_listed(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         await _resume(session, user)
         reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
-        await client.post("/api/chat", json={"text": "."}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "."}, headers=auth_headers)
 
         response = await client.get("/api/chat/proposals", headers=auth_headers)
         assert len(response.json()) == 1
@@ -576,29 +590,198 @@ class TestProposalsRequireConfirmation:
 
 
 @requires_db
-class TestClear:
-    async def test_clearing_removes_messages_and_pending_proposals(
-        self, client, auth_headers, session, user, reply
+class TestDeleteThread:
+    async def test_deleting_removes_messages_and_pending_proposals(
+        self, client, auth_headers, session, user, reply, thread
     ):
-        """A user who cleared the chat must not still have changes waiting
+        """A user who deleted a thread must not still have changes waiting
         from a conversation they can no longer read."""
         await _resume(session, user)
         reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
-        await client.post("/api/chat", json={"text": "."}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "."}, headers=auth_headers)
 
-        response = await client.post("/api/chat/clear", headers=auth_headers)
+        response = await client.delete(thread, headers=auth_headers)
         assert response.json()["proposals"] == 1
 
-        assert (await client.get("/api/chat", headers=auth_headers)).json() == []
-        left = list((await session.execute(select(Proposal))).scalars())
-        assert left == []
+        assert (await client.get(thread, headers=auth_headers)).status_code == 404
+        assert list((await session.execute(select(Proposal))).scalars()) == []
+        assert list((await session.execute(select(ChatMessage))).scalars()) == []
+
+    async def test_another_thread_is_left_alone(
+        self, client, auth_headers, session, user, reply, thread
+    ):
+        await _resume(session, user)
+        other = (await client.post("/api/chat/threads", json={}, headers=auth_headers)).json()
+        reply(calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}), says("."))
+        await client.post(
+            f"/api/chat/threads/{other['id']}/messages", json={"text": "."}, headers=auth_headers
+        )
+        reply(says("да"))
+        await client.post(f"{thread}/messages", json={"text": "привет"}, headers=auth_headers)
+
+        await client.delete(thread, headers=auth_headers)
+
+        kept = (await client.get(f"/api/chat/threads/{other['id']}", headers=auth_headers)).json()
+        assert [m["text"] for m in kept] == [".", "."]
+        pending = (await client.get("/api/chat/proposals", headers=auth_headers)).json()
+        assert [p["thread_id"] for p in pending] == [other["id"]]
+
+
+@requires_db
+class TestThreads:
+    async def test_histories_do_not_mix(self, client, auth_headers, session, user, reply, thread):
+        """The model reads its own thread only: that is the point of having
+        several."""
+        reply(says("раз"))
+        await client.post(
+            f"{thread}/messages", json={"text": "про kubernetes"}, headers=auth_headers
+        )
+
+        other = (await client.post("/api/chat/threads", json={}, headers=auth_headers)).json()
+        seen = reply(says("два"))
+        await client.post(
+            f"/api/chat/threads/{other['id']}/messages",
+            json={"text": "про письмо"},
+            headers=auth_headers,
+        )
+        assert [m.get("content") for m in seen[0]["history"]] == ["про письмо"]
+
+    async def test_the_list_is_titled_and_newest_first(
+        self, client, auth_headers, session, user, reply, thread
+    ):
+        reply(says("."))
+        await client.post(
+            f"{thread}/messages",
+            json={"text": "Забыл написать — я год настраивал Kubernetes в последней компании."},
+            headers=auth_headers,
+        )
+        listed = (await client.get("/api/chat/threads", headers=auth_headers)).json()
+        assert len(listed) == 1
+        assert listed[0]["title"].startswith("Забыл написать")
+        assert len(listed[0]["title"]) <= 61
+
+        newer = (await client.post("/api/chat/threads", json={}, headers=auth_headers)).json()
+        reply(says("."))
+        await client.post(
+            f"/api/chat/threads/{newer['id']}/messages",
+            json={"text": "второй"},
+            headers=auth_headers,
+        )
+        listed = (await client.get("/api/chat/threads", headers=auth_headers)).json()
+        assert [t["title"] for t in listed] == ["второй", listed[1]["title"]]
+
+    async def test_a_vacancy_has_one_thread(self, client, auth_headers, session, user):
+        vacancy = await _vacancy(session, user)
+        first = await client.post(
+            "/api/chat/threads", json={"vacancy_id": str(vacancy.id)}, headers=auth_headers
+        )
+        again = await client.post(
+            "/api/chat/threads", json={"vacancy_id": str(vacancy.id)}, headers=auth_headers
+        )
+        assert first.json()["id"] == again.json()["id"]
+        assert first.json()["title"] == "Python разработчик — ООО Ромашка"
+        assert first.json()["vacancy"]["id"] == str(vacancy.id)
+
+    async def test_every_message_in_a_vacancy_thread_carries_it(
+        self, client, auth_headers, session, user, reply
+    ):
+        """The first message may scroll out of the replayed tail; the model
+        must still know what the thread is about."""
+        vacancy = await _vacancy(session, user)
+        created = await client.post(
+            "/api/chat/threads", json={"vacancy_id": str(vacancy.id)}, headers=auth_headers
+        )
+        url = f"/api/chat/threads/{created.json()['id']}"
+        seen = reply(says("."))
+        await client.post(
+            f"{url}/messages", json={"text": "чего не хватает?"}, headers=auth_headers
+        )
+        assert "<attached_vacancy>" in seen[0]["history"][-1]["content"]
+
+    async def test_a_thread_of_another_account_is_a_404(
+        self, client, auth_headers, session, user, reply
+    ):
+        from app.models import ChatThread, User
+
+        other = User(email=f"{uuid.uuid4().hex[:8]}@example.com", password_hash="x")
+        session.add(other)
+        await session.flush()
+        theirs = ChatThread(user_id=other.id, title="чужой")
+        session.add(theirs)
+        await session.commit()
+
+        url = f"/api/chat/threads/{theirs.id}"
+        reply(says("не должно быть вызвано"))
+        assert (await client.get(url, headers=auth_headers)).status_code == 404
+        assert (
+            await client.post(f"{url}/messages", json={"text": "."}, headers=auth_headers)
+        ).status_code == 404
+        assert (await client.delete(url, headers=auth_headers)).status_code == 404
+
+    async def test_rename(self, client, auth_headers, thread):
+        response = await client.patch(thread, json={"title": "  Про  Сбер "}, headers=auth_headers)
+        assert response.json()["title"] == "Про Сбер"
+
+    async def test_a_cv_change_is_noted_in_every_thread(
+        self, client, auth_headers, session, user, reply, thread
+    ):
+        from app.services import chat as chat_service
+
+        other = (await client.post("/api/chat/threads", json={}, headers=auth_headers)).json()
+        await chat_service.note_resume_changed(session, user.id, "резюме сменилось")
+        await session.commit()
+        for url in (thread, f"/api/chat/threads/{other['id']}"):
+            shown = (await client.get(url, headers=auth_headers)).json()
+            assert [m["role"] for m in shown] == ["event"]
+
+
+@requires_db
+class TestChooseVacancy:
+    async def test_cards_come_from_the_database(
+        self, client, auth_headers, session, user, reply, thread
+    ):
+        """The model names ids; what a card says is read from the rows, and an
+        id that is not this user's shows no card."""
+        vacancy = await _vacancy(session, user)
+        reply(
+            calls(
+                "choose_vacancy",
+                {
+                    "question": "Какую разберём?",
+                    "vacancy_ids": [str(vacancy.id), str(uuid.uuid4())],
+                },
+            )
+        )
+        response = await client.post(
+            f"{thread}/messages", json={"text": "что у меня есть?"}, headers=auth_headers
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["reply"] == "Какую разберём?"
+
+        shown = (await client.get(thread, headers=auth_headers)).json()
+        last = shown[-1]
+        assert last["text"] == "Какую разберём?"
+        assert last["tools"] == []
+        assert [c["id"] for c in last["vacancies"]] == [str(vacancy.id)]
+        assert last["vacancies"][0]["company"] == "ООО Ромашка"
+
+    async def test_a_malformed_choice_does_not_end_the_turn(
+        self, client, auth_headers, session, user, reply, thread
+    ):
+        seen = reply(calls("choose_vacancy", {"question": "Какую?", "vacancy_ids": []}), says("ок"))
+        response = await client.post(f"{thread}/messages", json={"text": "."}, headers=auth_headers)
+        assert response.json()["reply"] == "ок"
+        assert (
+            "Ошибка" in seen[1]["history"][-1]["content"]
+            or "error" in seen[1]["history"][-1]["content"]
+        )
 
 
 @requires_db
 class TestResumeRollback:
     """Going back to an earlier version, and what the chat learns of it."""
 
-    async def _two_revisions(self, client, auth_headers, session, user, reply):
+    async def _two_revisions(self, client, auth_headers, session, user, reply, thread):
         first = await _resume(session, user)
         first.search_profile = {"queries": ["python"]}
         await session.commit()
@@ -606,23 +789,25 @@ class TestResumeRollback:
             calls("propose_profile_patch", {"op": "add_skill", "value": "Go"}),
             says("Готово."),
         )
-        created = await client.post("/api/chat", json={"text": "знаю go"}, headers=auth_headers)
+        created = await client.post(
+            f"{thread}/messages", json={"text": "знаю go"}, headers=auth_headers
+        )
         proposal_id = created.json()["proposals"][0]["id"]
         await client.post(f"/api/chat/proposals/{proposal_id}/accept", headers=auth_headers)
         return first, await _active(session, user)
 
     async def test_restore_copies_the_old_version_forward(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """A copy, not a reactivation: the rollback is itself undoable, and
         the version being left stays in the chain."""
-        first, second = await self._two_revisions(client, auth_headers, session, user, reply)
+        first, second = await self._two_revisions(
+            client, auth_headers, session, user, reply, thread
+        )
         second.search_profile = {"queries": ["go"]}
         await session.commit()
 
-        response = await client.post(
-            f"/api/resumes/{first.id}/restore", headers=auth_headers
-        )
+        response = await client.post(f"/api/resumes/{first.id}/restore", headers=auth_headers)
         assert response.status_code == 200, response.text
 
         active = await _active(session, user)
@@ -642,38 +827,36 @@ class TestResumeRollback:
         assert response.status_code == 409
 
     async def test_the_chat_is_told_the_cv_changed(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
         """History is per user: without a note the model reads its own
         "added it" from the old CV and refuses to add it again."""
-        first, _ = await self._two_revisions(client, auth_headers, session, user, reply)
+        first, _ = await self._two_revisions(client, auth_headers, session, user, reply, thread)
         await client.post(f"/api/resumes/{first.id}/restore", headers=auth_headers)
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert shown[-1]["role"] == "event"
         assert "возвращено к версии 1" in shown[-1]["text"]
 
         seen = reply(says("Проверю профиль."))
-        await client.post("/api/chat", json={"text": "добавь go"}, headers=auth_headers)
+        await client.post(f"{thread}/messages", json={"text": "добавь go"}, headers=auth_headers)
         last = seen[0]["history"][-1]
         assert last["role"] == "user"
         assert "<event>" in last["content"] and last["content"].endswith("добавь go")
         assert all(m["role"] != "event" for m in seen[0]["history"])
 
     async def test_history_lists_every_version_with_its_changes(
-        self, client, auth_headers, session, user, reply
+        self, client, auth_headers, session, user, reply, thread
     ):
-        await self._two_revisions(client, auth_headers, session, user, reply)
+        await self._two_revisions(client, auth_headers, session, user, reply, thread)
 
-        history = (await client.get("/api/state", headers=auth_headers)).json()[
-            "resume_history"
-        ]
+        history = (await client.get("/api/state", headers=auth_headers)).json()["resume_history"]
         assert [(h["revision"], h["active"]) for h in history] == [(2, True), (1, False)]
         assert history[0]["changes"] == ["+ навык: Go"]
         assert history[1]["changes"] == ["Загружен файл «cv.pdf»"]
 
     async def test_a_new_upload_is_noted_in_the_chat(
-        self, client, auth_headers, session, user, monkeypatch
+        self, client, auth_headers, session, user, monkeypatch, thread
     ):
         """The case that was reported: after re-uploading the CV the chat said
         it had already added Claude Code and would not do it again."""
@@ -691,12 +874,12 @@ class TestResumeRollback:
         )
         assert response.status_code == 201, response.text
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert shown[-1]["role"] == "event"
         assert "«new.md»" in shown[-1]["text"]
 
     async def test_a_first_upload_leaves_the_chat_alone(
-        self, client, auth_headers, monkeypatch
+        self, client, auth_headers, monkeypatch, thread
     ):
         """Nothing was replaced, so there is nothing to warn about."""
         monkeypatch.setattr("app.api.resumes.LLM", lambda *a, **kw: object())
@@ -708,16 +891,14 @@ class TestResumeRollback:
             files={"file": ("cv.md", b"Python", "text/markdown")},
             headers=auth_headers,
         )
-        assert (await client.get("/api/chat", headers=auth_headers)).json() == []
+        assert (await client.get(thread, headers=auth_headers)).json() == []
 
 
 @requires_db
 class TestManualEdit:
     """The user corrects the parsed CV by hand. Free, and a new revision."""
 
-    async def test_an_edit_is_saved_as_the_next_revision(
-        self, client, auth_headers, session, user
-    ):
+    async def test_an_edit_is_saved_as_the_next_revision(self, client, auth_headers, session, user):
         first = await _resume(
             session,
             user,
@@ -759,9 +940,7 @@ class TestManualEdit:
         assert active.profile["preferences"] == {"city": "Москва"}
         assert active.search_profile == {"queries": ["python"]}
 
-    async def test_an_unchanged_save_makes_no_revision(
-        self, client, auth_headers, session, user
-    ):
+    async def test_an_unchanged_save_makes_no_revision(self, client, auth_headers, session, user):
         """A revision without a change would mark every bought report as made
         against «прежнее резюме» for nothing."""
         first = await _resume(session, user)
@@ -776,10 +955,14 @@ class TestManualEdit:
     async def test_the_city_is_edited_without_losing_other_preferences(
         self, client, auth_headers, session, user
     ):
-        first = await _resume(session, user, {
-            "target_role": "Backend",
-            "preferences": {"city": "Казань", "format": "гибрид"},
-        })
+        first = await _resume(
+            session,
+            user,
+            {
+                "target_role": "Backend",
+                "preferences": {"city": "Казань", "format": "гибрид"},
+            },
+        )
         response = await client.put(
             "/api/resumes/active/profile",
             json={"preferences": {"city": " Москва "}},
@@ -790,9 +973,7 @@ class TestManualEdit:
         assert active.id != first.id
         assert active.profile["preferences"] == {"city": "Москва", "format": "гибрид"}
 
-        history = (await client.get("/api/state", headers=auth_headers)).json()[
-            "resume_history"
-        ]
+        history = (await client.get("/api/state", headers=auth_headers)).json()["resume_history"]
         assert "город: Казань → Москва" in history[0]["changes"]
 
     async def test_a_blank_city_on_a_profile_without_one_is_no_change(
@@ -817,7 +998,7 @@ class TestManualEdit:
         assert response.status_code == 422
 
     async def test_history_and_chat_say_what_was_edited(
-        self, client, auth_headers, session, user
+        self, client, auth_headers, session, user, thread
     ):
         await _resume(session, user)
         await client.put(
@@ -826,12 +1007,10 @@ class TestManualEdit:
             headers=auth_headers,
         )
 
-        history = (await client.get("/api/state", headers=auth_headers)).json()[
-            "resume_history"
-        ]
+        history = (await client.get("/api/state", headers=auth_headers)).json()["resume_history"]
         assert history[0]["changes"] == ["+ язык: Английский B2", "изменён абзац «О себе»"]
 
-        shown = (await client.get("/api/chat", headers=auth_headers)).json()
+        shown = (await client.get(thread, headers=auth_headers)).json()
         assert shown[-1]["role"] == "event"
         assert "вручную" in shown[-1]["text"]
 

@@ -28,6 +28,8 @@ const OPEN_PATHS = new Set(['/verify', '/reset-password', '/terms', '/privacy'])
 export function pageTitle(pathname: string, loggedIn: boolean): string {
   const open = OPEN_PATHS.has(pathname)
   if (!loggedIn && pathname === '/') return SITE_NAME
-  const page = loggedIn || open ? PAGE_TITLES[pathname] : 'Вход'
+  // A thread's path, /chat/<id>, is still the assistant's tab.
+  const key = pathname.startsWith('/chat/') ? '/chat' : pathname
+  const page = loggedIn || open ? PAGE_TITLES[key] : 'Вход'
   return page ? `${page} | ${SITE_NAME}` : SITE_NAME
 }

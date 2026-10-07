@@ -25,7 +25,7 @@ export function SupportBubble() {
   return (
     <div
       // The chat keeps its composer at the bottom; the bubble sits above it.
-      className={pathname === '/chat' ? 'support support--raised' : 'support'}
+      className={pathname.startsWith('/chat') ? 'support support--raised' : 'support'}
       onBlur={onBlur}
       onKeyDown={(event) => {
         if (event.key === 'Escape') setOpen(false)

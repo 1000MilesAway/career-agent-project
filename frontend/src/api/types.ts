@@ -356,7 +356,36 @@ export interface ChatMessage {
   /** Answers to pick when the assistant ended its turn on a question. */
   choices?: string[]
   /** The vacancy a user message was written about ("Обсудить" in Избранном). */
-  vacancy?: { id: string; title: string; company: string | null } | null
+  vacancy?: VacancyRef | null
+  /** Vacancies to pick from, when the turn ended on `choose_vacancy`. Read
+   *  from the database, never written by the model. */
+  vacancies?: VacancyCard[]
+}
+
+export interface VacancyRef {
+  id: string
+  title: string
+  company: string | null
+}
+
+export interface VacancyCard extends VacancyRef {
+  salary_text: string | null
+  location: string | null
+  remote: boolean | null
+  score: number | null
+  saved: boolean
+  url: string | null
+}
+
+/** One of the user's conversations. A thread with `vacancy` is the one
+ *  "Обсудить" opens for that vacancy. */
+export interface ChatThread {
+  id: string
+  title: string
+  vacancy: VacancyRef | null
+  last_message_at: string
+  /** Changes proposed here and still waiting for a decision. */
+  pending: number
 }
 
 /** What the chat prepared and the user has to confirm.
@@ -365,6 +394,8 @@ export interface ChatMessage {
  * nobody touches changes nothing. */
 export interface ChatProposal {
   id: string
+  /** The thread it was proposed in; null if that thread is gone. */
+  thread_id?: string | null
   kind: 'profile_patch' | 'vacancy_status' | 'vacancy_saved'
   status: 'pending' | 'accepted' | 'rejected'
   arguments: {
@@ -384,6 +415,7 @@ export interface ChatProposal {
 }
 
 export interface ChatResponse {
+  thread: ChatThread
   reply: string
   messages: ChatMessage[]
   proposals: ChatProposal[]

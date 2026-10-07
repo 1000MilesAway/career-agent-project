@@ -1,34 +1,47 @@
 /** "Помощник" — the chat.
  *
- * One column: the conversation, the pending changes, the input. The changes
+ * Several conversations, listed on the left (a select on a phone): one
+ * endless thread mixed CV edits, three vacancies and a reply to an employer,
+ * and nobody could find anything in it. A vacancy has its own thread, which
+ * "Обсудить" opens.
+ *
+ * In a thread: the conversation, the pending changes, the input. The changes
  * sit under the last message rather than in a side panel, because they are
- * the answer to what was just said and the user should not have to look
- * elsewhere to find them.
+ * the answer to what was just said.
  *
  * Nothing here writes to the profile. Every change goes through a card with
  * two buttons, and closing the page decides nothing — which is the product
  * rule this screen exists to make visible.
+ *
+ * `/chat` opens the latest thread; `/chat/new` is a thread not made yet — it
+ * is created by its first message, so pressing "Новый разговор" and leaving
+ * leaves no empty thread behind.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
 import {
-  CHAT_KEY,
   PROPOSALS_KEY,
   STATE_KEY,
+  THREADS_KEY,
   acceptProposal,
-  clearChat,
+  createThread,
+  deleteThread,
   rejectProposal,
+  renameThread,
   sendMessage,
+  threadKey,
   useAppState,
   useChat,
   useProposals,
+  useThreads,
 } from '../api/hooks'
-import type { FoundVacancy } from '../api/types'
+import type { ChatThread, VacancyCard, VacancyRef } from '../api/types'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ProposalCard } from '../components/ProposalCard'
 import { useToast } from '../components/toast'
-import { CloseIcon } from '../components/icons'
+import { ExternalIcon } from '../components/icons'
 import { ErrorNote, PageHead, Skeleton } from '../components/ui'
 import '../components/chat.css'
 
@@ -53,9 +66,138 @@ const EXAMPLES = [
   'Мне ответили из Ромашки, вот их сообщение: «…». Что ответить?',
 ]
 
+/** A vacancy's thread starts from what people come to it for. */
+const VACANCY_EXAMPLES = [
+  'Чего мне не хватает для этой вакансии?',
+  'Мне ответили, вот их сообщение: «…». Что ответить?',
+  'К чему готовиться на интервью?',
+]
+
+const NEW = 'new'
+
 export function ChatPage() {
+  const { threadId } = useParams()
+  const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const vacancyParam = params.get('vacancy')
+  const { data: threads, error: threadsError } = useThreads()
+
+  // "Обсудить" links here with `?vacancy=<id>`: the vacancy's thread is found
+  // or made, and the URL replaced with it. An action on arrival, not a read —
+  // the thread may not exist until this call makes it.
+  const toast = useToast()
+  const { mutate } = useSWRConfig()
+  const opening = useRef<string | null>(null)
+  useEffect(() => {
+    if (!vacancyParam || opening.current === vacancyParam) return
+    opening.current = vacancyParam
+    createThread(vacancyParam).then(
+      // The list first: a thread missing from it reads as deleted, and the
+      // page would send the user to the latest one instead.
+      async (thread) => {
+        await mutate(THREADS_KEY)
+        navigate(`/chat/${thread.id}`, { replace: true })
+      },
+      (e) => {
+        toast.error(e)
+        navigate('/chat', { replace: true })
+      },
+    )
+  }, [vacancyParam, navigate, toast, mutate])
+
+  if (vacancyParam) return <Waiting />
+
+  if (!threadId) {
+    if (threadsError)
+      return (
+        <div className="page">
+          <ErrorNote error={threadsError} />
+        </div>
+      )
+    if (!threads) return <Waiting />
+    return <Navigate to={`/chat/${threads[0]?.id ?? NEW}`} replace />
+  }
+
+  const current = threads?.find((t) => t.id === threadId)
+  // A stale link to a deleted thread: back to the list rather than an error.
+  if (threads && threadId !== NEW && !current) return <Navigate to="/chat" replace />
+
+  return (
+    <div className="page chatpage">
+      <ThreadList threads={threads ?? []} currentId={threadId} />
+      {/* Keyed by thread: the draft, the attached question and the scroll
+          belong to one conversation and must not leak into the next. */}
+      <Conversation key={threadId} thread={current ?? null} />
+    </div>
+  )
+}
+
+function Waiting() {
+  return (
+    <div className="page">
+      <Skeleton rows={3} />
+    </div>
+  )
+}
+
+function ThreadList({ threads, currentId }: { threads: ChatThread[]; currentId: string }) {
+  const navigate = useNavigate()
+  return (
+    <nav className="threads" aria-label="Разговоры">
+      <button
+        className="btn btn--small threads__new"
+        onClick={() => navigate(`/chat/${NEW}`)}
+        disabled={currentId === NEW}
+      >
+        Новый разговор
+      </button>
+
+      <ul className="threads__list">
+        {threads.map((t) => (
+          <li key={t.id}>
+            <button
+              className={t.id === currentId ? 'threads__item is-current' : 'threads__item'}
+              aria-current={t.id === currentId ? 'page' : undefined}
+              onClick={() => navigate(`/chat/${t.id}`)}
+              title={titleOf(t)}
+            >
+              <span className="threads__title">{titleOf(t)}</span>
+              {t.pending ? (
+                <span className="threads__badge" title="Правки ждут решения">
+                  {t.pending}
+                </span>
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {/* A phone has no room for a column; the same list as a select. */}
+      <select
+        className="threads__select"
+        aria-label="Разговор"
+        value={currentId}
+        onChange={(e) => navigate(`/chat/${e.target.value}`)}
+      >
+        <option value={NEW}>Новый разговор</option>
+        {threads.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.pending ? `${titleOf(t)} · ${t.pending}` : titleOf(t)}
+          </option>
+        ))}
+      </select>
+    </nav>
+  )
+}
+
+function titleOf(thread: ChatThread) {
+  return thread.title || 'Без названия'
+}
+
+function Conversation({ thread }: { thread: ChatThread | null }) {
+  const navigate = useNavigate()
   const { data: state } = useAppState()
-  const { data: messages, isLoading, error } = useChat()
+  const { data: messages, isLoading, error } = useChat(thread?.id ?? null)
   const { data: proposals } = useProposals()
   const { mutate } = useSWRConfig()
   const toast = useToast()
@@ -65,28 +207,13 @@ export function ChatPage() {
   // with it. Plain state, not a transition: a transition defers its updates,
   // so the box stayed full and nothing moved until the answer arrived — the
   // "Думаю…" line was there but the screen looked frozen.
-  const [sending, setSending] = useState<{ text: string; vacancy?: FoundVacancy } | null>(
+  const [sending, setSending] = useState<{ text: string; vacancy?: VacancyRef } | null>(
     null,
   )
   const isSending = sending !== null
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
-
-  // "Обсудить" in Избранном opens the chat with `?vacancy=<id>`; the next
-  // message goes with it attached. A stale id (the row was removed) attaches
-  // nothing rather than a vacancy the user cannot see.
-  const [params, setParams] = useSearchParams()
-  const attachedId = params.get('vacancy')
-  const attached = attachedId ? state?.found?.find((v) => v.id === attachedId) : undefined
-
-  function detach() {
-    setParams(
-      (prev) => {
-        prev.delete('vacancy')
-        return prev
-      },
-      { replace: true },
-    )
-  }
 
   // Follow the conversation as it grows, the way a chat is expected to behave.
   // Guarded: scrollIntoView is missing in jsdom and in older mobile browsers,
@@ -95,21 +222,22 @@ export function ChatPage() {
     endRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
   }, [messages?.length, proposals?.length, sending])
 
-  /** Sends the box, or `answer` when a choice button was pressed. */
-  async function send(answer?: string) {
+  /** Sends the box, or `answer` when a choice was pressed; `vacancy` goes
+   *  with it when a vacancy card was picked. */
+  async function send(answer?: string, vacancy?: VacancyRef) {
     const value = (answer ?? text).trim()
     if (!value || isSending) return
     // Cleared before the request, not after: leaving the text in the box
     // while the answer is on its way invites a second send of the same
     // message, and each one costs money.
     setText('')
-    setSending({ text: value, vacancy: attached })
+    setSending({ text: value, vacancy })
     try {
-      await sendMessage(value, attached?.id)
-      // The vacancy is in the history now; the next message is free to be
-      // about something else.
-      if (attached) detach()
-      await Promise.all([mutate(CHAT_KEY), mutate(PROPOSALS_KEY)])
+      // A draft becomes a thread with its first message.
+      const id = thread?.id ?? (await createThread()).id
+      await sendMessage(id, value, vacancy?.id)
+      await Promise.all([mutate(threadKey(id)), mutate(THREADS_KEY), mutate(PROPOSALS_KEY)])
+      if (!thread) navigate(`/chat/${id}`, { replace: true })
     } catch (e) {
       setText(value)
       toast.error(e)
@@ -123,7 +251,7 @@ export function ChatPage() {
       await acceptProposal(id)
       // The profile changed, so the resume page and the scan filters have to
       // be re-read as well.
-      await Promise.all([mutate(PROPOSALS_KEY), mutate(STATE_KEY)])
+      await Promise.all([mutate(PROPOSALS_KEY), mutate(THREADS_KEY), mutate(STATE_KEY)])
       toast.info('Добавлено в резюме')
     } catch (e) {
       toast.error(e)
@@ -133,42 +261,92 @@ export function ChatPage() {
   async function reject(id: string) {
     try {
       await rejectProposal(id)
-      await mutate(PROPOSALS_KEY)
+      await Promise.all([mutate(PROPOSALS_KEY), mutate(THREADS_KEY)])
     } catch (e) {
       toast.error(e)
     }
   }
 
-  async function clear() {
+  async function rename() {
+    const title = renaming?.trim()
+    setRenaming(null)
+    if (!thread || !title || title === thread.title) return
     try {
-      const out = await clearChat()
-      await Promise.all([mutate(CHAT_KEY), mutate(PROPOSALS_KEY)])
+      await renameThread(thread.id, title)
+      await mutate(THREADS_KEY)
+    } catch (e) {
+      toast.error(e)
+    }
+  }
+
+  async function remove() {
+    setConfirmDelete(false)
+    if (!thread) return
+    try {
+      const out = await deleteThread(thread.id)
+      await Promise.all([mutate(THREADS_KEY), mutate(PROPOSALS_KEY)])
+      navigate('/chat', { replace: true })
       toast.info(
         out.proposals
-          ? `Разговор очищен, ${out.proposals} неподтверждённых правок отброшено`
-          : 'Разговор очищен',
+          ? `Разговор удалён, ${out.proposals} неподтверждённых правок отброшено`
+          : 'Разговор удалён',
       )
     } catch (e) {
       toast.error(e)
     }
   }
 
-  const pending = proposals ?? []
+  // Only this thread's: a change proposed in another conversation is
+  // answered there, where its reason can be read.
+  const pending = (proposals ?? []).filter((p) => thread && p.thread_id === thread.id)
   const hasMessages = (messages?.length ?? 0) > 0
   // Buttons only under the question still open: an older one was answered,
   // and pressing its button now would answer a question nobody is asking.
   const last = messages?.at(-1)
-  const openChoices = last?.role === 'assistant' ? (last.choices ?? []) : []
+  const open = last?.role === 'assistant' && !isSending
+  const openChoices = open ? (last.choices ?? []) : []
+  const examples = thread?.vacancy ? VACANCY_EXAMPLES : EXAMPLES
 
   return (
-    <div className="page chatpage">
+    <div className="chatmain">
       <PageHead
-        title="Помощник"
+        title={
+          renaming !== null ? (
+            <input
+              className="chat__rename"
+              aria-label="Название разговора"
+              autoFocus
+              maxLength={120}
+              value={renaming}
+              onChange={(e) => setRenaming(e.target.value)}
+              onBlur={rename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') rename()
+                if (e.key === 'Escape') setRenaming(null)
+              }}
+            />
+          ) : thread ? (
+            titleOf(thread)
+          ) : (
+            'Помощник'
+          )
+        }
         actions={
-          hasMessages ? (
-            <button className="btn btn--quiet btn--small" onClick={clear}>
-              Очистить разговор
-            </button>
+          thread ? (
+            <>
+              <button
+                className="btn btn--quiet btn--small"
+                onClick={() => setRenaming(thread.title)}
+              >
+                Переименовать
+              </button>
+              <button
+                className="btn btn--quiet btn--small"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Удалить
+              </button>
+            </>
           ) : undefined
         }
       />
@@ -185,11 +363,11 @@ export function ChatPage() {
       <div className="chat">
         {isLoading ? <Skeleton rows={3} /> : null}
 
-        {!isLoading && !hasMessages && !attached && !isSending ? (
+        {!isLoading && !hasMessages && !isSending ? (
           <div className="chat__empty">
             <p className="eyebrow">Можно начать, например, так</p>
             <div className="stack">
-              {EXAMPLES.map((example) => (
+              {examples.map((example) => (
                 <button
                   key={example}
                   className="chat__example"
@@ -210,32 +388,41 @@ export function ChatPage() {
               {message.text}
             </p>
           ) : (
-            <div
-              key={`${message.created_at}-${index}`}
-              className={message.role === 'user' ? 'bubble bubble--me' : 'bubble'}
-            >
-              {message.vacancy ? (
-                <p className="bubble__vacancy">
-                  {vacancyLabel(message.vacancy.title, message.vacancy.company)}
+            <div key={`${message.created_at}-${index}`} className="chat__turn">
+              <div className={message.role === 'user' ? 'bubble bubble--me' : 'bubble'}>
+                {/* The thread's own vacancy goes with every message; naming
+                    it on each bubble would only repeat the title. */}
+                {message.vacancy && message.vacancy.id !== thread?.vacancy?.id ? (
+                  <p className="bubble__vacancy">
+                    {vacancyLabel(message.vacancy.title, message.vacancy.company)}
+                  </p>
+                ) : null}
+                {message.tools.length ? (
+                  <p className="bubble__tools">
+                    {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
+                  </p>
+                ) : null}
+                <p className="bubble__text">
+                  {message.role === 'assistant' ? (
+                    <Inline text={message.text} />
+                  ) : (
+                    message.text
+                  )}
                 </p>
+              </div>
+              {message.vacancies?.length ? (
+                <VacancyChoice
+                  cards={message.vacancies}
+                  onPick={
+                    open && message === last ? (v) => send(`Разберём: ${v.title}`, v) : null
+                  }
+                />
               ) : null}
-              {message.tools.length ? (
-                <p className="bubble__tools">
-                  {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
-                </p>
-              ) : null}
-              <p className="bubble__text">
-                {message.role === 'assistant' ? (
-                  <Inline text={message.text} />
-                ) : (
-                  message.text
-                )}
-              </p>
             </div>
           ),
         )}
 
-        {openChoices.length && !isSending ? (
+        {openChoices.length ? (
           <div className="chat__choices">
             {openChoices.map((choice) => (
               <button key={choice} className="chat__example" onClick={() => send(choice)}>
@@ -289,28 +476,14 @@ export function ChatPage() {
       </div>
 
       <div className="chat__dock">
-        {attached ? (
-          <div className="chat__attached">
-            <span className="chat__attached-label">
-              {vacancyLabel(attached.title, attached.company)}
-            </span>
-            <button
-              className="btn btn--quiet btn--small btn--icon"
-              onClick={detach}
-              disabled={isSending}
-              title="Не прикреплять вакансию"
-              aria-label="Не прикреплять вакансию"
-            >
-              <CloseIcon />
-            </button>
-          </div>
-        ) : null}
         <div className="chat__compose">
           <textarea
             className="chat__input"
             rows={2}
             value={text}
-            placeholder={attached ? 'Что обсудить по этой вакансии?' : 'Напишите сообщение'}
+            placeholder={
+              thread?.vacancy ? 'Что обсудить по этой вакансии?' : 'Напишите сообщение'
+            }
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               // Enter sends, Shift+Enter breaks the line: the box is a chat
@@ -330,7 +503,70 @@ export function ChatPage() {
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Удалить разговор?"
+        confirmLabel="Удалить"
+        onConfirm={remove}
+        onCancel={() => setConfirmDelete(false)}
+      >
+        Переписка пропадёт, неподтверждённые правки из неё будут отброшены. Принятые правки
+        останутся в резюме.
+      </ConfirmDialog>
     </div>
+  )
+}
+
+/** Vacancies the assistant offered to pick, as the database has them.
+ *  `onPick` is null under a question already answered: the cards stay as a
+ *  record, without a button that would answer it again. */
+function VacancyChoice({
+  cards,
+  onPick,
+}: {
+  cards: VacancyCard[]
+  onPick: ((card: VacancyCard) => void) | null
+}) {
+  return (
+    <ul className="vchoice">
+      {cards.map((card) => (
+        <li key={card.id} className="vchoice__card">
+          <div className="vchoice__head">
+            <span className="vchoice__title">{vacancyLabel(card.title, card.company)}</span>
+            {card.score != null ? (
+              <span className="vchoice__score">{card.score.toFixed(1)}</span>
+            ) : null}
+          </div>
+          <p className="vchoice__meta">
+            {[
+              card.salary_text,
+              card.remote ? 'удалённо' : card.location,
+              card.saved ? 'в избранном' : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || ' '}
+          </p>
+          <div className="vchoice__actions">
+            {onPick ? (
+              <button className="btn btn--small" onClick={() => onPick(card)}>
+                Разобрать эту
+              </button>
+            ) : null}
+            {card.url ? (
+              <a
+                className="btn btn--quiet btn--small"
+                href={card.url}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                Открыть <ExternalIcon />
+              </a>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
   )
 }
 

@@ -606,6 +606,46 @@ class LlmCall(Base):
     )
 
 
+class ChatThread(Base, TimestampMixin):
+    """One conversation of a user's several.
+
+    A single endless chat mixed CV edits, three vacancies and a reply to an
+    employer, and replayed all of it to the model on every turn. A thread keeps
+    one subject together; a thread bound to a vacancy is what "Обсудить" in
+    Избранном opens, and opening it again returns to the same thread.
+
+    The title is made without the model (the vacancy, or the first words of
+    the first message): naming a thread is not worth a paid call.
+    """
+
+    __tablename__ = "chat_threads"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    vacancy_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("vacancies.id", ondelete="SET NULL")
+    )
+    # What the list is sorted by: the thread last written in comes first.
+    last_message_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_chat_threads_user_last", "user_id", "last_message_at"),
+        # One thread per vacancy, so "Обсудить" never forks the conversation.
+        Index(
+            "uq_chat_threads_user_vacancy",
+            "user_id",
+            "vacancy_id",
+            unique=True,
+            postgresql_where=vacancy_id.isnot(None),
+        ),
+    )
+
+
 class ChatMessage(Base, TimestampMixin):
     """One turn of a conversation, stored verbatim.
 
@@ -616,7 +656,7 @@ class ChatMessage(Base, TimestampMixin):
     unchanged — that is why `parse_tool_calls` has to accept a plain dict as
     well as the SDK's object.
 
-    History is per user, not per resume: the conversation survives a new CV.
+    History is per thread, not per resume: the conversation survives a new CV.
     """
 
     __tablename__ = "chat_messages"
@@ -624,6 +664,9 @@ class ChatMessage(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = _uuid_pk()
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_threads.id", ondelete="CASCADE"), nullable=False
     )
 
     # user | assistant | tool — the roles core.chat works with.
@@ -643,8 +686,9 @@ class ChatMessage(Base, TimestampMixin):
     cost_rub: Mapped[float] = mapped_column(Numeric(10, 4), default=0, nullable=False)
 
     __table_args__ = (
-        # The only query: this user's conversation, in order.
         Index("ix_chat_messages_user_seq", "user_id", "seq"),
+        # The history query: one thread, in order.
+        Index("ix_chat_messages_thread_seq", "thread_id", "seq"),
     )
 
 

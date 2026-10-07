@@ -5,28 +5,36 @@
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatMessage, ChatProposal } from '../api/types'
+import type { ChatMessage, ChatProposal, ChatThread } from '../api/types'
 
 const mocks = vi.hoisted(() => ({
   messages: [] as ChatMessage[],
   proposals: [] as ChatProposal[],
   hasResume: true,
-  found: [{ id: 'v1', title: 'Python разработчик', company: 'Ромашка' }],
+  threads: [] as ChatThread[],
 }))
 
 vi.mock('../api/hooks', () => ({
-  CHAT_KEY: '/api/chat',
+  THREADS_KEY: '/api/chat/threads',
   PROPOSALS_KEY: '/api/chat/proposals',
   STATE_KEY: '/api/state',
-  useChat: () => ({ data: mocks.messages, isLoading: false, error: null }),
+  threadKey: (id: string) => `/api/chat/threads/${id}`,
+  useThreads: () => ({ data: mocks.threads }),
+  useChat: (id: string | null) => ({
+    data: id ? mocks.messages : undefined,
+    isLoading: false,
+    error: null,
+  }),
   useProposals: () => ({ data: mocks.proposals }),
-  useAppState: () => ({ data: { has_resume: mocks.hasResume, found: mocks.found } }),
+  useAppState: () => ({ data: { has_resume: mocks.hasResume } }),
   sendMessage: vi.fn(),
+  createThread: vi.fn(),
+  renameThread: vi.fn(),
+  deleteThread: vi.fn(),
   acceptProposal: vi.fn(),
   rejectProposal: vi.fn(),
-  clearChat: vi.fn(),
 }))
 
 vi.mock('swr', () => ({ useSWRConfig: () => ({ mutate: vi.fn() }) }))
@@ -37,11 +45,37 @@ vi.mock('../components/toast', () => ({
 
 const { ChatPage } = await import('./ChatPage')
 
-/** The page reads `?vacancy=` off the URL, so it needs a router. */
-function renderPage(path = '/chat') {
+const THREAD: ChatThread = {
+  id: 't1',
+  title: 'Про Kubernetes',
+  vacancy: null,
+  last_message_at: '2026-10-07T12:00:00Z',
+  pending: 0,
+}
+
+const VACANCY_THREAD: ChatThread = {
+  id: 't2',
+  title: 'Python разработчик — Ромашка',
+  vacancy: { id: 'v1', title: 'Python разработчик', company: 'Ромашка' },
+  last_message_at: '2026-10-07T11:00:00Z',
+  pending: 1,
+}
+
+function Where() {
+  const location = useLocation()
+  return <span data-testid="where">{location.pathname}</span>
+}
+
+/** The page reads the thread off the path, so it needs a router. */
+function renderPage(path = '/chat/t1') {
+  if (!mocks.threads.length) mocks.threads = [THREAD, VACANCY_THREAD]
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <ChatPage />
+      <Routes>
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:threadId" element={<ChatPage />} />
+      </Routes>
+      <Where />
     </MemoryRouter>,
   )
 }
@@ -56,6 +90,7 @@ function message(
 
 const proposal: ChatProposal = {
   id: 'p1',
+  thread_id: 't1',
   kind: 'profile_patch',
   status: 'pending',
   arguments: { op: 'add_skill', value: 'Kubernetes' },
@@ -136,7 +171,7 @@ describe('ChatPage', () => {
     expect(screen.getByText(/напишите свой ответ/)).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Основной способ писать код' }))
-    expect(sendMessage).toHaveBeenCalledWith('Основной способ писать код', undefined)
+    expect(sendMessage).toHaveBeenCalledWith('t1', 'Основной способ писать код', undefined)
     // Hidden while the answer is on its way: a second press is a second paid reply.
     expect(screen.queryByRole('button', { name: 'Помощник на части задач' })).toBeNull()
   })
@@ -184,42 +219,11 @@ describe('ChatPage', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
-  it('«Обсудить» из избранного прикрепляет вакансию к сообщению', async () => {
-    const { sendMessage } = await import('../api/hooks')
-    vi.mocked(sendMessage).mockClear()
-    mocks.messages = []
-    mocks.proposals = []
-    renderPage('/chat?vacancy=v1')
-
-    expect(screen.getByText('Python разработчик — Ромашка')).toBeTruthy()
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'что ответить?' } })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
-    })
-    expect(sendMessage).toHaveBeenCalledWith('что ответить?', 'v1')
-  })
-
-  it('прикрепление можно снять, и сообщение уйдёт без вакансии', async () => {
-    const { sendMessage } = await import('../api/hooks')
-    vi.mocked(sendMessage).mockClear()
-    mocks.messages = []
-    mocks.proposals = []
-    renderPage('/chat?vacancy=v1')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Не прикреплять вакансию' }))
-    expect(screen.queryByText('Python разработчик — Ромашка')).toBeNull()
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'привет' } })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
-    })
-    expect(sendMessage).toHaveBeenCalledWith('привет', undefined)
-  })
-
-  it('у сообщения о вакансии видно, о какой', () => {
+  it('у сообщения о другой вакансии видно, о какой', () => {
     mocks.messages = [
       {
         ...message('user', 'что ответить?'),
-        vacancy: { id: 'v1', title: 'Python разработчик', company: 'Ромашка' },
+        vacancy: { id: 'v9', title: 'Python разработчик', company: 'Ромашка' },
       },
     ]
     mocks.proposals = []
@@ -228,5 +232,134 @@ describe('ChatPage', () => {
     expect(container.querySelector('.bubble__vacancy')?.textContent).toBe(
       'Python разработчик — Ромашка',
     )
+  })
+
+  it('в чате вакансии её название не повторяется на каждом сообщении', () => {
+    mocks.messages = [
+      {
+        ...message('user', 'что ответить?'),
+        vacancy: { id: 'v1', title: 'Python разработчик', company: 'Ромашка' },
+      },
+    ]
+    mocks.proposals = []
+    const { container } = renderPage('/chat/t2')
+
+    expect(container.querySelector('.bubble__vacancy')).toBeNull()
+    expect(screen.getByRole('heading').textContent).toBe('Python разработчик — Ромашка')
+  })
+
+  it('разговоры перечислены, ждущие правки отмечены числом', () => {
+    mocks.messages = []
+    mocks.proposals = []
+    renderPage()
+
+    const nav = screen.getByRole('navigation', { name: 'Разговоры' })
+    expect(nav.textContent).toMatch(/Про Kubernetes/)
+    expect(nav.querySelector('.threads__badge')?.textContent).toBe('1')
+  })
+
+  it('/chat открывает последний разговор', () => {
+    mocks.messages = []
+    renderPage('/chat')
+    expect(screen.getByTestId('where').textContent).toBe('/chat/t1')
+  })
+
+  it('правка из другого разговора здесь не показывается', () => {
+    mocks.messages = [message('assistant', 'Подтвердите.')]
+    mocks.proposals = [{ ...proposal, thread_id: 't2' }]
+    renderPage()
+
+    expect(screen.queryByText('Kubernetes')).toBeNull()
+  })
+
+  it('новый разговор создаётся первым сообщением', async () => {
+    const hooks = await import('../api/hooks')
+    vi.mocked(hooks.createThread).mockResolvedValueOnce({ ...THREAD, id: 't3' })
+    vi.mocked(hooks.sendMessage).mockClear()
+    vi.mocked(hooks.sendMessage).mockResolvedValueOnce({} as never)
+    mocks.messages = []
+    mocks.proposals = []
+    mocks.threads = [THREAD, VACANCY_THREAD, { ...THREAD, id: 't3' }]
+    renderPage('/chat/new')
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'привет' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
+    })
+    expect(hooks.createThread).toHaveBeenCalledWith()
+    expect(hooks.sendMessage).toHaveBeenCalledWith('t3', 'привет', undefined)
+    expect(screen.getByTestId('where').textContent).toBe('/chat/t3')
+    mocks.threads = []
+  })
+
+  it('«Обсудить» открывает чат этой вакансии', async () => {
+    const hooks = await import('../api/hooks')
+    vi.mocked(hooks.createThread).mockResolvedValueOnce(VACANCY_THREAD)
+    mocks.messages = []
+    await act(async () => {
+      renderPage('/chat?vacancy=v1')
+    })
+    expect(hooks.createThread).toHaveBeenCalledWith('v1')
+    expect(screen.getByTestId('where').textContent).toBe('/chat/t2')
+  })
+
+  it('вакансии на выбор — карточками, выбранная уходит вместе с сообщением', async () => {
+    const { sendMessage } = await import('../api/hooks')
+    vi.mocked(sendMessage).mockClear()
+    const card = {
+      id: 'v5',
+      title: 'Backend Python',
+      company: 'Сбер',
+      salary_text: '250–300 тыс.',
+      location: 'Москва',
+      remote: true,
+      score: 4.2,
+      saved: true,
+      url: 'https://example.com/v5',
+    }
+    mocks.messages = [
+      message('user', 'что есть?'),
+      { ...message('assistant', 'Какую разберём?'), vacancies: [card] },
+    ]
+    mocks.proposals = []
+    renderPage()
+
+    expect(screen.getByText('Backend Python — Сбер')).toBeTruthy()
+    expect(screen.getByText('250–300 тыс. · удалённо · в избранном')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Открыть/ }).getAttribute('href')).toBe(
+      'https://example.com/v5',
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Разобрать эту' }))
+    })
+    expect(sendMessage).toHaveBeenCalledWith('t1', 'Разберём: Backend Python', 'v5')
+  })
+
+  it('под отвеченным выбором карточки остаются, а кнопки выбора нет', () => {
+    mocks.messages = [
+      {
+        ...message('assistant', 'Какую?'),
+        vacancies: [
+          {
+            id: 'v5',
+            title: 'Backend Python',
+            company: null,
+            salary_text: null,
+            location: null,
+            remote: null,
+            score: null,
+            saved: false,
+            url: null,
+          },
+        ],
+      },
+      message('user', 'Разберём: Backend Python'),
+      message('assistant', 'Хорошо.'),
+    ]
+    mocks.proposals = []
+    renderPage()
+
+    expect(screen.getByText('Backend Python')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Разобрать эту' })).toBeNull()
   })
 })

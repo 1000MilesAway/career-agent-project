@@ -22,6 +22,7 @@ import type {
   ChatMessage,
   ChatProposal,
   ChatResponse,
+  ChatThread,
   EvaluationResponse,
   FoundVacancy,
   Job,
@@ -36,7 +37,11 @@ import type {
 } from './types'
 
 export const STATE_KEY = '/api/state'
-export const CHAT_KEY = '/api/chat'
+export const THREADS_KEY = '/api/chat/threads'
+export const threadKey = (id: string) => `/api/chat/threads/${id}`
+/** Every thread's key and the list's: a CV change notes itself in all of them. */
+export const isChatKey = (key: unknown) =>
+  typeof key === 'string' && key.startsWith(THREADS_KEY)
 export const PROPOSALS_KEY = '/api/chat/proposals'
 
 export function useAppState(enabled = true) {
@@ -310,9 +315,16 @@ export function useResumePreview(base: string | null, style: string, photo = fal
  * the message list with it.
  */
 
-export function useChat(enabled = true) {
-  return useSWR<ChatMessage[]>(enabled ? CHAT_KEY : null, fetcher, {
-    // Nothing writes to the conversation except this tab.
+export function useThreads(enabled = true) {
+  return useSWR<ChatThread[]>(enabled ? THREADS_KEY : null, fetcher, {
+    // Nothing writes to the conversations except this tab.
+    revalidateOnFocus: false,
+  })
+}
+
+/** One thread's messages; `null` for a thread not created yet. */
+export function useChat(threadId: string | null) {
+  return useSWR<ChatMessage[]>(threadId ? threadKey(threadId) : null, fetcher, {
     revalidateOnFocus: false,
   })
 }
@@ -323,8 +335,21 @@ export function useProposals(enabled = true) {
   })
 }
 
-export const sendMessage = (text: string, vacancyId?: string) =>
-  api<ChatResponse>('/api/chat', {
+/** A new thread, or — with a vacancy — that vacancy's thread, made on first use. */
+export const createThread = (vacancyId?: string) =>
+  api<ChatThread>(THREADS_KEY, {
+    method: 'POST',
+    json: vacancyId ? { vacancy_id: vacancyId } : {},
+  })
+
+export const renameThread = (id: string, title: string) =>
+  api<ChatThread>(threadKey(id), { method: 'PATCH', json: { title } })
+
+export const deleteThread = (id: string) =>
+  api<{ messages: number; proposals: number }>(threadKey(id), { method: 'DELETE' })
+
+export const sendMessage = (threadId: string, text: string, vacancyId?: string) =>
+  api<ChatResponse>(`${threadKey(threadId)}/messages`, {
     method: 'POST',
     json: vacancyId ? { text, vacancy_id: vacancyId } : { text },
   })
@@ -334,9 +359,6 @@ export const acceptProposal = (id: string) =>
 
 export const rejectProposal = (id: string) =>
   api<ChatProposal>(`/api/chat/proposals/${id}/reject`, { method: 'POST' })
-
-export const clearChat = () =>
-  api<{ messages: number; proposals: number }>('/api/chat/clear', { method: 'POST' })
 
 /** The owner's dashboard.
  *

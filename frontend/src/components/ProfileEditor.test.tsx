@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../api/hooks', () => ({
   STATE_KEY: '/api/state',
-  CHAT_KEY: '/api/chat',
+  isChatKey: 'isChatKey',
   editResumeProfile: mocks.editResumeProfile,
 }))
 vi.mock('swr', () => ({ useSWRConfig: () => ({ mutate: mocks.mutate }) }))
@@ -96,7 +96,7 @@ describe('ProfileEditor', () => {
     expect(sent.target_role).toBe('Backend-разработчик')
     expect(sent.experience?.map((j) => j.company)).toEqual(['Ромашка'])
     expect(mocks.mutate).toHaveBeenCalledWith('/api/state')
-    expect(mocks.mutate).toHaveBeenCalledWith('/api/chat')
+    expect(mocks.mutate).toHaveBeenCalledWith('isChatKey')
     expect(mocks.info).toHaveBeenCalledWith('Сохранено как версия 2')
   })
 

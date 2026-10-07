@@ -6,7 +6,7 @@
 
 import { useState, useTransition, type FormEvent } from 'react'
 import { useSWRConfig } from 'swr'
-import { CHAT_KEY, STATE_KEY, editResumeProfile } from '../api/hooks'
+import { isChatKey, STATE_KEY, editResumeProfile } from '../api/hooks'
 import type { ResumeProfile } from '../api/types'
 import {
   SENIORITY,
@@ -63,7 +63,7 @@ export function ProfileEditor({
     startSaving(async () => {
       try {
         const saved = await editResumeProfile(fromDraft(draft))
-        await Promise.all([mutate(STATE_KEY), mutate(CHAT_KEY)])
+        await Promise.all([mutate(STATE_KEY), mutate(isChatKey)])
         toast.info(`Сохранено как версия ${saved.revision}`)
         onClose()
       } catch (e) {

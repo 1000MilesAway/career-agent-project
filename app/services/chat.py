@@ -26,7 +26,7 @@ from sqlalchemy.orm import selectinload
 from core import chat as chat_core
 from core import tools
 
-from ..models import ChatMessage, Evaluation, Proposal, Resume, User, Vacancy
+from ..models import ChatMessage, ChatThread, Evaluation, Proposal, Resume, User, Vacancy
 from .spend import quota
 from .tracker import STATUSES
 
@@ -154,20 +154,46 @@ async def next_seq(session: AsyncSession, user_id: uuid.UUID) -> int:
 
 
 async def note_resume_changed(session: AsyncSession, user_id: uuid.UUID, text: str) -> None:
-    """Mark in the conversation that the CV under it changed.
+    """Mark in every conversation that the CV under it changed.
 
-    History is per user, not per resume, so after a new upload the chat still
-    held "added Claude Code" from the old CV and the model refused to add it
-    again. The note tells both the model and the user where the break is.
+    History is per thread, not per resume, so after a new upload a thread
+    still held "added Claude Code" from the old CV and the model refused to add
+    it again. The note tells both the model and the user where the break is —
+    in every thread, because each of them talks about the same CV. A user with
+    no thread yet has no conversation to correct.
     """
-    session.add(
-        ChatMessage(
-            user_id=user_id,
-            role=chat_core.EVENT,
-            payload={"role": chat_core.EVENT, "content": text},
-            seq=await next_seq(session, user_id),
+    threads = await session.execute(select(ChatThread.id).where(ChatThread.user_id == user_id))
+    seq = await next_seq(session, user_id)
+    for offset, thread_id in enumerate(threads.scalars()):
+        session.add(
+            ChatMessage(
+                user_id=user_id,
+                thread_id=thread_id,
+                role=chat_core.EVENT,
+                payload={"role": chat_core.EVENT, "content": text},
+                seq=seq + offset,
+            )
         )
-    )
+
+
+TITLE_CHARS = 60
+
+
+def thread_title(text: str, vacancy: Vacancy | None = None) -> str:
+    """A thread's name, made without the model.
+
+    A vacancy thread is named after the vacancy. Otherwise the first words of
+    the first message, cut at a word boundary: it is how a person finds "the
+    one where I asked about Kubernetes" again.
+    """
+    if vacancy is not None:
+        name = f"{vacancy.title} — {vacancy.company}" if vacancy.company else vacancy.title
+        return name[:120]
+    words = " ".join(text.split())
+    if len(words) <= TITLE_CHARS:
+        return words
+    cut = words[:TITLE_CHARS].rsplit(" ", 1)[0] or words[:TITLE_CHARS]
+    return f"{cut.rstrip(' ,.;:—-')}…"
 
 
 def enabled_tools(has_resume: bool) -> tuple[tools.Tool, ...]:

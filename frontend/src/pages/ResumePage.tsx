@@ -8,7 +8,7 @@
 import { useState, useTransition } from 'react'
 import { useSWRConfig } from 'swr'
 import {
-  CHAT_KEY,
+  isChatKey,
   STATE_KEY,
   acceptSearchProfile,
   profileExportBase,
@@ -339,7 +339,7 @@ function VersionHistory({ versions }: { versions: ResumeVersion[] }) {
     startRestoring(async () => {
       try {
         await restoreResume(version.id)
-        await Promise.all([mutate(STATE_KEY), mutate(CHAT_KEY)])
+        await Promise.all([mutate(STATE_KEY), mutate(isChatKey)])
         toast.info(`Вернули версию ${version.revision}`)
       } catch (e) {
         toast.error(e)

@@ -37,7 +37,7 @@ export function PageHead({
   lede,
   actions,
 }: {
-  title: string
+  title: ReactNode
   lede?: ReactNode
   actions?: ReactNode
 }) {

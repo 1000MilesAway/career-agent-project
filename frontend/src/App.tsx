@@ -190,6 +190,7 @@ function Cabinet() {
             <Route path="/added" element={<AddedPage />} />
             <Route path="/saved" element={<SavedPage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:threadId" element={<ChatPage />} />
             <Route
               path="/admin/users"
               element={<AdminOnly state={data} page={<AdminUsersPage />} />}
