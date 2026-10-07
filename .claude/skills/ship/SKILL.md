@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Commit and deliver a change in career-agent — check, commit to main, push, confirm the deploy by revision. Use when work is done and should reach production, or the user says "push", "выкати", "задеплой".
+description: Commit and deliver a change in career-agent — check, commit to main, push, confirm the deploy by revision. Use at the end of every finished task without being asked (project rule: work goes straight to main and to prod), and when the user says "push", "выкати", "задеплой".
 ---
 
 # Ship to production
