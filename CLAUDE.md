@@ -7,7 +7,8 @@ Keep this file under ~200 lines: it loads into every session. For each line ask
 Where things go instead:
   - server, CI, deploy, auth, mail, quotas      → docs/ops.md
   - rules for frontend/ only                    → .claude/rules/frontend.md (path-scoped)
-  - why a decision was made                     → docs/decisions.md
+  - why a decision was made                     → docs/decisions.md (append) +
+                                                  one line in docs/decisions-index.md
   - reply format                                → ~/.claude/output-styles/concise-ru.md
 No volatile numbers here (test counts etc.) — they go stale silently.
 -->
@@ -21,8 +22,11 @@ No volatile numbers here (test counts etc.) — they go stale silently.
 Когда решение спорное, сверяться с её кодом и `node scan.mjs --dry-run`.
 Расходиться с CO можно, но осознанно и с записью в `docs/decisions.md`.
 
-**Перед работой читай `docs/decisions.md`** — что решено, почему и какие развилки
-уже проверены и закрыты. Переоткрывать их без запроса пользователя нельзя.
+**Перед работой читай `docs/decisions-index.md`** — что решено и какие развилки
+уже проверены и закрыты, по строке на решение. Переоткрывать их без запроса
+пользователя нельзя. Журнал `docs/decisions.md` (3000+ строк) целиком не читать:
+нужную запись найти грепом по заголовку из индекса. Новое решение — запись в конец
+журнала и строка в индекс (`tests/test_decisions_index.py` проверяет).
 
 ## Инвариант пайплайна
 
@@ -130,9 +134,10 @@ uv run python -m app.worker          # воркер очереди, отдель
 ## Git и выкатка
 
 **Работаем прямо в `main`**: без feature-веток и PR, если об этом не попросили.
-Проект ведёт один человек, ревью делать некому. Worktree для изоляции
-параллельной сессии допустим, но коммит всё равно уходит в `main`, а worktree
-сносится в той же сессии.
+Проект ведёт один человек, ревью делать некому. Worktree заводить только по
+просьбе или для изоляции параллельной сессии; коммит всё равно уходит в `main`,
+а worktree и его ветка сносятся в той же сессии — брошенные worktree уже
+блокировали `git checkout main`.
 
 1. **До работы — `git fetch origin` и сверка с `origin/main`.** Рабочее дерево
    может отставать на десятки коммитов; снапшот git-статуса этого не покажет.
