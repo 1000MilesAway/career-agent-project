@@ -57,6 +57,9 @@ known-first-party = ["app", "core", "tests"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Короткие трейсбеки: на падении агент читает вывод целиком, и long-трейсбек
+# стоит контекста, не добавляя информации к short.
+addopts = ["--tb=short", "--no-header"]
 # app/ и core/ не устанавливаются в окружение (package = false), поэтому корень
 # репозитория добавляем в sys.path явно — иначе импорты не находятся.
 pythonpath = ["."]

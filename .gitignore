@@ -28,3 +28,4 @@ frontend/*.tsbuildinfo
 
 # Скриншоты и логи Playwright MCP — артефакты проверки в браузере, не исходники.
 .playwright-mcp/
+screens-errors/
