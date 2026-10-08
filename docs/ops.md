@@ -26,10 +26,12 @@ ssh max@82.25.161.103 'docker ps --format "{{.Names}}\t{{.Status}}"'
 контейнеры `career-agent-{api,worker,web,edge,db}-1`.
 
 **Домен — `https://gethire.ru`** (с 2026-10-08; до того `career-helper.site`,
-его заблокировали). Регистратор и DNS — Reg.ru: A-записи `@` и `www` →
-`82.25.161.103` напрямую. HTTPS держит контейнер `edge` (Caddy, `Caddyfile` в
-корне), сертификат Let's Encrypt продлевается сам. Если DNS переедет в
-Cloudflare — только «DNS only», без прокси.
+его заблокировали). Регистратор — Reg.ru, DNS — Cloudflare: A-записи `@` и
+`www` → `82.25.161.103`, только «DNS only», без прокси. Записи правятся через
+API токеном из `~/.cf-token` на машине разработки (права — DNS зоны
+`gethire.ru`). HTTPS держит контейнер `edge` (Caddy, `caddy/Caddyfile`),
+сертификат Let's Encrypt продлевается сам; правку Caddyfile Caddy подхватывает
+сам (`--watch`), пересоздавать контейнер не нужно.
 
 **Порты.** Кабинет — 80/443 через `edge`: `http://82.25.161.103/` отдаёт SPA,
 а `/api/` nginx проксирует на контейнер api, чтобы браузер оставался на одном

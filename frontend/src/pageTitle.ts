@@ -1,8 +1,8 @@
-/** Tab titles: «Поиск вакансий | Career Helper» and so on, one per route. */
+/** Tab titles: «Поиск вакансий | GetHire» and so on, one per route. */
 
 import { LEGAL_TITLES } from './pages/LegalPage'
 
-const SITE_NAME = 'Career Helper'
+const SITE_NAME = 'GetHire'
 
 const PAGE_TITLES: Record<string, string> = {
   '/search': 'Поиск вакансий',

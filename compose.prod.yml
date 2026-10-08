@@ -70,16 +70,21 @@ services:
       - api
 
   edge:
-    # TLS terminator for the domain; see Caddyfile for why Caddy and why the
-    # DNS record must not go through Cloudflare's proxy.
+    # TLS terminator for the domain; see caddy/Caddyfile for why Caddy and why
+    # the DNS record must not go through Cloudflare's proxy.
     image: caddy:2-alpine
     restart: unless-stopped
+    # The directory is mounted, not the file, and Caddy watches it: the deploy
+    # replaces the file (new inode), which a single-file bind mount never sees,
+    # and `up -d` does not recreate a container whose compose config is
+    # unchanged — the domain move 2026-10-08 ran on the old Caddyfile that way.
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
