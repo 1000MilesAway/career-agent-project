@@ -18,9 +18,18 @@ if grep -qE 'root@82\.25\.161\.103' <<<"$cmd"; then
 fi
 
 
+# The target is a prod URL, or localhost inside an ssh session to prod. A bare host
+# mention is not enough: `ssh max@82.25.161.103 '... curl api.telegram.org ... cut -d='`
+# used to trip it.
+prod_url='https?://([a-z0-9-]+\.)*(gethire\.ru|82\.25\.161\.103)([:/"'"'"'[:space:]]|$)'
+local_url='(https?://)?(localhost|127\.0\.0\.1)(:[0-9]+)?([/"'"'"'[:space:]]|$)'
+# -d needs a separator curl accepts (space, quote, @); `cut -d=` and the like are not bodies.
+write_flag='(-X|--request)[[:space:]]*(POST|PUT|PATCH|DELETE)|(^|[[:space:]])(-d[[:space:]"'"'"'@]|-F[[:space:]"'"'"'@]|--data[a-z-]*[[:space:]=]|--json[[:space:]=]|--form[[:space:]=])'
+
 if grep -qE '(curl|wget|http[[:space:]])' <<<"$cmd" \
-  && grep -qE '82\.25\.161\.103|gethire\.ru' <<<"$cmd" \
-  && grep -qiE -- '(-X|--request)[[:space:]]*(POST|PUT|PATCH|DELETE)|(^|[[:space:]])(-d|--data[a-z-]*|--json|-F|--form)([[:space:]=]|$)' <<<"$cmd"; then
+  && { grep -qiE "$prod_url" <<<"$cmd" \
+    || { grep -qE 'ssh[[:space:]].*82\.25\.161\.103' <<<"$cmd" && grep -qiE "$local_url" <<<"$cmd"; }; } \
+  && grep -qiE -- "$write_flag" <<<"$cmd"; then
   decide ask "Write request to the prod API: scans, evaluations, triage and chat spend real money. Confirm with the user first (CLAUDE.md, «Платные ручки»)."
 fi
 
