@@ -3535,9 +3535,8 @@ RDAP Verisign около 250 вариантов), а в `.ru` свободны, 
 отверг.
 
 **Бренд следует домену:** в интерфейсе, письмах, og-карточке и юридических
-страницах `career-helper` → `gethire`. Бот Telegram (`@career_helper_robot`)
-не переименовывается: username бота меняется только новым ботом, а с ним —
-Client ID для входа через Telegram.
+страницах `career-helper` → `gethire`. Бот Telegram тоже новый — `@gethire_bot`
+(см. дополнение ниже).
 
 **Что делается вне репозитория:** A-записи `@`/`www` у Reg.ru, домен
 `mail.gethire.ru` в Resend и `MAIL_FROM` в боевом `.env`, Trusted origins и
@@ -3561,4 +3560,19 @@ Redirect URIs в BotFather, подтверждение в поисковиках
 Тогда же DNS перенесён в Cloudflare (A-записи `@`/`www`, «DNS only»), а не
 оставлен у Reg.ru, как в записи выше: все домены в одном месте и правятся
 через API.
+
+## 2026-10-08 (дополнение) — Новый бот @gethire_bot для входа через Telegram
+
+Вход через Telegram переведён на нового бота `@gethire_bot` (id 8736597667)
+вместо `@career_helper_robot`: username бота не меняется, а имя старого не
+совпадало с брендом. Client ID берётся из `TELEGRAM_BOT_TOKEN`, в коде менять
+нечего; в BotFather у нового бота Trusted origins `https://gethire.ru`,
+Redirect URIs `https://gethire.ru/`.
+
+**Учётки не теряются:** пользователь связывается по `claims["id"]` из
+`id_token` — это id самого пользователя Telegram, он одинаков для любого бота.
+
+Проверенная развилка: в `TELEGRAM_BOT_TOKEN` нужен API Token бота
+(`цифры:строка`), а не Client Secret из раздела Login Widget (строка без
+двоеточия). С секретом вход ломается целиком — Client ID не извлекается.
 

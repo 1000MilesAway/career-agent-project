@@ -152,6 +152,7 @@ grep -n "Общий пул вакансий" docs/decisions.md   # → номе�
 - HTTPS через Caddy (`edge`), Cloudflare «DNS only», том `caddy_data` не терять → 09-29 Домен career-helper.site, HTTPS через Caddy в стеке
 - Домен `gethire.ru` (DNS в Cloudflare, «DNS only»), бренд gethire; почта — с поддомена `mail.gethire.ru` в Resend → 10-08 Новый домен gethire.ru вместо заблокированного career-helper.site
 - `edge` монтирует каталог `caddy/` и запущен с `--watch`: файловый bind-mount не видит новый Caddyfile после деплоя → 10-08 (дополнение) — Caddy не видел новый Caddyfile после деплоя
+- Бот входа — `@gethire_bot`; в `TELEGRAM_BOT_TOKEN` API Token, не Client Secret; учётки по id пользователя Telegram → 10-08 (дополнение) — Новый бот @gethire_bot для входа через Telegram
 - Тесты: очистка через `DELETE`, а не `TRUNCATE`; bcrypt `rounds=4` в `conftest.py`; xdist не нужен (1 ядро) → 10-07 Ускорение pytest: DELETE вместо TRUNCATE, дешёвый bcrypt в тестах
 - Перед пушем `scripts/quick-check.sh` (затронутые тесты), полная проверка — CI перед деплоем; хук пуш не блокирует → 10-07 Перед пушем — быстрая проверка, полная — в CI
 
