@@ -1,6 +1,9 @@
 """Is a vacancy still open? The rule: only positive evidence closes it.
 
-Fixtures are real pages saved 2026-09-23. No network here.
+Fixtures are real pages saved 2026-09-23 (and 2026-10-08 for the company
+boards). No network here. The company pages are trimmed of inline scripts,
+styles and images — the JSON-LD and the `.content` node `classify` reads
+are kept whole.
 """
 
 from __future__ import annotations
@@ -15,6 +18,10 @@ FIXTURES = Path(__file__).parent / "fixtures"
 HABR = "https://career.habr.com/vacancies/1000168684"
 GEEKJOB = "https://geekjob.ru/vacancy/6ab2b32973abaf8df70aa37d"
 TG = "https://t.me/runello_rus_python/1803"
+SBER = "https://rabota.sber.ru/search/4566142/"
+SBER_SLUG = "https://rabota.sber.ru/search/razrabotchik-s-pangolin-db-4566142/"
+YANDEX = "https://yandex.ru/jobs/vacancies/multitrack-_-noviy-format-nayma-dlya-opitnih-bekenderov-15322"
+VK = "https://team.vk.company/vacancy/54546/"
 
 
 def fixture(name: str) -> str:
@@ -76,6 +83,66 @@ class TestClassify:
         assert not liveness.can_check("https://t.me/s/runello_rus_python")
         assert not liveness.can_check("https://t.me/runello_rus_python")
         assert liveness.check(None).state == "unknown"
+
+
+class TestCompanyPages:
+    """Pages of the searchable employer boards, verified live 2026-10-08."""
+
+    def test_a_live_company_page_is_open(self):
+        assert liveness.classify(SBER_SLUG, 200, fixture("sber_open.html")).state == "open"
+        assert liveness.classify(YANDEX, 200, fixture("yandex_open.html")).state == "open"
+        assert liveness.classify(VK, 200, fixture("vk_open.html")).state == "open"
+
+    def test_gone_is_closed_for_company_pages(self):
+        """All three answer 404 for an id the board does not know."""
+        assert liveness.classify(SBER, 404, "").closed
+        assert liveness.classify(YANDEX, 404, "").closed
+        assert liveness.classify(VK, 404, "").closed
+
+    def test_yandex_expired_valid_through_is_closed(self):
+        verdict = liveness.classify(YANDEX, 200, fixture("yandex_expired.html"))
+        assert verdict.closed
+        assert "срок публикации истёк" in verdict.reason
+
+    def test_a_recognised_200_without_a_posting_is_not_evidence(self):
+        """An archived Yandex/VK page may answer 200; without the structure
+        the live pages carry, that says nothing."""
+        assert liveness.classify(YANDEX, 200, "<html>редизайн</html>").state == "unknown"
+        assert liveness.classify(VK, 200, "<html>редизайн</html>").state == "unknown"
+
+    def test_sber_page_is_open_even_without_structure(self):
+        """Sber carries no JSON-LD and no banner; the URL came from the
+        board's own API, so a 200 is the page existing."""
+        assert liveness.classify(SBER_SLUG, 200, "<html></html>").state == "open"
+
+    def test_server_trouble_is_not_evidence_for_company_pages(self):
+        for status in (429, 500, 503):
+            assert liveness.classify(SBER, status, "").state == "unknown"
+
+    def test_only_our_company_urls_are_checkable(self):
+        assert liveness.can_check(SBER)
+        assert liveness.can_check(SBER_SLUG)
+        assert liveness.can_check(YANDEX)
+        assert liveness.can_check(VK)
+        # ATS feeds close by absence from the feed, not by their page.
+        assert not liveness.can_check("https://boards.greenhouse.io/acme/jobs/4001")
+        assert not liveness.can_check("https://acme.huntflow.io/vacancy/backend")
+        # A URL we never built: the sweep must not fetch it.
+        assert not liveness.can_check("https://example.com/vacancy/1")
+
+    def test_sber_is_asked_through_its_redirect(self):
+        """The bare id URL 307s to the slug page; the slug is still ours."""
+        seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            if request.url.path == "/search/4566142/":
+                return httpx.Response(307, headers={"location": SBER_SLUG})
+            return httpx.Response(200, text=fixture("sber_open.html"))
+
+        http = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+        assert liveness.check(SBER, http=http).state == "open"
+        assert seen == [SBER, SBER_SLUG]
 
 
 class TestCheck:

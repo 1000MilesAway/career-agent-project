@@ -25,6 +25,24 @@ post is the closest thing Telegram has to an archive banner.
 But most channels never delete: `t.me/job_pythonz/647` (2026-08-31) still
 stood a month later while the job was gone. So a live post is "open" here —
 the post exists — and its age is judged separately (`published` below).
+
+Company career pages (the searchable boards of core/sources/employers.py;
+the ATS feeds are closed by absence from the feed instead — services/liveness.py
+`sweep_feeds`). Verified 2026-10-08 on live pages, real and nonexistent ids:
+  - rabota.sber.ru/search/<id>/ redirects (307) to /search/<slug>-<id>/ and
+    answers 200; an id that does not exist answers 404 before the redirect.
+    The page carries no JobPosting JSON-LD and no archive banner, so a 200 is
+    all the page can say — "open", never a false "closed".
+  - yandex.ru/jobs/vacancies/<slug> answers 200 with a JobPosting JSON-LD and
+    no validThrough on the live page; a slug that does not exist answers 404.
+  - team.vk.company/vacancy/<id>/ answers 200; an id that does not exist
+    answers 404. No JSON-LD (checked 2026-09-23 too); the text lives in
+    `.content`, the node `vk_page_text` reads.
+What an *archived* posting serves on any of the three (200 with an error, or
+404) is not yet verified — only 404 and an expired `validThrough` close, so a
+200 that says nothing recognisable stays unknown rather than open where the
+page offers no structure to recognise (Yandex, VK). Sber has no structure at
+all, so there 200 is the evidence of the page existing.
 """
 
 from __future__ import annotations
@@ -48,6 +66,15 @@ TELEGRAM_DELETED_MARK = "Post not found"
 # A single post, not the `t.me/s/` feed and not the channel page.
 TELEGRAM_POST = re.compile(r"^https?://t\.me/(?!s/)[A-Za-z0-9_]{4,}/\d+(?:[/?#]|$)")
 
+# Company career pages we built the URLs for ourselves (employers.py). Host and
+# path are fixed, so the sweep never fetches an address a redirect may drag it
+# to — unlike user-pasted "url" rows, which no source can vouch for.
+SBER_URL = re.compile(r"^https?://rabota\.sber\.ru/search/[^/?#]+(?:[/?#]|$)")
+YANDEX_URL = re.compile(r"^https?://yandex\.ru/jobs/vacancies/[^/?#]+(?:[/?#]|$)")
+VK_URL = re.compile(r"^https?://team\.vk\.company/vacancy/\d+(?:[/?#]|$)")
+# VK's description node; a 200 that has none is a page we do not recognise.
+VK_CONTENT = ".content"
+
 
 @dataclass(frozen=True)
 class Liveness:
@@ -68,9 +95,16 @@ def is_telegram_post(url: str) -> bool:
     return bool(TELEGRAM_POST.match(url))
 
 
+def is_company_url(url: str) -> bool:
+    return bool(SBER_URL.match(url) or YANDEX_URL.match(url) or VK_URL.match(url))
+
+
 def can_check(url: str | None) -> bool:
     return bool(url) and (
-        is_habr_url(url) or geekjob.is_geekjob_url(url) or is_telegram_post(url)
+        is_habr_url(url)
+        or geekjob.is_geekjob_url(url)
+        or is_telegram_post(url)
+        or is_company_url(url)
     )
 
 
@@ -126,6 +160,23 @@ def classify(url: str, status: int, html: str) -> Liveness:
             return Liveness("closed", "пост удалён из канала")
         # A missing channel, a rename, a changed widget: none says the post is gone.
         return Liveness("unknown", "Telegram не показал пост")
+
+    if is_company_url(url):
+        tree = HTMLParser(html)
+        if YANDEX_URL.match(url):
+            posting = jobposting.parse(html)
+            if posting is None:
+                return Liveness("unknown", "на странице нет вакансии в понятном формате")
+            if posting.expired():
+                return Liveness("closed", f"срок публикации истёк {posting.valid_through[:10]}")
+            return Liveness("open")
+        if VK_URL.match(url):
+            if tree.css_first(VK_CONTENT) is not None:
+                return Liveness("open")
+            return Liveness("unknown", "на странице нет вакансии в понятном формате")
+        # Sber: no JSON-LD, no banner — a 200 on the URL we took from the
+        # board's own API is the page existing.
+        return Liveness("open")
 
     return UNKNOWN_SOURCE
 

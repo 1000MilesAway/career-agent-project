@@ -297,10 +297,20 @@ class TestStale:
 
         return PooledPosting(url=url, published=datetime.now(UTC) - timedelta(days=days))
 
-    def test_an_old_employer_posting_is_stale(self):
+    def test_an_old_posting_from_a_source_without_a_page_is_stale(self):
+        """hh has no page to ask; only age can judge it there."""
         from app.services.liveness import stale_reason
 
-        assert "дн. назад" in stale_reason(self._row(EMPLOYER_URL, 45))
+        row = self._row("https://hh.ru/vacancy/12345", 45)
+        row.source = "hh"
+        assert "дн. назад" in stale_reason(row)
+
+    def test_a_searchable_company_posting_does_not_age(self):
+        """Sber/Yandex/VK pages are asked directly now, and a checkable row is
+        judged by its answer, never by age."""
+        from app.services.liveness import stale_reason
+
+        assert stale_reason(self._row(EMPLOYER_URL, 45)) is None
 
     def test_a_recent_posting_is_not(self):
         from app.services.liveness import stale_reason

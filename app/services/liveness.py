@@ -13,11 +13,12 @@ Three places ask:
 Liveness is a fact about the posting, so it is checked and stored once in the
 shared pool: a posting five users have is one request, not five.
 
-Sources with no page to ask (employer boards) are never closed here. A
+Sources with no page to ask (employer feeds) are never closed here. A
 feed read whole closes its postings by their absence from it
-(`pool.mark_absent`); a searchable board has only age, and age is not
-evidence of closing — see `stale_reason`, which marks such a row old
-without closing it.
+(`pool.mark_absent`); the searchable boards (Sber, Yandex, VK) are asked
+through `core.liveness` like Habr and geekjob, and a checkable row has
+only age where nothing can be asked — age is not evidence of closing —
+see `stale_reason`, which marks such a row old without closing it.
 
 A closed vacancy is marked, never deleted or hidden: it keeps its report and
 materials, and the list shows it greyed with the reason. "Unknown" changes
@@ -54,9 +55,14 @@ DELAY_SECONDS = 0.5
 # so a few hundred rows are all revisited well inside FRESH_FOR.
 MAX_PER_SWEEP = 40
 # Sources whose rows carry a page `core.liveness` can read. Filtered in SQL
-# so rows that can never be checked do not crowd the batch; "url" is a link
-# the user pasted, which may point at either board.
-CHECKABLE_SOURCES = ("habr", "geekjob", "telegram", "url")
+# so rows that can never be checked do not crowd the batch. Not "url": those
+# are pages on any site a user once pasted, and revisiting them would make the
+# sweep fetch whatever address the site now redirects to. "company" is safe
+# the same way: only the searchable boards' own URLs pass `core.liveness`
+# (rabota.sber.ru, yandex.ru/jobs, team.vk.company), while feed postings —
+# huntflow, greenhouse, lever, ashby — live on other hosts and keep closing
+# by their absence from the feed (`sweep_feeds`), not by their page.
+CHECKABLE_SOURCES = ("habr", "geekjob", "telegram", "company")
 # A posting older than this, from a source that cannot be asked, is shown as
 # old. Not closed: nothing says it is, and closing is reserved for evidence.
 STALE_AFTER = timedelta(days=30)
