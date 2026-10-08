@@ -7,7 +7,7 @@
       "runtimeArgs": [
         "-NoProfile",
         "-Command",
-        "Set-Location frontend; $env:VITE_API_TARGET='https://career-helper.site'; npm run dev -- --host 127.0.0.1"
+        "Set-Location frontend; $env:VITE_API_TARGET='https://gethire.ru'; npm run dev -- --host 127.0.0.1"
       ],
       "port": 5173
     }

@@ -400,7 +400,7 @@ export function LoginHome() {
   return (
     <a className="brand login__home" href="/" title="О сервисе">
       <BrandMark />
-      <span className="brand__name">career-helper</span>
+      <span className="brand__name">gethire</span>
     </a>
   )
 }

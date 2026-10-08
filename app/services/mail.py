@@ -57,10 +57,10 @@ async def send_email(to: str, subject: str, text: str, html_body: str) -> None:
 
 def verification_letter(link: str) -> tuple[str, str, str]:
     """Subject, plain text and HTML of the address confirmation letter."""
-    subject = "Подтвердите почту для career-helper"
+    subject = "Подтвердите почту для gethire"
     text = (
         "Здравствуйте!\n\n"
-        "Чтобы закончить регистрацию в career-helper, откройте ссылку:\n"
+        "Чтобы закончить регистрацию в gethire, откройте ссылку:\n"
         f"{link}\n\n"
         "Ссылка действует сутки. Если вы не регистрировались, просто "
         "проигнорируйте это письмо — без подтверждения учётка не заработает.\n"
@@ -69,7 +69,7 @@ def verification_letter(link: str) -> tuple[str, str, str]:
     html_body = (
         '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">'
         "<p>Здравствуйте!</p>"
-        "<p>Чтобы закончить регистрацию в career-helper, подтвердите почту:</p>"
+        "<p>Чтобы закончить регистрацию в gethire, подтвердите почту:</p>"
         f'<p><a href="{safe}" style="display:inline-block;padding:10px 18px;'
         'background:#1a1a1a;color:#ffffff;text-decoration:none;border-radius:6px">'
         "Подтвердить почту</a></p>"
@@ -84,10 +84,10 @@ def verification_letter(link: str) -> tuple[str, str, str]:
 
 def password_reset_letter(link: str) -> tuple[str, str, str]:
     """Subject, plain text and HTML of the password reset letter."""
-    subject = "Сброс пароля в career-helper"
+    subject = "Сброс пароля в gethire"
     text = (
         "Здравствуйте!\n\n"
-        "Кто-то — надеемся, вы — попросил сбросить пароль от career-helper. "
+        "Кто-то — надеемся, вы — попросил сбросить пароль от gethire. "
         "Чтобы задать новый, откройте ссылку:\n"
         f"{link}\n\n"
         "Ссылка действует час и срабатывает один раз. Если вы не просили "
@@ -97,7 +97,7 @@ def password_reset_letter(link: str) -> tuple[str, str, str]:
     html_body = (
         '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a">'
         "<p>Здравствуйте!</p>"
-        "<p>Кто-то — надеемся, вы — попросил сбросить пароль от career-helper.</p>"
+        "<p>Кто-то — надеемся, вы — попросил сбросить пароль от gethire.</p>"
         f'<p><a href="{safe}" style="display:inline-block;padding:10px 18px;'
         'background:#1a1a1a;color:#ffffff;text-decoration:none;border-radius:6px">'
         "Задать новый пароль</a></p>"

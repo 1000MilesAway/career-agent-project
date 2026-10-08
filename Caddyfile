@@ -10,12 +10,12 @@
 # grey cloud): Cloudflare's proxy is throttled for Russian users, and in
 # "Flexible" mode it also loops on the HTTP->HTTPS redirect below.
 
-{$SITE_DOMAIN:career-helper.site} {
+{$SITE_DOMAIN:gethire.ru} {
 	reverse_proxy web:80
 }
 
-www.{$SITE_DOMAIN:career-helper.site} {
-	redir https://{$SITE_DOMAIN:career-helper.site}{uri} permanent
+www.{$SITE_DOMAIN:gethire.ru} {
+	redir https://{$SITE_DOMAIN:gethire.ru}{uri} permanent
 }
 
 # Plain HTTP by the bare IP keeps working, as it did before the domain: there

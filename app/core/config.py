@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     mail_from: str = ""
     # Where the link in a letter points. The cabinet is what opens it, so this
     # is the site's address, not the API's.
-    public_url: str = "https://career-helper.site"
+    public_url: str = "https://gethire.ru"
     # How long a confirmation link works.
     email_token_hours: int = 24
     # How long a password reset link works. Shorter than a confirmation: the

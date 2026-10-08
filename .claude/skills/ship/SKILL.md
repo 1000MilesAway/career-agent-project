@@ -30,5 +30,5 @@ report each result; do not report "done" before step 6.
    the old revision is not a confirmation — if it never arrives, say so and
    point to the Actions run.
 
-A frontend change is visible on https://career-helper.site only after step 6:
+A frontend change is visible on https://gethire.ru only after step 6:
 the bundle is built inside the `web` image.

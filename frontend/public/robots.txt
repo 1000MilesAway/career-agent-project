@@ -4,4 +4,4 @@ Disallow: /docs
 Disallow: /redoc
 Disallow: /openapi.json
 
-Sitemap: https://career-helper.site/sitemap.xml
+Sitemap: https://gethire.ru/sitemap.xml

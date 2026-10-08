@@ -38,7 +38,7 @@ function Fallback({
       {full ? (
         <span className="brand fallback__brand">
           <BrandMark />
-          <span className="brand__name">career-helper</span>
+          <span className="brand__name">gethire</span>
         </span>
       ) : null}
       <div className="fallback__body">

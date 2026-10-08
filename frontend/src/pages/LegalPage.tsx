@@ -23,7 +23,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 /** The edition date; change it with the text. */
 const EDITION = '02.10.2026'
 /** The service as the templates name it, in place of their «ваш сайт/ тг бот». */
-const SERVICE = 'career-helper.site'
+const SERVICE = 'gethire.ru'
 
 /** Standalone, for a visitor without an account. */
 export function LegalScreen({ doc }: { doc: LegalDoc }) {

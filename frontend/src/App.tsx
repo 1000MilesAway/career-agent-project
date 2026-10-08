@@ -116,7 +116,7 @@ function Cabinet() {
       <aside className="side">
         <div className="brand">
           <BrandMark />
-          <span className="brand__name">career-helper</span>
+          <span className="brand__name">gethire</span>
         </div>
 
         <nav className="side__nav" aria-label="Разделы">

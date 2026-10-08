@@ -19,7 +19,7 @@ fi
 
 
 if grep -qE '(curl|wget|http[[:space:]])' <<<"$cmd" \
-  && grep -qE '82\.25\.161\.103|career-helper\.site' <<<"$cmd" \
+  && grep -qE '82\.25\.161\.103|gethire\.ru' <<<"$cmd" \
   && grep -qiE -- '(-X|--request)[[:space:]]*(POST|PUT|PATCH|DELETE)|(^|[[:space:]])(-d|--data[a-z-]*|--json|-F|--form)([[:space:]=]|$)' <<<"$cmd"; then
   decide ask "Write request to the prod API: scans, evaluations, triage and chat spend real money. Confirm with the user first (CLAUDE.md, «Платные ручки»)."
 fi

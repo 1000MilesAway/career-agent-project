@@ -25,9 +25,11 @@ ssh max@82.25.161.103 'docker ps --format "{{.Names}}\t{{.Status}}"'
 `~/deploy.sh` — скрипт выкатки **вне git**, `~/career-agent/.env` — секреты,
 контейнеры `career-agent-{api,worker,web,edge,db}-1`.
 
-**Домен — `https://career-helper.site`** (с 2026-09-29). HTTPS держит контейнер
-`edge` (Caddy, `Caddyfile` в корне), сертификат Let's Encrypt продлевается сам;
-запись в Cloudflare — только «DNS only».
+**Домен — `https://gethire.ru`** (с 2026-10-08; до того `career-helper.site`,
+его заблокировали). Регистратор и DNS — Reg.ru: A-записи `@` и `www` →
+`82.25.161.103` напрямую. HTTPS держит контейнер `edge` (Caddy, `Caddyfile` в
+корне), сертификат Let's Encrypt продлевается сам. Если DNS переедет в
+Cloudflare — только «DNS only», без прокси.
 
 **Порты.** Кабинет — 80/443 через `edge`: `http://82.25.161.103/` отдаёт SPA,
 а `/api/` nginx проксирует на контейнер api, чтобы браузер оставался на одном
