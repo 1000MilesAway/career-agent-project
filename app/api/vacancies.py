@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from core.sources import geekjob, user_added
+from core.sources import geekjob
 
 from ..core.deps import OptionalResumeDep, ResumeDep, SessionDep, UserDep
 from ..models import Vacancy
@@ -310,9 +310,52 @@ async def clear(session: SessionDep, user: UserDep) -> dict[str, int]:
     return {"deleted": len(rows)}
 
 
+class PreviewRequest(BaseModel):
+    link: str = Field(max_length=2048)
+
+
+class PreviewResponse(BaseModel):
+    posting_id: uuid.UUID
+    title: str
+    company: str | None
+    salary_text: str | None
+    location: str | None
+    url: str | None
+    closed_reason: str | None
+    # True: the user already has it in «Избранное»; adding changes nothing.
+    saved: bool
+
+
+@router.post("/add/preview", response_model=PreviewResponse)
+async def preview(body: PreviewRequest, session: SessionDep, user: UserDep) -> PreviewResponse:
+    """Read a link and show what it is, before it becomes the user's. Free.
+
+    Only links to sources we read are accepted (core/sources/user_added.py);
+    the page is read here, so a link that cannot be read says so now — not
+    after paying for an evaluation of nothing.
+    """
+    try:
+        posting = await added.preview(session, body.link)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
+    row = await added.owned_row(session, user, posting)
+    await session.commit()
+    switches = await sources.load(session)
+    return PreviewResponse(
+        posting_id=posting.id,
+        title=posting.title,
+        company=switches.company(posting.company) or None,
+        salary_text=posting.salary_text or None,
+        location=posting.location or None,
+        url=posting.url,
+        closed_reason=posting.closed_reason,
+        saved=bool(row and row.is_saved),
+    )
+
+
 class AddRequest(BaseModel):
-    # A link or the vacancy's text; which one is told by the content.
-    source: str = Field(max_length=user_added.MAX_TEXT_CHARS * 2)
+    # The posting a preview returned: the page is not read a second time.
+    posting_id: uuid.UUID
 
 
 class AddResponse(BaseModel):
@@ -325,15 +368,13 @@ class AddResponse(BaseModel):
 async def add(
     body: AddRequest, session: SessionDep, user: UserDep, resume: OptionalResumeDep
 ) -> AddResponse:
-    """Bring a vacancy by its link or its text. Free: no model is called.
-
-    The page of a link is read once, here, so the user learns now that it
-    cannot be read — not after paying for an evaluation of nothing.
-    """
+    """Put a previewed vacancy into «Избранное». Free: no model is called."""
     try:
-        vacancy, created = await added.add(session, user, resume, body.source)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
+        vacancy, created = await added.add(session, user, resume, body.posting_id)
+    except LookupError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Вакансия не найдена"
+        ) from e
     await session.commit()
     return AddResponse(vacancy=VacancyResponse.of(await _owned(session, user, vacancy.id)),
                        created=created)

@@ -1,20 +1,22 @@
-"""Vacancies the user brought themselves: «Мои вакансии».
+"""Vacancies the user brings to «Избранное» by a link.
 
-A link or a pasted text becomes a posting and the user's row for it, the same
-pair a scan makes, so evaluation, materials, the shortlist and the tracker
-work on it unchanged. What differs:
+Two steps, both free. `preview` reads the link and pools the posting, so the
+user sees what the link is before it becomes theirs; `add` then makes the
+user's row for that pooled posting — saved, the same row a star on a scan's
+find makes, so evaluation, materials and the tracker work on it unchanged.
+The page is read once: `add` takes the posting the preview pooled, not the
+link again.
 
-  - The row carries `added_at` and lives in its own section, not in the
-    search list. A scan, "Очистить" and a profile change leave it alone: the
-    user asked about this vacancy by name, which no filter overrules.
+What differs from a scan's row:
+
+  - It carries `added_at`. A scan, "Очистить" and a profile change leave it
+    alone: the user asked about this vacancy by name, which no filter overrules.
   - The free filters still run, for free, and their reason rides on the row:
     the user sees "грейд выше вашего" before paying to read the same in a
     report. They do not stop the user from evaluating it — that is their call.
-  - Nothing is bought here. Adding is free; the evaluation is its own click.
 
-Pasted text never joins the shared pool's matching: its source (`text`) is
-not one any scan reads, its id carries the owner's id, and it gets no dedup
-keys, so no other user's posting can be filed as a copy of it. It is deleted
+Which links are read, and why no other: core/sources/user_added.py.
+Pasted texts of before 2026-10-08 (source `text`) are the user's own: deleted
 with the row, and with the account (`api/auth.py` `delete_me`).
 """
 
@@ -37,21 +39,41 @@ from . import pool
 from .pool import Sighting
 from .scan import FORM_OWNED, SCREENED_OUT, SHORTLIST, _profile
 
+# Postings a scan pooled from employers' career sites (`scan.fetch_employers`).
+# The only pool rows a link is looked up among without a request.
+LISTED_SOURCE = "company"
+# Pool rows a user may not take by id: a Telegram post can say anything, and a
+# pasted text is someone else's own.
+NOT_ADDABLE = (user_added.TEXT_SOURCE, "telegram")
 
-async def read(raw: str, owner: uuid.UUID) -> user_added.Added:
-    """The vacancy behind a link or a text. ValueError says what went wrong."""
-    raw = (raw or "").strip()
-    if not raw:
-        raise ValueError("Вставьте ссылку на вакансию или её текст.")
-    if not user_added.is_link(raw):
-        return user_added.from_text(raw, str(owner))
+
+async def _listed(session: AsyncSession, url: str) -> Pooled | None:
+    """The employer posting a scan pooled under this link, without any request."""
+    found = await session.execute(
+        select(Pooled)
+        .where(Pooled.source == LISTED_SOURCE, Pooled.url.in_(user_added.url_variants(url)))
+        .limit(1)
+    )
+    return found.scalar_one_or_none()
+
+
+async def preview(session: AsyncSession, link: str) -> Pooled:
+    """The pooled posting behind a link, read and pooled if new.
+
+    ValueError says why not. Pooling before the user agrees is harmless: the
+    pool is public listings, the same a scan writes for anyone.
+    """
+    link = (link or "").strip()
     try:
-        return await run_in_threadpool(user_added.from_url, raw)
+        item = await run_in_threadpool(user_added.from_url, link)
+    except user_added.OtherSite:
+        listed = await _listed(session, link)
+        if listed is None:
+            raise
+        return listed
     except (httpx.HTTPError, geekjob.MarkupChanged) as e:
-        raise ValueError(
-            f"Не удалось прочитать страницу ({type(e).__name__}). "
-            "Скопируйте текст вакансии и вставьте его сюда."
-        ) from e
+        raise ValueError(f"Не удалось прочитать страницу ({type(e).__name__}).") from e
+    return await _pooled(session, item)
 
 
 async def _pooled(session: AsyncSession, item: user_added.Added) -> Pooled:
@@ -68,22 +90,8 @@ async def _pooled(session: AsyncSession, item: user_added.Added) -> Pooled:
     row = (await session.execute(query)).scalar_one_or_none()
     now = datetime.now(UTC)
     if row is None:
-        if item.source == user_added.TEXT_SOURCE:
-            row = Pooled(
-                id=uuid.uuid4(),
-                source=item.source,
-                external_id=item.posting.id,
-                raw_text=item.text,
-                last_seen_at=now,
-                created_at=now,
-                **pool.listing_fields(item.posting),
-            )
-            pool.mark_fraud(row)
-            session.add(row)
-            await session.flush()
-        else:
-            await pool.upsert(session, item.source, [Sighting(item.posting, item.text)], now)
-            row = (await session.execute(query)).scalar_one()
+        await pool.upsert(session, item.source, [Sighting(item.posting, item.text)], now)
+        row = (await session.execute(query)).scalar_one()
     elif row.raw_text is None:
         row.raw_text = item.text
         pool.mark_fraud(row)
@@ -110,42 +118,46 @@ def _screen(resume: Resume | None, posting: Pooled) -> str:
     return "" if decision.keep else decision.reason
 
 
-async def add(
-    session: AsyncSession, user: User, resume: Resume | None, raw: str
-) -> tuple[Vacancy, bool]:
-    """Add a vacancy by link or text. Returns the row and whether it is new.
-
-    A vacancy the user already has — found by a scan, or added before — is
-    not duplicated: that row moves to «Мои вакансии», keeping whatever was
-    bought for it. A hidden one comes back: bringing it by hand undoes
-    "не интересно".
-    """
-    item = await read(raw, user.id)
-    posting = await _pooled(session, item)
-    now = datetime.now(UTC)
-
+async def owned_row(session: AsyncSession, user: User, posting: Pooled) -> Vacancy | None:
     found = await session.execute(
         select(Vacancy).where(Vacancy.user_id == user.id, Vacancy.posting_id == posting.id)
     )
-    row = found.scalar_one_or_none()
-    if row is not None:
-        row.added_at = row.added_at or now
-        row.hidden_at = None
-        await session.flush()
-        return row, False
+    return found.scalar_one_or_none()
 
-    reason = _screen(resume, posting)
-    row = Vacancy(
-        id=uuid.uuid4(),
-        user_id=user.id,
-        posting=posting,
-        stage=SCREENED_OUT if reason else SHORTLIST,
-        screen_reason=reason[:512] or None,
-        added_at=now,
-    )
-    session.add(row)
+
+async def add(
+    session: AsyncSession, user: User, resume: Resume | None, posting_id: uuid.UUID
+) -> tuple[Vacancy, bool]:
+    """Save the posting a preview pooled. Returns the row and whether it is new.
+
+    A vacancy the user already has — found by a scan, or added before — is
+    not duplicated: that row is saved, keeping whatever was bought for it,
+    and a hidden one comes back: bringing it by hand undoes "не интересно".
+    """
+    posting = await session.get(Pooled, posting_id)
+    if posting is None or posting.source in NOT_ADDABLE:
+        raise LookupError("vacancy not found")
+    now = datetime.now(UTC)
+
+    row = await owned_row(session, user, posting)
+    created = row is None
+    if row is None:
+        reason = _screen(resume, posting)
+        row = Vacancy(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            posting=posting,
+            stage=SCREENED_OUT if reason else SHORTLIST,
+            screen_reason=reason[:512] or None,
+        )
+        session.add(row)
+    row.added_at = row.added_at or now
+    row.hidden_at = None
+    if not row.is_saved:
+        row.is_saved = True
+        row.saved_at = now
     await session.flush()
-    return row, True
+    return row, created
 
 
 async def remove(session: AsyncSession, vacancy: Vacancy) -> None:

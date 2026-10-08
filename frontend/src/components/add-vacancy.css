@@ -1,0 +1,111 @@
+.addvac {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink);
+  width: min(480px, calc(100vw - 32px));
+  box-shadow: var(--shadow-pop);
+}
+
+.addvac::backdrop {
+  background: rgb(20 19 15 / 32%);
+  backdrop-filter: blur(1px);
+}
+
+.addvac__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+
+.addvac__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-right: -8px;
+}
+
+.addvac__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.addvac__input {
+  height: 44px;
+}
+
+.addvac__input--bad,
+.addvac__input--bad:focus {
+  border-color: var(--bad);
+}
+
+.addvac__error {
+  margin: -4px 0 0;
+}
+
+.addvac__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+}
+
+.addvac__card p {
+  margin: 0;
+}
+
+.addvac__name {
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.addvac__meta {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.addvac__closed {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.addvac__card--loading {
+  gap: 8px;
+}
+
+.addvac__bar {
+  height: 12px;
+  width: 70%;
+  border-radius: 4px;
+  background: var(--line);
+  animation: addvac-pulse 1.2s ease-in-out infinite;
+}
+
+.addvac__bar--short {
+  width: 40%;
+}
+
+@keyframes addvac-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .addvac__bar {
+    animation: none;
+  }
+}
+
+.addvac__actions {
+  display: flex;
+  justify-content: flex-end;
+}

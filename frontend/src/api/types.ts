@@ -120,8 +120,21 @@ export interface FoundVacancy {
   /** Hidden by the user; folded, never deleted. */
   hidden?: boolean
   published?: string | null
-  /** Brought by the user (a link or a text): lives in «Мои вакансии». */
+  /** Brought by the user by link: saved on adding, deleted rather than unsaved. */
   added_at?: string | null
+}
+
+/** A link read before it is added (`POST /api/vacancies/add/preview`). */
+export interface VacancyPreview {
+  posting_id: string
+  title: string
+  company: string | null
+  salary_text: string | null
+  location: string | null
+  url: string | null
+  closed_reason: string | null
+  /** Already in «Избранное»: adding would change nothing. */
+  saved: boolean
 }
 
 export interface ResumeProfile {

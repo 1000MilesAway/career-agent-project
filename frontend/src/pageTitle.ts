@@ -6,7 +6,6 @@ const SITE_NAME = 'GetHire'
 
 const PAGE_TITLES: Record<string, string> = {
   '/search': 'Поиск вакансий',
-  '/added': 'Мои вакансии',
   '/saved': 'Избранное',
   '/chat': 'Помощник',
   '/resume': 'Моё резюме',

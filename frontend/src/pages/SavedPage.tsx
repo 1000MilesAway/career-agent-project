@@ -9,6 +9,10 @@
  * trackers settled on: "where am I stuck" is answered by the numbers before
  * any row is read.
  *
+ * «Добавить» brings a vacancy by its link (`AddVacancyDialog`). Such a row
+ * has no scan to bring it back, so its cross deletes it, after asking —
+ * unsaved, it would show nowhere.
+ *
  * A row can be dragged onto a stage of the funnel to move it there (see
  * `useStageDrag`). The select in the row stays: it is the keyboard's way in,
  * and the only one for a row nobody can see the funnel from.
@@ -20,6 +24,7 @@ import { createPortal } from 'react-dom'
 import { useSWRConfig } from 'swr'
 import {
   STATE_KEY,
+  deleteVacancy,
   tailoredExportBase,
   recheckVacancies,
   saveVacancy,
@@ -27,9 +32,11 @@ import {
   useAppState,
 } from '../api/hooks'
 import type { ApplyStep, FoundVacancy } from '../api/types'
+import { AddVacancyDialog } from '../components/AddVacancyDialog'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DownloadButtons } from '../components/DownloadButtons'
 import { VacancyRow } from '../components/VacancyRow'
-import { CloseIcon } from '../components/icons'
+import { CloseIcon, PlusIcon } from '../components/icons'
 import { useToast } from '../components/toast'
 import { Empty, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
@@ -46,6 +53,8 @@ export function SavedPage() {
   const toast = useToast()
   const { openReport, openArtifact, isBusy, panel } = useDocumentPanel()
   const [filter, setFilter] = useState<StatusFilter>(null)
+  const [adding, setAdding] = useState(false)
+  const [deleting, setDeleting] = useState<FoundVacancy | null>(null)
 
   const found = data?.found
   const saved = useMemo(() => found?.filter((row) => row.saved) ?? [], [found])
@@ -92,6 +101,18 @@ export function SavedPage() {
     }
   }
 
+  async function remove() {
+    const vacancy = deleting
+    setDeleting(null)
+    if (!vacancy) return
+    try {
+      await deleteVacancy(vacancy.id)
+      await mutate(STATE_KEY)
+    } catch (e) {
+      toast.error(e)
+    }
+  }
+
   async function move(id: string, status: string) {
     try {
       await moveVacancy(id, status)
@@ -119,16 +140,22 @@ export function SavedPage() {
       <PageHead
         title="Избранное"
         actions={
-          saved.length ? (
-            <button
-              className="btn btn--ghost btn--small"
-              onClick={recheck}
-              disabled={isRechecking}
-              title="Спросить у Хабра, geekjob и Telegram, не закрыты ли вакансии. Бесплатно, модель не вызывается. Вакансии с сайтов работодателей так проверить нельзя."
-            >
-              {isRechecking ? 'Проверяю…' : 'Проверить актуальность'}
+          <>
+            {saved.length ? (
+              <button
+                className="btn btn--ghost btn--small"
+                onClick={recheck}
+                disabled={isRechecking}
+                title="Спросить у Хабра, geekjob и Telegram, не закрыты ли вакансии. Бесплатно, модель не вызывается. Вакансии с сайтов работодателей так проверить нельзя."
+              >
+                {isRechecking ? 'Проверяю…' : 'Проверить актуальность'}
+              </button>
+            ) : null}
+            <button className="btn btn--small" onClick={() => setAdding(true)}>
+              <PlusIcon />
+              Добавить
             </button>
-          ) : null
+          </>
         }
       />
 
@@ -215,9 +242,15 @@ export function SavedPage() {
                       </select>
                       <button
                         className="btn btn--quiet btn--small btn--icon"
-                        onClick={() => unsave(vacancy.id)}
-                        title="Убрать из избранного"
-                        aria-label={`Убрать «${vacancy.title}» из избранного`}
+                        onClick={() =>
+                          vacancy.added_at ? setDeleting(vacancy) : unsave(vacancy.id)
+                        }
+                        title={vacancy.added_at ? 'Удалить' : 'Убрать из избранного'}
+                        aria-label={
+                          vacancy.added_at
+                            ? `Удалить «${vacancy.title}»`
+                            : `Убрать «${vacancy.title}» из избранного`
+                        }
                       >
                         <CloseIcon />
                       </button>
@@ -306,7 +339,7 @@ export function SavedPage() {
       ) : (
         <div className="card">
           <Empty title="Пока пусто">
-            <p>Отложите вакансию звёздочкой на странице поиска — она появится здесь.</p>
+            <p>Отложите вакансию звёздочкой на странице поиска или добавьте по ссылке.</p>
             <Link className="btn btn--ghost" to="/search">
               К поиску
             </Link>
@@ -335,6 +368,21 @@ export function SavedPage() {
             document.body,
           )
         : null}
+
+      {adding ? <AddVacancyDialog onClose={() => setAdding(false)} /> : null}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Удалить вакансию?"
+        confirmLabel="Удалить"
+        onConfirm={remove}
+        onCancel={() => setDeleting(null)}
+      >
+        <p>«{deleting?.title}» исчезнет из избранного.</p>
+        {deleting?.score != null ? (
+          <p className="muted">Отчёт и подготовленные материалы удалятся вместе с ней.</p>
+        ) : null}
+      </ConfirmDialog>
 
       {panel}
     </div>
