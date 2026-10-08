@@ -34,6 +34,7 @@ import type {
   TriageJob,
   SearchProfile,
   SearchProfileProposal,
+  VacancyPreview,
 } from './types'
 
 export const STATE_KEY = '/api/state'
@@ -147,12 +148,17 @@ export const startTriage = (ids?: string[]) =>
     json: { kind: 'triage', payload: { ids: ids ?? null } },
   })
 
-/** A vacancy by its link or text. Free; the page is read here, so a link
- *  that cannot be read says so now, not at the paid evaluation. */
-export const addVacancy = (source: string) =>
+/** What a link is, before it becomes the user's. Free; only links to our
+ *  sources are read, and the page is read here, so one that cannot be read
+ *  says so now, not at the paid evaluation. */
+export const previewVacancy = (link: string) =>
+  api<VacancyPreview>('/api/vacancies/add/preview', { method: 'POST', json: { link } })
+
+/** Put the previewed posting into «Избранное»; the page is not read again. */
+export const addVacancy = (postingId: string) =>
   api<{ vacancy: { id: string }; created: boolean }>('/api/vacancies/add', {
     method: 'POST',
-    json: { source },
+    json: { posting_id: postingId },
   })
 
 /** Only an added vacancy; its report and materials go with it. */

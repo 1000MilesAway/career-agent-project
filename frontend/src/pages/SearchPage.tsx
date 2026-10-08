@@ -171,8 +171,8 @@ export function SearchPage() {
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
   // useMemo below recompute, which is the opposite of what they are for.
-  // Without the vacancies the user added by hand: those live in «Мои
-  // вакансии», and neither triage nor «Очистить» touches them.
+  // Without the vacancies the user added by link: those live in
+  // «Избранное», and neither triage nor «Очистить» touches them.
   const found = data?.found
   const rows = useMemo(
     () => (found ? found.filter((row) => !row.added_at) : EMPTY_ROWS),

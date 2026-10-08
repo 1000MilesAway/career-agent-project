@@ -21,7 +21,6 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
 import { pageTitle } from './pageTitle'
 import {
-  AddedIcon,
   BrandMark,
   ChartIcon,
   ChatIcon,
@@ -50,7 +49,6 @@ import './App.css'
 
 // The shortlist is the least-visited page and pulls in the artifact views, so
 // it loads when it is opened rather than on first paint.
-const AddedPage = lazyPage(() => import('./pages/AddedPage').then((m) => m.AddedPage))
 const SavedPage = lazyPage(() => import('./pages/SavedPage').then((m) => m.SavedPage))
 const ResumePage = lazyPage(() => import('./pages/ResumePage').then((m) => m.ResumePage))
 const SearchPage = lazyPage(() => import('./pages/SearchPage').then((m) => m.SearchPage))
@@ -123,9 +121,6 @@ function Cabinet() {
           <NavItem to="/search" icon={<SearchIcon />} busy={scanning || triaging}>
             Поиск
           </NavItem>
-          <NavItem to="/added" icon={<AddedIcon />}>
-            Мои вакансии
-          </NavItem>
           <NavItem to="/saved" icon={<StarIcon />} count={savedCount}>
             Избранное
           </NavItem>
@@ -187,7 +182,8 @@ function Cabinet() {
           <Routes>
             <Route path="/resume" element={<ResumePage />} />
             <Route path="/search" element={<SearchPage />} />
-            <Route path="/added" element={<AddedPage />} />
+            {/* «Мои вакансии» was folded into «Избранное» (2026-10-08). */}
+            <Route path="/added" element={<Navigate to="/saved" replace />} />
             <Route path="/saved" element={<SavedPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:threadId" element={<ChatPage />} />
