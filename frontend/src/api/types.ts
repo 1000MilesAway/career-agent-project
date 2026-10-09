@@ -202,6 +202,18 @@ export interface Quota {
   week: QuotaWindow | null
 }
 
+/** The plan and what Pro costs: the one place the cabinet names money. */
+export interface Billing {
+  /** False until the server has the payment keys: plans shown, no button. */
+  enabled: boolean
+  price_rub: number
+  days: number
+  plan: 'free' | 'paid'
+  paid_until: string | null
+  /** How many times the free limit Pro gives; null when a limit is off. */
+  pro_vs_free: number | null
+}
+
 export interface Spend {
   found: number
   scored: number

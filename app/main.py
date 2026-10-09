@@ -12,6 +12,7 @@ from .api import (
     admin,
     artifacts,
     auth,
+    billing,
     chat,
     evaluations,
     export,
@@ -53,6 +54,7 @@ app.add_middleware(
 for router in (
     health.router,
     auth.router,
+    billing.router,
     state.router,
     resumes.router,
     vacancies.router,

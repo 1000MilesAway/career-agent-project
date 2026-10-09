@@ -1,0 +1,198 @@
+/** «Оплата»: the two plans and the way to Pro.
+ *
+ * A dialog from the user menu rather than a page: it is opened to pay or to
+ * see until when Pro runs, and neither is worth a place among the sections
+ * people work in. Paying happens on Platega's page; the browser comes back to
+ * /search?payment=…, and `usePaymentReturn` reopens this dialog there.
+ *
+ * <dialog> with the account dialog's frame (`account.css`).
+ */
+
+import { useEffect, useRef, useState, useTransition } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useSWRConfig } from 'swr'
+import {
+  BILLING_KEY,
+  STATE_KEY,
+  startCheckout,
+  syncBilling,
+  useBilling,
+} from '../api/hooks'
+import type { Billing } from '../api/types'
+import { CloseIcon } from './icons'
+import { useToast } from './toast'
+import './account.css'
+import './billing.css'
+
+const until = (iso: string) =>
+  new Date(iso).toLocaleDateString('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: 'numeric',
+    month: 'long',
+  })
+
+/** «2,5» rather than «2.5»; a whole number without the comma. */
+const times = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })
+
+export function BillingDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const { data } = useBilling(open)
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (!dialog) return
+    if (open && !dialog.open) dialog.showModal()
+    if (!open && dialog.open) dialog.close()
+  }, [open])
+
+  return (
+    <dialog
+      ref={ref}
+      className="account billing"
+      aria-label="Оплата"
+      onCancel={(event) => {
+        event.preventDefault()
+        onClose()
+      }}
+      onClick={(event) => {
+        if (event.target === ref.current) onClose()
+      }}
+    >
+      <header className="account__head">
+        <h2 className="account__title">Тарифы</h2>
+        <button
+          type="button"
+          className="btn btn--quiet btn--small btn--icon"
+          onClick={onClose}
+          aria-label="Закрыть"
+          title="Закрыть (Esc)"
+        >
+          <CloseIcon />
+        </button>
+      </header>
+      {data ? <Plans billing={data} /> : <div className="account__body billing__wait" />}
+    </dialog>
+  )
+}
+
+function Plans({ billing }: { billing: Billing }) {
+  const paid = billing.plan === 'paid'
+  return (
+    <div className="account__body">
+      <div className="billing__plans">
+        <section className={paid ? 'plan' : 'plan plan--current'}>
+          <h3 className="plan__name">Бесплатный</h3>
+          <p className="plan__price">
+            <b>0 ₽</b>
+          </p>
+          <ul className="plan__perks">
+            <li>Поиск по всем источникам</li>
+            <li>Оценки и документы в пределах дневного лимита</li>
+          </ul>
+          {paid ? null : <p className="plan__badge">Ваш тариф</p>}
+        </section>
+
+        <section className={paid ? 'plan plan--pro plan--current' : 'plan plan--pro'}>
+          <h3 className="plan__name">Pro</h3>
+          <p className="plan__price">
+            <b>{billing.price_rub} ₽</b> / месяц
+          </p>
+          <ul className="plan__perks">
+            <li>
+              {billing.pro_vs_free
+                ? `Лимит в ${times(billing.pro_vs_free)} раза больше`
+                : 'Увеличенный лимит'}
+            </li>
+            <li>Без автопродления</li>
+          </ul>
+          {paid && billing.paid_until ? (
+            <p className="plan__badge">Ваш тариф до {until(billing.paid_until)}</p>
+          ) : null}
+        </section>
+      </div>
+
+      <PayButton billing={billing} />
+    </div>
+  )
+}
+
+function PayButton({ billing }: { billing: Billing }) {
+  const [isPending, startTransition] = useTransition()
+  const [leaving, setLeaving] = useState(false)
+  const toast = useToast()
+
+  if (!billing.enabled) {
+    return (
+      <button type="button" className="btn billing__pay" disabled>
+        Оплата скоро появится
+      </button>
+    )
+  }
+
+  const label =
+    billing.plan === 'paid'
+      ? `Продлить на месяц — ${billing.price_rub} ₽`
+      : `Оплатить ${billing.price_rub} ₽`
+
+  function onPay() {
+    startTransition(async () => {
+      try {
+        const { url } = await startCheckout()
+        // Kept disabled through the navigation: a second click would only
+        // reopen the same page, but it reads as "did it work?".
+        setLeaving(true)
+        window.location.assign(url)
+      } catch (e) {
+        toast.error(e)
+      }
+    })
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn billing__pay"
+      onClick={onPay}
+      disabled={isPending || leaving}
+    >
+      {isPending || leaving ? 'Открываю оплату…' : label}
+    </button>
+  )
+}
+
+/** Back from Platega's page with ?payment=done|failed: ask the server where
+ *  the payment stands (the callback may lag behind the browser), say so, and
+ *  drop the parameter so a reload does not ask again. */
+export function usePaymentReturn(onOpen: () => void) {
+  const [params, setParams] = useSearchParams()
+  const outcome = params.get('payment')
+  const { mutate } = useSWRConfig()
+  const toast = useToast()
+  // StrictMode runs effects twice in development; one return, one toast.
+  const handled = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!outcome || handled.current === outcome) return
+    handled.current = outcome
+    const next = new URLSearchParams(params)
+    next.delete('payment')
+    setParams(next, { replace: true })
+    onOpen()
+
+    if (outcome === 'failed') {
+      toast.error(new Error('Оплата не прошла. Можно попробовать ещё раз.'))
+      return
+    }
+    void syncBilling()
+      .then(async (billing) => {
+        await mutate(BILLING_KEY, billing)
+        await mutate(STATE_KEY)
+        toast.info(
+          billing.plan === 'paid' && billing.paid_until
+            ? `Pro подключён до ${until(billing.paid_until)}`
+            : 'Платёж обрабатывается: тариф обновится через минуту-другую',
+        )
+      })
+      .catch((e: unknown) => toast.error(e))
+  }, [outcome, params, setParams, onOpen, mutate, toast])
+}

@@ -606,6 +606,36 @@ class LlmCall(Base):
     )
 
 
+class Payment(Base, TimestampMixin):
+    """One attempt to buy Pro through Platega, from the click to its outcome.
+
+    The row is written before Platega is asked, so a callback can never name a
+    transaction we have no record of. Days are granted once, on the move to
+    "confirmed" (`services/billing.py`): Platega retries a callback up to three
+    times, and the cabinet asks again when the user comes back from the pay
+    page, so the same confirmation arrives more than once by design.
+
+    The user link is SET NULL, as on `llm_calls`: these are the owner's books,
+    and erasing an account must not erase what it paid.
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    # Platega's id, known once it answers; null only if that call failed.
+    transaction_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    # The pay page, kept so a second click within its lifetime reuses it.
+    url: Mapped[str | None] = mapped_column(Text)
+    amount_rub: Mapped[int] = mapped_column(Integer, nullable=False)
+    days: Mapped[int] = mapped_column(Integer, nullable=False)
+    # pending | confirmed | canceled | chargebacked
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ChatThread(Base, TimestampMixin):
     """One conversation of a user's several.
 

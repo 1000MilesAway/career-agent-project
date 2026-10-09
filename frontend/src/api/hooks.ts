@@ -18,6 +18,7 @@ import type {
   FunnelChannel,
   SwitchableSource,
   AppState,
+  Billing,
   ArtifactResponse,
   ChatMessage,
   ChatProposal,
@@ -374,6 +375,17 @@ export const acceptProposal = (id: string) =>
 
 export const rejectProposal = (id: string) =>
   api<ChatProposal>(`/api/chat/proposals/${id}/reject`, { method: 'POST' })
+
+export const BILLING_KEY = '/api/billing'
+
+export const useBilling = (enabled = true) =>
+  useSWR<Billing>(enabled ? BILLING_KEY : null, fetcher)
+
+export const startCheckout = () =>
+  api<{ url: string }>(`${BILLING_KEY}/checkout`, { method: 'POST' })
+
+/** On the return from the pay page: Platega's callback may not have come yet. */
+export const syncBilling = () => api<Billing>(`${BILLING_KEY}/sync`, { method: 'POST' })
 
 /** The owner's dashboard.
  *

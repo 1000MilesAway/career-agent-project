@@ -44,6 +44,18 @@ class Settings(BaseSettings):
     paid_day_usd: float = 0.10
     paid_week_usd: float = 0.30
 
+    # Payments through Platega (https://docs.platega.io). With either value
+    # empty the cabinet shows the plans but cannot take money. The same pair
+    # comes back in the headers of Platega's callback, which is how a callback
+    # is told from a forgery. The callback URL is set in Platega's dashboard
+    # (Настройки → Callback URLs): {PUBLIC_URL}/api/billing/callback.
+    platega_merchant_id: str = ""
+    platega_secret: str = ""
+    platega_url: str = "https://app.platega.io"
+    # Pro: one payment buys this many days; decided 2026-10-09.
+    pro_price_rub: int = 400
+    pro_days: int = 30
+
     # Telegram Login (OIDC). The client id is the bot id, read from the token
     # when not given; with neither set, Telegram login is off and the cabinet
     # shows no button. The site's URL must be in the bot's Allowed URLs

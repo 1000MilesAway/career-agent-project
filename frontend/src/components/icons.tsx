@@ -126,6 +126,13 @@ export const InfoIcon = () => (
   </Icon>
 )
 
+export const CardIcon = () => (
+  <Icon>
+    <rect x="2.5" y="4.5" width="15" height="11" rx="2" />
+    <path d="M2.5 8.5h15M6 12.5h3" />
+  </Icon>
+)
+
 export const MoreIcon = () => (
   <Icon>
     <path d="M5 10h.01M10 10h.01M15 10h.01" strokeWidth="2.4" />

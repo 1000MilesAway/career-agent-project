@@ -12,6 +12,7 @@
 
 import {
   Suspense,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -29,6 +30,7 @@ import { LEGAL_TITLES, LegalPage, LegalScreen } from './pages/LegalPage'
 import { pageTitle } from './pageTitle'
 import {
   BrandMark,
+  CardIcon,
   ChartIcon,
   ChatIcon,
   FunnelIcon,
@@ -46,6 +48,7 @@ import {
 } from './components/icons'
 import { Tour } from './components/Tour'
 import { Avatar, ProfileDialog, displayName } from './components/ProfileDialog'
+import { BillingDialog, usePaymentReturn } from './components/BillingDialog'
 import { SupportBubble } from './components/SupportBubble'
 import { Skeleton } from './components/ui'
 import { useScanWatcher } from './components/useScanWatcher'
@@ -104,6 +107,9 @@ function Screen() {
 function Cabinet() {
   const { data } = useAppState()
   const [profileOpen, setProfileOpen] = useState(false)
+  const [billingOpen, setBillingOpen] = useState(false)
+  const openBilling = useCallback(() => setBillingOpen(true), [])
+  usePaymentReturn(openBilling)
   const { data: proposals } = useProposals()
   const savedCount = data?.found.filter((row) => row.saved).length ?? 0
   const pendingCount = proposals?.length ?? 0
@@ -181,12 +187,17 @@ function Cabinet() {
           {data ? <QuotaMeter quota={data.spend.quota} /> : null}
           {data ? (
             <>
-              <UserMenu user={data.user} onProfile={() => setProfileOpen(true)} />
+              <UserMenu
+                user={data.user}
+                onProfile={() => setProfileOpen(true)}
+                onBilling={openBilling}
+              />
               <ProfileDialog
                 open={profileOpen}
                 user={data.user}
                 onClose={() => setProfileOpen(false)}
               />
+              <BillingDialog open={billingOpen} onClose={() => setBillingOpen(false)} />
             </>
           ) : null}
         </div>
@@ -303,7 +314,7 @@ function NavItem({
 function QuotaMeter({ quota }: { quota: Quota }) {
   const plan =
     quota.plan === 'paid' && quota.paid_until
-      ? `Подписка до ${moscowDate(quota.paid_until, { day: 'numeric', month: 'long' })}`
+      ? `Pro до ${moscowDate(quota.paid_until, { day: 'numeric', month: 'long' })}`
       : 'Бесплатный тариф'
   return (
     <div className="meter">
@@ -361,7 +372,15 @@ const moscowDate = (iso: string, options: Intl.DateTimeFormatOptions): string =>
 
 /** The name in the corner opens a short menu: the account, and the documents
  *  that are needed rarely but must be one click away from anywhere. */
-function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () => void }) {
+function UserMenu({
+  user,
+  onProfile,
+  onBilling,
+}: {
+  user: AppState['user']
+  onProfile: () => void
+  onBilling: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [legalOpen, setLegalOpen] = useState(false)
   const { logout } = useAuth()
@@ -430,6 +449,18 @@ function UserMenu({ user, onProfile }: { user: AppState['user']; onProfile: () =
               </div>
             ) : null}
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="user-menu__item user-menu__item--icon"
+            onClick={() => {
+              setOpen(false)
+              onBilling()
+            }}
+          >
+            <CardIcon />
+            Оплата
+          </button>
           <ThemeSwitch />
           {/* Last and set apart: the one item that ends the session. */}
           <button
