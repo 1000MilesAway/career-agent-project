@@ -79,7 +79,13 @@ class TestOtherSites:
 
     @pytest.fixture(autouse=True)
     def no_network(self, monkeypatch):
-        def refuse(*args, **kwargs):
+        # Only the user's hosts are refused: the test database is reached by
+        # name through the same call.
+        resolve = socket.getaddrinfo
+
+        def refuse(host, *args, **kwargs):
+            if host in ("localhost", "127.0.0.1", "::1"):
+                return resolve(host, *args, **kwargs)
             raise AssertionError("a link to another site must not be resolved")
 
         monkeypatch.setattr(socket, "getaddrinfo", refuse)

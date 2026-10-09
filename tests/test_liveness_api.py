@@ -131,9 +131,10 @@ class TestRecheck:
         r = await client.post("/api/vacancies/recheck", headers=auth_headers)
         assert r.json()["checked"] == 0
 
-    async def test_telegram_posts_are_asked_employer_boards_are_not(
+    async def test_telegram_posts_and_searchable_boards_are_asked(
         self, client, auth_headers, session, user, monkeypatch
     ):
+        """Yandex's own page is read since 2026-10-08, like a Telegram post."""
         await _resume_for(session, user)
         for source, url in (("telegram", "https://t.me/chan/1"), ("company", EMPLOYER_URL)):
             posting = Posting(id=url, url=url, title="Python разработчик", company=source)
@@ -150,8 +151,8 @@ class TestRecheck:
 
         monkeypatch.setattr(liveness, "check", fake_check)
         r = await client.post("/api/vacancies/recheck", headers=auth_headers)
-        assert asked == ["https://t.me/chan/1"]
-        assert r.json()["closed"] == 1
+        assert sorted(asked) == sorted(["https://t.me/chan/1", EMPLOYER_URL])
+        assert r.json()["closed"] == 2
 
 
 @requires_db
@@ -280,8 +281,9 @@ class TestSweep:
         counts = await service.sweep(session)
         await session.commit()
 
-        assert asked == [HABR_URL]
-        assert counts == {"checked": 1, "open": 0, "closed": 1, "unknown": 0}
+        # The searchable board's page is asked too; screened and hidden rows are not.
+        assert sorted(asked) == sorted([HABR_URL, EMPLOYER_URL])
+        assert counts == {"checked": 2, "open": 0, "closed": 2, "unknown": 0}
         await session.refresh(live)
         assert live.closed_at is not None
 
