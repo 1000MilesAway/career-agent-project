@@ -24,6 +24,10 @@
   gap: 24px;
   padding: 22px 14px 16px;
   border-right: 1px solid var(--line);
+  /* Sticky makes the sidebar a stacking context of its own, so the menu's
+     z-index counts only inside it: without a layer above the page, the
+     documents submenu, which hangs over the page, sat under its text. */
+  z-index: 20;
 }
 
 .main {
