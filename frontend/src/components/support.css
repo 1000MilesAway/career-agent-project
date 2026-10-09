@@ -9,11 +9,11 @@
   gap: 10px;
 }
 
-/* Raised over the chat composer only where the two would meet. The chat
-   page is 1080px wide with its thread list and centred; with the 230px
-   sidebar its right edge clears the bubble from about 1440px of viewport,
-   and there the bubble stays in its corner like on every other page. */
-@media (max-width: 1440px) {
+/* Raised over the chat composer only where the two would meet. The chat's
+   720px column is centred beside the 60px rail and the 264px thread list;
+   it clears the bubble (24px off the edge, 44px wide) from about 1200px of
+   viewport, and there the bubble stays in its corner like on every page. */
+@media (max-width: 1200px) {
   .support--raised {
     bottom: 112px;
   }

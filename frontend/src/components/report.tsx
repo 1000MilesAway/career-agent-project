@@ -215,7 +215,7 @@ export function CoverLetterView({ value }: { value: CoverLetter }) {
 
 /** Selects the node's text and copies it the old way. The selection is left
  *  in place on purpose: if the copy fails, Ctrl+C is all that is left to do. */
-function copySelection(node: HTMLElement | null): boolean {
+export function copySelection(node: HTMLElement | null): boolean {
   const selection = window.getSelection()
   if (!node || !selection) return false
   const range = document.createRange()

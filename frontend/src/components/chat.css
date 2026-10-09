@@ -21,11 +21,81 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  justify-self: center;
   width: 100%;
-  max-width: 900px;
   min-width: 0;
-  padding: 36px 40px 0;
+  padding: 0 40px;
+}
+
+/* One reading column: at 820px a long answer ran to 120 characters a line. */
+.chatmain > :not(.chathead) {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+/* ── The bar over the conversation ────────────────────────────────────── */
+
+/* Its height matches the conversations panel's top (22px + the 34px button
+   + 22px), so the rule under it meets the panel at the same level. */
+.chathead {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  min-height: 78px;
+  margin: 0 -40px 24px;
+  padding: 10px 40px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.chathead__inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.chathead__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.chathead__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chathead__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.chathead__status {
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.chathead__link {
+  flex: none;
+  gap: 6px;
 }
 
 /* ── The list of conversations ────────────────────────────────────────── */
@@ -334,6 +404,27 @@
     padding: 0;
   }
 
+  /* The bar above already names the thread: a vacancy's company, status
+     and link stay, a general thread's header goes. */
+  .chathead {
+    position: static;
+    min-height: 0;
+    margin: 0 0 16px;
+    padding: 0;
+    border: 0;
+    background: none;
+    backdrop-filter: none;
+  }
+
+  .chathead__title,
+  .chathead--bare {
+    display: none;
+  }
+
+  .chathead__meta {
+    margin: 0;
+  }
+
   .chatpage > .threads {
     display: none;
   }
@@ -385,15 +476,11 @@
   }
 }
 
-.chatmain .page__title {
-  overflow-wrap: anywhere;
-}
-
 .chat {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 26px;
   padding-bottom: 24px;
 }
 
@@ -406,7 +493,7 @@
 
 /* Where the support bubble is raised over the composer (support.css), the
    conversation ends above it: the last message rested under the «?». */
-@media (max-width: 1440px) {
+@media (max-width: 1200px) {
   .chat {
     padding-bottom: 84px;
   }
@@ -541,9 +628,9 @@
   }
 }
 
-/* The assistant's turn is text on the page; the user's is a bubble on the
-   right. Two shapes for two speakers, and the longer answers — the
-   assistant's — get the full width to be read in. */
+/* The assistant's turn is text on the page under a small mark; the user's
+   is a bubble on the right. Two shapes for two speakers, and the longer
+   answers — the assistant's — get the full column to be read in. */
 .bubble {
   max-width: 100%;
   align-self: flex-start;
@@ -552,15 +639,16 @@
 .bubble--me {
   align-self: flex-end;
   max-width: 80%;
-  background: var(--sunken);
-  border-radius: 14px 14px 4px 14px;
-  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px 12px 4px 12px;
+  padding: 9px 14px;
 }
 
 .bubble__text {
   margin: 0;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.65;
   /* The model answers in plain text with its own line breaks; collapsing
      them would run a numbered list into one paragraph. */
   white-space: pre-wrap;
@@ -571,17 +659,102 @@
   font-weight: 600;
 }
 
+.bubble__p {
+  margin: 0;
+}
+
+.bubble__p + .bubble__p,
+.bubble__p + .quote,
+.quote + .bubble__p,
+.quote + .quote {
+  margin-top: 12px;
+}
+
+.bubble__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.bubble__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bubble__who svg {
+  width: 18px;
+  height: 18px;
+}
+
+.bubble__who rect {
+  fill: var(--ink);
+}
+
+.bubble__who path {
+  stroke: var(--accent);
+}
+
 /* What the assistant consulted before answering. A chat that silently did
    four things cannot be checked, so the steps stay visible — quietly. */
-.bubble__tools {
-  display: inline-block;
-  margin: 0 0 6px;
-  font-size: 12px;
+.bubble__step {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--sunken);
+  font-size: 11.5px;
+  line-height: 18px;
   color: var(--muted);
 }
 
-.bubble__tools::before {
-  content: '↳ ';
+/* Text written for someone else — a reply to an employer, a question for
+   the interview. It leaves by copy and paste, so the copy is on the block. */
+.quote {
+  margin: 0;
+  padding: 12px 16px 10px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.quote__text {
+  white-space: pre-wrap;
+}
+
+.quote__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 8px 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.quote__copy:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.quote__copy svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* The vacancy a message was written about — "Обсудить" in Избранном. */
@@ -765,14 +938,51 @@
   outline: none;
 }
 
+/* Muted while the box is empty, the accent once there is something to send. */
 .chat__send {
-  border-radius: 10px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: 0 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+
+.chat__send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.chat__send:disabled {
+  background: var(--sunken);
+  color: var(--muted);
+  cursor: default;
+}
+
+.chat__send svg {
+  width: 17px;
+  height: 17px;
 }
 
 @media (max-width: 560px) {
   .bubble--me {
     max-width: 92%;
   }
+}
+
+/* A divider with the note in its middle; the note is kept short of the
+   edges, or a long one left no line to see. */
+.chat__event span {
+  max-width: 70%;
 }
 
 .chat__event {
@@ -792,11 +1002,4 @@
   flex: 1;
   height: 1px;
   background: var(--line);
-}
-
-/* A thread's title is the user's own words and can run long; the page's
-   display size is meant for two-word headings. */
-.chatmain .page__title {
-  font-size: 28px;
-  line-height: 1.2;
 }

@@ -41,15 +41,19 @@ import type { ChatThread, VacancyCard, VacancyRef } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Drawer } from '../components/drawer'
 import { ProposalCard } from '../components/ProposalCard'
+import { copySelection } from '../components/report'
 import { useToast } from '../components/toast'
 import {
+  ArrowUpIcon,
+  BrandMark,
+  CopyIcon,
   ExternalIcon,
   MoreIcon,
   PencilIcon,
   PlusIcon,
   TrashIcon,
 } from '../components/icons'
-import { ErrorNote, PageHead, Skeleton } from '../components/ui'
+import { ErrorNote, Skeleton } from '../components/ui'
 import '../components/chat.css'
 
 /** What each tool is called when the chat says what it looked at. The names
@@ -85,8 +89,6 @@ const VACANCY_GREETINGS = [
   'С чего начнём?',
   'Что хотите узнать о вакансии?',
 ]
-
-const pickOne = (list: readonly string[]) => list[Math.floor(Math.random() * list.length)]
 
 const NEW = 'new'
 
@@ -142,7 +144,7 @@ export function ChatPage() {
       <ThreadList threads={threads ?? []} currentId={threadId} />
       {/* Keyed by thread: the draft, the attached question and the scroll
           belong to one conversation and must not leak into the next. */}
-      <Conversation key={threadId} thread={current ?? null} />
+      <Conversation key={threadId} thread={current ?? null} waiting={!threads} />
     </div>
   )
 }
@@ -357,11 +359,7 @@ function ThreadItem({
   // A vacancy thread is named "Должность — Компания" by default; the company
   // goes to its own line, where a long title no longer cuts it off.
   const company = thread.vacancy?.company
-  const suffix = company ? ` — ${company}` : ''
-  const title =
-    suffix && thread.title.endsWith(suffix)
-      ? thread.title.slice(0, -suffix.length)
-      : titleOf(thread)
+  const title = shortTitleOf(thread)
   const menuOpen = actions.menuFor === thread.id
   const renaming = actions.renaming?.id === thread.id ? actions.renaming : null
 
@@ -532,7 +530,26 @@ function titleOf(thread: ChatThread) {
   return thread.title || 'Без названия'
 }
 
-function Conversation({ thread }: { thread: ChatThread | null }) {
+/** A vacancy thread is named "Должность — Компания" by default. Where the
+ *  company is shown on a line of its own, the title drops it rather than
+ *  saying it twice; a title the user renamed is left as written. */
+function shortTitleOf(thread: ChatThread) {
+  const company = thread.vacancy?.company
+  const suffix = company ? ` — ${company}` : ''
+  return suffix && thread.title.endsWith(suffix)
+    ? thread.title.slice(0, -suffix.length)
+    : titleOf(thread)
+}
+
+function Conversation({
+  thread,
+  waiting,
+}: {
+  thread: ChatThread | null
+  /** The thread list is still loading: an existing thread looks like a new
+   *  one until it comes, and its history flashed the empty greeting. */
+  waiting: boolean
+}) {
   const navigate = useNavigate()
   const { data: state } = useAppState()
   const { data: messages, isLoading, error } = useChat(thread?.id ?? null)
@@ -550,11 +567,12 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
   )
   const isSending = sending !== null
   const endRef = useRef<HTMLDivElement>(null)
-  // Once per thread opened (the component is keyed by it): a greeting
-  // that changed on every render would flicker as messages load.
-  const [greeting] = useState(() =>
-    pickOne(thread?.vacancy ? VACANCY_GREETINGS : GREETINGS),
-  )
+  // Drawn once per thread opened (the component is keyed by it): a greeting
+  // that changed on every render would flicker as messages load. The list
+  // is chosen on render — the thread can arrive after the first one.
+  const [draw] = useState(Math.random)
+  const greetings = thread?.vacancy ? VACANCY_GREETINGS : GREETINGS
+  const greeting = greetings[Math.floor(draw * greetings.length)]
 
   // Follow the conversation as it grows, the way a chat is expected to behave.
   // Guarded: scrollIntoView is missing in jsdom and in older mobile browsers,
@@ -628,7 +646,7 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
 
   return (
     <div className="chatmain">
-      <PageHead title={thread ? titleOf(thread) : 'Помощник'} />
+      <ChatHeader thread={thread} />
 
       <ErrorNote error={error} />
 
@@ -640,9 +658,9 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
       ) : null}
 
       <div className="chat">
-        {isLoading ? <Skeleton rows={3} /> : null}
+        {isLoading || waiting ? <Skeleton rows={3} /> : null}
 
-        {!isLoading && !hasMessages && !isSending ? (
+        {!isLoading && !waiting && !hasMessages && !isSending ? (
           <div className="chat__empty">
             <p className="chat__greeting">{greeting}</p>
           </div>
@@ -653,11 +671,14 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
             // Not a turn of the conversation: the CV changed under it, and
             // what was agreed above may no longer be in the profile.
             <p key={`${message.created_at}-${index}`} className="chat__event">
-              {message.text}
+              <span>{message.text}</span>
             </p>
           ) : (
             <div key={`${message.created_at}-${index}`} className="chat__turn">
               <div className={message.role === 'user' ? 'bubble bubble--me' : 'bubble'}>
+                {message.role === 'assistant' ? (
+                  <AssistantHead tools={message.tools} />
+                ) : null}
                 {/* The thread's own vacancy goes with every message; naming
                     it on each bubble would only repeat the title. */}
                 {message.vacancy && message.vacancy.id !== thread?.vacancy?.id ? (
@@ -665,18 +686,13 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
                     {vacancyLabel(message.vacancy.title, message.vacancy.company)}
                   </p>
                 ) : null}
-                {message.tools.length ? (
-                  <p className="bubble__tools">
-                    {message.tools.map((t) => TOOL_TITLES[t] ?? t).join(', ')}
-                  </p>
-                ) : null}
-                <p className="bubble__text">
-                  {message.role === 'assistant' ? (
-                    <Inline text={message.text} />
-                  ) : (
-                    message.text
-                  )}
-                </p>
+                {message.role === 'assistant' ? (
+                  <div className="bubble__text">
+                    <Reply text={message.text} />
+                  </div>
+                ) : (
+                  <p className="bubble__text">{message.text}</p>
+                )}
               </div>
               {message.vacancies?.length ? (
                 <VacancyChoice
@@ -763,15 +779,158 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
             }}
           />
           <button
-            className="btn chat__send"
+            className="chat__send"
             onClick={() => send()}
             disabled={!text.trim() || isSending}
+            aria-label="Отправить"
+            title="Отправить"
           >
-            {isSending ? '…' : 'Отправить'}
+            <ArrowUpIcon />
           </button>
         </div>
       </div>
     </div>
+  )
+}
+
+/** The bar over the conversation. It stays when the history scrolls: in a
+ *  long thread the big page title was gone after the first screen, and with
+ *  it which vacancy the talk was about. */
+function ChatHeader({ thread }: { thread: ChatThread | null }) {
+  const { data: state } = useAppState()
+  const vacancy = thread?.vacancy
+  const row = vacancy ? state?.found.find((r) => r.id === vacancy.id) : undefined
+  const status = row?.status ? state?.statuses[row.status]?.title : undefined
+  return (
+    <header className={vacancy ? 'chathead' : 'chathead chathead--bare'}>
+      <div className="chathead__inner">
+        <div className="chathead__text">
+          <h1 className="chathead__title">
+            {thread ? shortTitleOf(thread) : 'Новый разговор'}
+          </h1>
+          {vacancy ? (
+            <p className="chathead__meta">
+              {vacancy.company ? <span>{vacancy.company}</span> : null}
+              {status ? <span className="chathead__status">{status}</span> : null}
+            </p>
+          ) : null}
+        </div>
+        {row?.url ? (
+          <a
+            className="btn btn--quiet btn--small chathead__link"
+            href={row.url}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Открыть вакансию <ExternalIcon />
+          </a>
+        ) : null}
+      </div>
+    </header>
+  )
+}
+
+/** The assistant's turn: a mark that says who speaks, and the steps it took. */
+function AssistantHead({ tools }: { tools: string[] }) {
+  return (
+    <div className="bubble__head">
+      <span className="bubble__who">
+        <BrandMark />
+        Помощник
+      </span>
+      {/* What the assistant consulted before answering. A chat that silently
+          did four things cannot be checked, so the steps stay visible. */}
+      {tools.map((tool, index) => (
+        <span key={`${tool}-${index}`} className="bubble__step">
+          {TOOL_TITLES[tool] ?? tool}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+type Block = { kind: 'text' | 'quote'; text: string }
+
+/** Paragraphs of a reply, with «…» set apart.
+ *
+ * A paragraph that is all one «…» is text written for someone else — a reply
+ * to an employer, a question to ask at the interview. It leaves the cabinet
+ * by copy and paste, so it is a block with its own copy button. A quote that
+ * spans paragraphs (a letter with a greeting and a signature) is one block
+ * from the opening « to the closing ». */
+function splitReply(text: string): Block[] {
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const blocks: Block[] = []
+  for (let i = 0; i < paragraphs.length; i++) {
+    const p = paragraphs[i]
+    if (p.startsWith('«')) {
+      const end = paragraphs.findIndex((q, j) => j >= i && /»[.!?…]?$/.test(q))
+      if (end >= 0) {
+        const quote = paragraphs.slice(i, end + 1).join('\n\n')
+        blocks.push({
+          kind: 'quote',
+          text: quote.replace(/^«/, '').replace(/»([.!?…]?)$/, '$1'),
+        })
+        i = end
+        continue
+      }
+    }
+    blocks.push({ kind: 'text', text: p })
+  }
+  return blocks
+}
+
+function Reply({ text }: { text: string }) {
+  return (
+    <>
+      {splitReply(text).map((block, index) =>
+        block.kind === 'quote' ? (
+          <Quote key={index} text={block.text} />
+        ) : (
+          <p key={index} className="bubble__p">
+            <Inline text={block.text} />
+          </p>
+        ),
+      )}
+    </>
+  )
+}
+
+function Quote({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
+
+  async function copy() {
+    let ok: boolean
+    try {
+      await navigator.clipboard.writeText(text)
+      ok = true
+    } catch {
+      // Same fallback as the cover letter (report.tsx): a silent failure
+      // would leave an older text in the clipboard to be sent instead.
+      ok = copySelection(ref.current)
+    }
+    setState(ok ? 'copied' : 'failed')
+    window.setTimeout(() => setState('idle'), 2500)
+  }
+
+  return (
+    <figure className="quote">
+      <div className="quote__text" ref={ref}>
+        <Inline text={text} />
+      </div>
+      <button type="button" className="quote__copy" onClick={copy}>
+        <CopyIcon />
+        {state === 'copied'
+          ? 'Скопировано'
+          : state === 'failed'
+            ? 'Не скопировалось — Ctrl+C'
+            : 'Скопировать'}
+      </button>
+    </figure>
   )
 }
 

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   proposals: [] as ChatProposal[],
   hasResume: true,
   threads: [] as ChatThread[],
+  found: [] as { id: string; url: string | null; status: string | null }[],
 }))
 
 vi.mock('../api/hooks', () => ({
@@ -28,7 +29,13 @@ vi.mock('../api/hooks', () => ({
     error: null,
   }),
   useProposals: () => ({ data: mocks.proposals }),
-  useAppState: () => ({ data: { has_resume: mocks.hasResume } }),
+  useAppState: () => ({
+    data: {
+      has_resume: mocks.hasResume,
+      found: mocks.found,
+      statuses: { applied: { title: 'Откликнулся', terminal: false } },
+    },
+  }),
   sendMessage: vi.fn(),
   createThread: vi.fn(),
   renameThread: vi.fn(),
@@ -246,9 +253,7 @@ describe('ChatPage', () => {
     const { container } = renderPage('/chat/t2')
 
     expect(container.querySelector('.bubble__vacancy')).toBeNull()
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
-      'Python разработчик — Ромашка',
-    )
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Python разработчик')
   })
 
   it('разговоры перечислены, ждущие правки отмечены числом', () => {
@@ -455,6 +460,63 @@ describe('ChatPage', () => {
       })
       expect(hooks.deleteThread).toHaveBeenCalledWith('t2')
       expect(screen.getByTestId('where').textContent).toBe('/chat/t1')
+    })
+  })
+
+  describe('оформление разговора', () => {
+    it('шапка разговора по вакансии: компания, статус из трекера, ссылка', () => {
+      mocks.messages = []
+      mocks.proposals = []
+      mocks.found = [{ id: 'v1', url: 'https://example.com/v1', status: 'applied' }]
+      const { container } = renderPage('/chat/t2')
+
+      const head = container.querySelector('.chathead')!
+      expect(head.querySelector('.chathead__meta')?.textContent).toBe('РомашкаОткликнулся')
+      expect(
+        screen.getByRole('link', { name: /Открыть вакансию/ }).getAttribute('href'),
+      ).toBe('https://example.com/v1')
+      mocks.found = []
+    })
+
+    it('текст в «ёлочках» отдельным абзацем — блок с кнопкой копирования', () => {
+      mocks.messages = [
+        message(
+          'assistant',
+          'Можно ответить так:\n\n«Здравствуйте!\n\nГотов к тестовому.»\n\nУдачи.',
+        ),
+      ]
+      mocks.proposals = []
+      const { container } = renderPage()
+
+      const quotes = [...container.querySelectorAll('.quote__text')].map(
+        (q) => q.textContent,
+      )
+      expect(quotes).toEqual(['Здравствуйте!\n\nГотов к тестовому.'])
+      expect(
+        [...container.querySelectorAll('.bubble__p')].map((p) => p.textContent),
+      ).toEqual(['Можно ответить так:', 'Удачи.'])
+      expect(screen.getByRole('button', { name: /Скопировать/ })).toBeTruthy()
+    })
+
+    it('кавычки внутри абзаца не превращаются в блок', () => {
+      mocks.messages = [
+        message('assistant', 'Пункт «будет преимуществом» — не требование.'),
+      ]
+      mocks.proposals = []
+      const { container } = renderPage()
+
+      expect(container.querySelector('.quote')).toBeNull()
+    })
+
+    it('ответ помощника подписан, шаги — отдельными метками', () => {
+      mocks.messages = [message('assistant', 'Готово.', ['get_profile', 'get_vacancy'])]
+      mocks.proposals = []
+      const { container } = renderPage()
+
+      expect(container.querySelector('.bubble__who')?.textContent).toBe('Помощник')
+      expect(
+        [...container.querySelectorAll('.bubble__step')].map((s) => s.textContent),
+      ).toEqual(['посмотрел резюме', 'открыл вакансию'])
     })
   })
 })

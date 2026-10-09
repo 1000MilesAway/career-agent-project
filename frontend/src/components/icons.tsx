@@ -144,6 +144,19 @@ export const TrashIcon = () => (
   </Icon>
 )
 
+export const ArrowUpIcon = () => (
+  <Icon>
+    <path d="M10 16V4M5 9l5-5 5 5" />
+  </Icon>
+)
+
+export const CopyIcon = () => (
+  <Icon>
+    <rect x="7" y="7" width="9.5" height="9.5" rx="2" />
+    <path d="M13 7V5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 4 5v6.5A1.5 1.5 0 0 0 5.5 13H7" />
+  </Icon>
+)
+
 export const CloseIcon = () => (
   <Icon>
     <path d="M5 5l10 10M15 5L5 15" />
