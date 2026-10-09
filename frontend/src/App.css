@@ -6,6 +6,13 @@
   display: grid;
   grid-template-columns: 236px 1fr;
   min-height: 100dvh;
+  transition: grid-template-columns 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell {
+    transition: none;
+  }
 }
 
 .side {
@@ -345,6 +352,100 @@
   bottom: 0;
   left: -12px;
   width: 12px;
+}
+
+/* ── Rail: the sections as a strip of icons ─────────────────────────────
+
+   On a page that brings its own list (the chat's conversations) the menu
+   folds to icons, and that list takes the sidebar's place. Two full-height
+   lists side by side read as two menus, neither of them the main one.
+   Desktop only: below 860px the sidebar is a top bar anyway. */
+
+@media (min-width: 861px) {
+  .shell--rail {
+    grid-template-columns: 60px 1fr;
+  }
+
+  .shell--rail .side {
+    padding: 22px 8px 16px;
+    overflow: visible;
+  }
+
+  .shell--rail .brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .shell--rail .brand__name,
+  .shell--rail .meter,
+  .shell--rail .side__name,
+  .shell--rail .side__caret,
+  .shell--rail .nav__count:not(.nav__count--hot) {
+    display: none;
+  }
+
+  /* Hidden from the eye, not from a screen reader: the link keeps its name. */
+  .shell--rail .nav__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .shell--rail .nav {
+    position: relative;
+    justify-content: center;
+    padding: 0;
+    height: 40px;
+  }
+
+  /* The admin's pages set apart by a line instead of a heading. */
+  .shell--rail .side__group {
+    height: 0;
+    margin: 10px 8px;
+    overflow: hidden;
+    border-top: 1px solid var(--line);
+  }
+
+  /* Counts that ask for action and the scan pulse sit on the icon's corner. */
+  .shell--rail .nav__count--hot,
+  .shell--rail .nav__busy {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+  }
+
+  .shell--rail .nav__count--hot {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  .shell--rail .side__foot {
+    padding: 0;
+    align-items: center;
+  }
+
+  .shell--rail .side__user {
+    width: auto;
+    margin: 0;
+    padding: 4px;
+    border-radius: 50%;
+  }
+
+  .shell--rail .side__user::before {
+    left: 4px;
+    right: 4px;
+  }
+
+  .shell--rail .user-menu__list {
+    left: 0;
+    right: auto;
+    width: 240px;
+  }
 }
 
 /* ── Narrow screens ──────────────────────────────────────────────────── */

@@ -6,13 +6,14 @@
    a box inside a scrolling page gave two scroll bars and a composer that
    drifted off screen on a laptop. */
 
-.chatpage {
-  max-width: 1080px;
-  padding-bottom: 0;
+/* Edge to edge: the conversations panel sits flush against the rail. */
+.page.chatpage {
+  max-width: none;
+  margin: 0;
+  padding: 0;
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 32px;
+  grid-template-columns: 264px minmax(0, 1fr);
   align-items: start;
 }
 
@@ -20,31 +21,67 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  max-width: 820px;
+  justify-self: center;
+  width: 100%;
+  max-width: 900px;
   min-width: 0;
+  padding: 36px 40px 0;
 }
 
 /* ── The list of conversations ────────────────────────────────────────── */
 
+/* In the sidebar's place, dressed as one: full height, the same rule on its
+   right, the same padding at the top — so it reads as this page's menu and
+   not as a second column of content. */
 .threads {
   position: sticky;
-  top: 36px;
+  top: 0;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: calc(100dvh - 72px);
+  gap: 18px;
   min-width: 0;
+  padding: 22px 12px 16px;
+  border-right: 1px solid var(--line);
 }
 
 .threads__new {
-  align-self: flex-start;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+}
+
+.threads__new svg {
+  width: 14px;
+  height: 14px;
+}
+
+.threads__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0 -4px;
+  padding: 0 4px;
+  scrollbar-width: thin;
+}
+
+.threads__heading {
+  margin: 0 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .threads__list {
   list-style: none;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -55,7 +92,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -64,6 +101,9 @@
   font-size: 13.5px;
   text-align: left;
   cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .threads__item:hover {
@@ -71,18 +111,38 @@
   color: var(--ink);
 }
 
+/* The same mark as the current section in the main menu. */
 .threads__item.is-current {
-  background: var(--sunken);
+  background: var(--surface);
   color: var(--ink);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.threads__item.is-current .threads__title {
   font-weight: 600;
 }
 
-.threads__title {
+.threads__text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.threads__title,
+.threads__sub {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.threads__sub {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .threads__badge {
@@ -98,52 +158,83 @@
   text-align: center;
 }
 
-.threads__select {
+/* Inside the phone's window the list is plain content, not a sticky panel. */
+.threads--sheet {
+  position: static;
+  height: auto;
+  padding: 0;
+  border: 0;
+}
+
+.threads__bar {
   display: none;
 }
 
-@media (max-width: 900px) {
-  .chatpage {
+@media (max-width: 860px) {
+  .page.chatpage {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    align-items: stretch;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 20px 16px 0;
   }
 
   .chatmain {
     min-height: 0;
     flex: 1;
     max-width: none;
-    width: 100%;
+    padding: 0;
   }
 
-  .threads {
-    position: static;
-    flex-direction: row;
-    align-items: center;
-    max-height: none;
-    width: 100%;
-    margin-bottom: 16px;
-  }
-
-  .threads__list {
+  .chatpage > .threads {
     display: none;
   }
 
-  .threads__select {
-    display: block;
+  .threads__bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .threads__bar .btn {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .threads__switch {
     flex: 1;
     min-width: 0;
-    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
     border: 1px solid var(--line-strong);
     border-radius: 8px;
     background: var(--surface);
     color: var(--ink);
     font: inherit;
     font-size: 14px;
+    text-align: left;
+    cursor: pointer;
   }
 
-  .threads__new {
+  .threads__switch .threads__title {
+    flex: 1;
+  }
+
+  .threads__caret {
     flex: none;
+    width: 7px;
+    height: 7px;
+    margin: -3px 2px 0 0;
+    border: solid var(--muted);
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
   }
 }
 

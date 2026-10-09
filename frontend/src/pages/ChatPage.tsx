@@ -1,6 +1,6 @@
 /** "Помощник" — the chat.
  *
- * Several conversations, listed on the left (a select on a phone): one
+ * Several conversations, listed in the sidebar's place (a window on a phone): one
  * endless thread mixed CV edits, three vacancies and a reply to an employer,
  * and nobody could find anything in it. A vacancy has its own thread, which
  * "Обсудить" opens.
@@ -39,9 +39,10 @@ import {
 } from '../api/hooks'
 import type { ChatThread, VacancyCard, VacancyRef } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { Drawer } from '../components/drawer'
 import { ProposalCard } from '../components/ProposalCard'
 import { useToast } from '../components/toast'
-import { ExternalIcon } from '../components/icons'
+import { ExternalIcon, PlusIcon } from '../components/icons'
 import { ErrorNote, PageHead, Skeleton } from '../components/ui'
 import '../components/chat.css'
 
@@ -142,51 +143,134 @@ function Waiting() {
 
 function ThreadList({ threads, currentId }: { threads: ChatThread[]; currentId: string }) {
   const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const current = threads.find((t) => t.id === currentId)
+  const go = (id: string) => {
+    setOpen(false)
+    navigate(`/chat/${id}`)
+  }
+  const pendingElsewhere = threads.reduce(
+    (n, t) => n + (t.id === currentId ? 0 : t.pending),
+    0,
+  )
+
   return (
-    <nav className="threads" aria-label="Разговоры">
+    <>
+      <nav className="threads" aria-label="Разговоры">
+        <ThreadGroups threads={threads} currentId={currentId} onPick={go} />
+      </nav>
+
+      {/* A phone has no room for the panel: the current thread's name opens
+          the same list in a window. */}
+      <div className="threads__bar">
+        <button className="threads__switch" onClick={() => setOpen(true)}>
+          <span className="threads__title">
+            {current ? titleOf(current) : 'Новый разговор'}
+          </span>
+          {pendingElsewhere ? (
+            <span className="threads__badge">{pendingElsewhere}</span>
+          ) : null}
+          <span className="threads__caret" aria-hidden="true" />
+        </button>
+        <button
+          className="btn btn--small"
+          onClick={() => go(NEW)}
+          disabled={currentId === NEW}
+          aria-label="Новый разговор"
+          title="Новый разговор"
+        >
+          <PlusIcon />
+        </button>
+      </div>
+      <Drawer open={open} title="Разговоры" onClose={() => setOpen(false)}>
+        <div className="threads threads--sheet">
+          <ThreadGroups threads={threads} currentId={currentId} onPick={go} />
+        </div>
+      </Drawer>
+    </>
+  )
+}
+
+/** Vacancy threads apart from the rest: a vacancy's thread is found by the
+ *  vacancy, and mixed into one list by date the general ones got lost
+ *  between them. */
+function ThreadGroups({
+  threads,
+  currentId,
+  onPick,
+}: {
+  threads: ChatThread[]
+  currentId: string
+  onPick: (id: string) => void
+}) {
+  const groups = [
+    { title: 'По вакансиям', items: threads.filter((t) => t.vacancy) },
+    { title: 'Общие', items: threads.filter((t) => !t.vacancy) },
+  ].filter((g) => g.items.length)
+
+  return (
+    <>
       <button
         className="btn btn--small threads__new"
-        onClick={() => navigate(`/chat/${NEW}`)}
+        onClick={() => onPick(NEW)}
         disabled={currentId === NEW}
       >
+        <PlusIcon />
         Новый разговор
       </button>
 
-      <ul className="threads__list">
-        {threads.map((t) => (
-          <li key={t.id}>
-            <button
-              className={t.id === currentId ? 'threads__item is-current' : 'threads__item'}
-              aria-current={t.id === currentId ? 'page' : undefined}
-              onClick={() => navigate(`/chat/${t.id}`)}
-              title={titleOf(t)}
-            >
-              <span className="threads__title">{titleOf(t)}</span>
-              {t.pending ? (
-                <span className="threads__badge" title="Правки ждут решения">
-                  {t.pending}
-                </span>
-              ) : null}
-            </button>
-          </li>
+      <div className="threads__scroll">
+        {groups.map((group) => (
+          <section key={group.title} className="threads__group">
+            <h2 className="threads__heading">{group.title}</h2>
+            <ul className="threads__list">
+              {group.items.map((t) => (
+                <li key={t.id}>
+                  <ThreadItem thread={t} current={t.id === currentId} onPick={onPick} />
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
+    </>
+  )
+}
 
-      {/* A phone has no room for a column; the same list as a select. */}
-      <select
-        className="threads__select"
-        aria-label="Разговор"
-        value={currentId}
-        onChange={(e) => navigate(`/chat/${e.target.value}`)}
-      >
-        <option value={NEW}>Новый разговор</option>
-        {threads.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.pending ? `${titleOf(t)} · ${t.pending}` : titleOf(t)}
-          </option>
-        ))}
-      </select>
-    </nav>
+function ThreadItem({
+  thread,
+  current,
+  onPick,
+}: {
+  thread: ChatThread
+  current: boolean
+  onPick: (id: string) => void
+}) {
+  // A vacancy thread is named "Должность — Компания" by default; the company
+  // goes to its own line, where a long title no longer cuts it off.
+  const company = thread.vacancy?.company
+  const suffix = company ? ` — ${company}` : ''
+  const title =
+    suffix && thread.title.endsWith(suffix)
+      ? thread.title.slice(0, -suffix.length)
+      : titleOf(thread)
+  return (
+    <button
+      className={current ? 'threads__item is-current' : 'threads__item'}
+      aria-current={current ? 'page' : undefined}
+      onClick={() => onPick(thread.id)}
+      title={titleOf(thread)}
+    >
+      <span className="threads__text">
+        <span className="threads__title">{title}</span>
+        {company ? <span className="threads__sub">{company}</span> : null}
+      </span>
+      {thread.pending ? (
+        <span className="threads__badge" title="Правки ждут решения">
+          {thread.pending}
+        </span>
+      ) : null}
+    </button>
   )
 }
 

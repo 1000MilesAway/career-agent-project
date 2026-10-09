@@ -133,7 +133,7 @@ function Cabinet() {
   }, [pathname, savedCount, pendingCount, isAdmin])
 
   return (
-    <div className="shell">
+    <div className={isRail(pathname) ? 'shell shell--rail' : 'shell'}>
       <aside className="side">
         <div className="brand">
           <BrandMark />
@@ -236,6 +236,12 @@ function Cabinet() {
   )
 }
 
+/** Pages with a list of their own in the sidebar's place: the sections fold
+ *  into a strip of icons, so there is one sidebar on screen, not two. */
+function isRail(pathname: string) {
+  return pathname === '/chat' || pathname.startsWith('/chat/')
+}
+
 /** An admin page, or the cabinet's home for anyone else. Waits for the
  *  state rather than redirecting on its absence: a reload of /admin/spend
  *  must land back there, not on search. The API refuses non-admins anyway;
@@ -268,8 +274,14 @@ function NavItem({
   busy?: boolean
   children: ReactNode
 }) {
+  // In the strip the label is hidden, so the name comes back on hover.
+  const rail = isRail(useLocation().pathname)
   return (
-    <NavLink to={to} className={({ isActive }) => (isActive ? 'nav nav--on' : 'nav')}>
+    <NavLink
+      to={to}
+      className={({ isActive }) => (isActive ? 'nav nav--on' : 'nav')}
+      title={rail && typeof children === 'string' ? children : undefined}
+    >
       {icon}
       <span className="nav__label">{children}</span>
       {busy ? (

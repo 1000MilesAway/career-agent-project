@@ -245,7 +245,9 @@ describe('ChatPage', () => {
     const { container } = renderPage('/chat/t2')
 
     expect(container.querySelector('.bubble__vacancy')).toBeNull()
-    expect(screen.getByRole('heading').textContent).toBe('Python разработчик — Ромашка')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Python разработчик — Ромашка',
+    )
   })
 
   it('разговоры перечислены, ждущие правки отмечены числом', () => {
@@ -256,6 +258,23 @@ describe('ChatPage', () => {
     const nav = screen.getByRole('navigation', { name: 'Разговоры' })
     expect(nav.textContent).toMatch(/Про Kubernetes/)
     expect(nav.querySelector('.threads__badge')?.textContent).toBe('1')
+  })
+
+  it('разговоры по вакансиям отдельно от общих, компания — второй строкой', () => {
+    mocks.messages = []
+    mocks.proposals = []
+    renderPage()
+
+    const nav = screen.getByRole('navigation', { name: 'Разговоры' })
+    const groups = [...nav.querySelectorAll('.threads__group')].map((g) => ({
+      heading: g.querySelector('h2')?.textContent,
+      titles: [...g.querySelectorAll('.threads__title')].map((t) => t.textContent),
+      subs: [...g.querySelectorAll('.threads__sub')].map((t) => t.textContent),
+    }))
+    expect(groups).toEqual([
+      { heading: 'По вакансиям', titles: ['Python разработчик'], subs: ['Ромашка'] },
+      { heading: 'Общие', titles: ['Про Kubernetes'], subs: [] },
+    ])
   })
 
   it('/chat открывает последний разговор', () => {
