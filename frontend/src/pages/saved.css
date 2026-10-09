@@ -65,6 +65,22 @@
   white-space: nowrap;
 }
 
+/* A mouse cannot swipe a strip with no scrollbar: the stages past the edge
+   («Оффер», «Отказ») were out of reach. With a pointer they wrap instead. */
+@media (hover: hover) and (pointer: fine) {
+  .funnel {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    overflow-x: visible;
+  }
+
+  /* A fixed track no longer grows to its label: «Техническое интервью»
+     takes two lines instead of running into the next stage. */
+  .funnel__label {
+    white-space: normal;
+  }
+}
+
 /* The tracker select wears the stage's colour, so the list reads as a
    board without being one. */
 .status {

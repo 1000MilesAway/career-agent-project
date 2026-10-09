@@ -119,7 +119,16 @@ export const useTriageJob = (enabled = true) =>
 export const TRIAGE_SETTLED_KEY = 'local:triage-settled'
 
 export function useTriageSettled(): string | null {
-  return useSWR<string | null>(TRIAGE_SETTLED_KEY, null).data ?? null
+  // A null fetcher falls back to the global one, which would fetch the key as
+  // a URL; never revalidating keeps SWR a plain cache here.
+  return (
+    useSWR<string | null>(TRIAGE_SETTLED_KEY, null, {
+      revalidateOnMount: false,
+      revalidateIfStale: false,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+    }).data ?? null
+  )
 }
 
 export const markTriageSettled = (finishedAt: string | null) =>

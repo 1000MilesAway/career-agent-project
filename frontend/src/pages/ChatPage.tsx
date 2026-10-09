@@ -218,9 +218,17 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
   // Follow the conversation as it grows, the way a chat is expected to behave.
   // Guarded: scrollIntoView is missing in jsdom and in older mobile browsers,
   // and an absent nicety must not take the whole screen down with it.
+  // The first jump is instant: a smooth one, started while the history was
+  // still laying out, stopped short with the last message under the box.
+  const followed = useRef(false)
+  const loaded = messages !== undefined
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' })
-  }, [messages?.length, proposals?.length, sending])
+    endRef.current?.scrollIntoView?.({
+      behavior: followed.current ? 'smooth' : 'auto',
+      block: 'end',
+    })
+    if (loaded) followed.current = true
+  }, [loaded, messages?.length, proposals?.length, sending])
 
   /** Sends the box, or `answer` when a choice was pressed; `vacancy` goes
    *  with it when a vacancy card was picked. */
@@ -472,7 +480,7 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
           </div>
         ) : null}
 
-        <div ref={endRef} />
+        <div ref={endRef} className="chat__end" />
       </div>
 
       <div className="chat__dock">

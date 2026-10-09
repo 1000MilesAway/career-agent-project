@@ -169,6 +169,21 @@
   padding-bottom: 24px;
 }
 
+/* The composer is stuck over the bottom of the page: aligned to the very
+   bottom, the last message ended up under it. The margin is more than the
+   room below, so the browser stops at the page's end. */
+.chat__end {
+  scroll-margin-bottom: 240px;
+}
+
+/* Where the support bubble is raised over the composer (support.css), the
+   conversation ends above it: the last message rested under the «?». */
+@media (max-width: 1440px) {
+  .chat {
+    padding-bottom: 84px;
+  }
+}
+
 .chat__warn {
   margin: 0 0 16px;
   padding: 10px 14px;

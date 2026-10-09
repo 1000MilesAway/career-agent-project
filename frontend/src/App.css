@@ -393,6 +393,11 @@
     min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
+    /* Sections cut off at the edge fade out, so the strip reads as one that
+       scrolls; the padding lets the last one clear the fade. */
+    padding-right: 24px;
+    scroll-padding-inline-end: 24px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
   }
 
   .nav {

@@ -5,9 +5,10 @@
  * the materials and the tracker on both made one screen answer two questions
  * at once — see docs/decisions.md, 2026-09-19.
  *
- * The score leads the row, the way a match percentage leads a card in the job
- * trackers people already know: it is the one number a scan of the list is
- * for. Salary is set in ink rather than grey because it is the second.
+ * The score sits with the actions, next to the «Отчёт» it came from: on the
+ * left it pushed the title of a scored row right, and most rows are not
+ * scored, so the titles of one list started at two different lines. Salary is
+ * set in ink rather than grey because it is the number read second.
  */
 
 import { memo, type ReactNode } from 'react'
@@ -97,22 +98,10 @@ function VacancyRowInner({
       : null,
   ].filter((flag) => flag !== null)
   const verdict = vacancy.triage && !dropped ? vacancy.triage : null
-  const scored = vacancy.score != null
+  const hasBody = Boolean(dropped || verdict || flags.length || footer)
 
   return (
-    <article
-      className={['vrow', dimmed && 'vrow--dim', !scored && 'vrow--bare']
-        .filter(Boolean)
-        .join(' ')}
-    >
-      {/* No column at all until scored: the verdict chip already says what
-          triage thought, and an empty column only pushed the title right. */}
-      {scored ? (
-        <div className="vrow__lead">
-          <Score score={vacancy.score} verdict={vacancy.verdict} />
-        </div>
-      ) : null}
-
+    <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
       <div className="vrow__main">
         <h3 className="vrow__title">
           {vacancy.url ? (
@@ -138,43 +127,54 @@ function VacancyRowInner({
             <span key={item}>{item}</span>
           ))}
         </p>
-
-        {/* A drop without its reason is exactly the silent rejection the
-            pipeline forbids, so the reason rides along with the row. */}
-        {dropped ? (
-          <p className="vrow__note">
-            <span className="chip chip--flag">
-              {vacancy.duplicate_of ? 'дубль' : 'отсеяно'}
-            </span>{' '}
-            {vacancy.screen_reason || 'без причины'}
-          </p>
-        ) : null}
-
-        {/* Marks of the row's state in one line. The why is on hover: written
-            out under each one, four marks made the card read like a log. */}
-        {/* The verdict leads the row: it is the first thing to read about a
-            vacancy, and its reason follows as plain text below. */}
-        {verdict || flags.length ? (
-          <p className="vrow__flags">
-            {verdict ? (
-              <span className={`chip chip--verdict chip--${verdict.bucket}`}>
-                {BUCKET_TITLES[verdict.bucket] ?? verdict.bucket}
-              </span>
-            ) : null}
-            {flags.map((flag) => (
-              <span key={flag.label} className="chip chip--flag" title={flag.why}>
-                {flag.label}
-              </span>
-            ))}
-          </p>
-        ) : null}
-
-        {verdict?.reason ? <p className="vrow__note">{verdict.reason}</p> : null}
-
-        {footer ? <div className="vrow__footer">{footer}</div> : null}
       </div>
 
-      <div className="vrow__acts">{actions}</div>
+      <div className="vrow__acts">
+        {vacancy.score != null ? (
+          <Score score={vacancy.score} verdict={vacancy.verdict} />
+        ) : null}
+        {actions}
+      </div>
+
+      {/* Under both columns: beside the actions, the verdict and the tools
+          wrapped in a strip a third of the row wide. */}
+      {hasBody ? (
+        <div className="vrow__body">
+          {/* A drop without its reason is exactly the silent rejection the
+            pipeline forbids, so the reason rides along with the row. */}
+          {dropped ? (
+            <p className="vrow__note">
+              <span className="chip chip--flag">
+                {vacancy.duplicate_of ? 'дубль' : 'отсеяно'}
+              </span>{' '}
+              {vacancy.screen_reason || 'без причины'}
+            </p>
+          ) : null}
+
+          {/* Marks of the row's state in one line. The why is on hover: written
+            out under each one, four marks made the card read like a log. */}
+          {/* The verdict leads the row: it is the first thing to read about a
+            vacancy, and its reason follows as plain text below. */}
+          {verdict || flags.length ? (
+            <p className="vrow__flags">
+              {verdict ? (
+                <span className={`chip chip--verdict chip--${verdict.bucket}`}>
+                  {BUCKET_TITLES[verdict.bucket] ?? verdict.bucket}
+                </span>
+              ) : null}
+              {flags.map((flag) => (
+                <span key={flag.label} className="chip chip--flag" title={flag.why}>
+                  {flag.label}
+                </span>
+              ))}
+            </p>
+          ) : null}
+
+          {verdict?.reason ? <p className="vrow__note">{verdict.reason}</p> : null}
+
+          {footer ? <div className="vrow__footer">{footer}</div> : null}
+        </div>
+      ) : null}
     </article>
   )
 }

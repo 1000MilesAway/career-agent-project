@@ -27,17 +27,12 @@
 
 .vrow {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
-  gap: 4px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 16px;
   align-items: start;
-  padding: 16px 18px 16px 12px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--line);
   transition: background 0.12s;
-}
-
-.vrow--bare {
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding-left: 18px;
 }
 
 .vrow:last-child {
@@ -60,13 +55,14 @@
   opacity: 1;
 }
 
-.vrow__lead {
-  display: flex;
-  justify-content: center;
-  padding-top: 1px;
+.vrow__main {
+  min-width: 0;
 }
 
-.vrow__main {
+/* The verdict and the tools run under the actions too: kept to the left
+   column, they were squeezed beside a status select and wrapped. */
+.vrow__body {
+  grid-column: 1 / -1;
   min-width: 0;
 }
 
@@ -104,15 +100,22 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 0;
+  gap: 2px 14px;
   margin: 3px 0 0;
   font-size: 13px;
   color: var(--muted);
+  /* Clips the dot of an item that wrapped to the start of a line. */
+  overflow: hidden;
 }
 
-.vrow__meta > span + span::before {
+/* Each dot hangs in the gap before its item: at a line start it falls
+   outside the box and is clipped, instead of opening the line with a «·». */
+.vrow__meta > span::before {
   content: '·';
-  margin: 0 7px;
+  display: inline-block;
+  width: 14px;
+  margin-left: -14px;
+  text-align: center;
   color: var(--line-strong);
 }
 
@@ -213,22 +216,14 @@
 
 @media (max-width: 720px) {
   .vrow {
-    grid-template-columns: 44px minmax(0, 1fr);
-    padding: 14px 14px 14px 8px;
-  }
-
-  .vrow--bare {
     grid-template-columns: minmax(0, 1fr);
-    padding-left: 14px;
+    padding: 14px;
   }
 
+  /* One column: the actions close the row, under everything else. */
   .vrow__acts {
-    grid-column: 2;
+    order: 1;
     justify-content: flex-start;
     margin-top: 8px;
-  }
-
-  .vrow--bare .vrow__acts {
-    grid-column: 1;
   }
 }

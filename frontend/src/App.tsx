@@ -10,7 +10,14 @@
  * changes waiting for a decision) should stay in view while they work.
  */
 
-import { Suspense, useEffect, useState, type FocusEvent, type ReactNode } from 'react'
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type ReactNode,
+} from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { isActive, useAppState, useProposals } from './api/hooks'
 import type { AppState, Quota, QuotaWindow } from './api/types'
@@ -109,6 +116,22 @@ function Cabinet() {
   // starts. Once one is loaded, search is the page people come back to.
   const home = data && !data.has_resume ? '/resume' : '/search'
 
+  // On a phone the sections are a strip that scrolls sideways and the last
+  // ones start off screen: the current one is brought into view, or a user
+  // on «Моё резюме» sees no sign of where they are.
+  const nav = useRef<HTMLElement>(null)
+  const { pathname } = useLocation()
+  // Again once the counts and fonts arrive: they widen the items before it.
+  const isAdmin = Boolean(data?.user.is_admin)
+  useEffect(() => {
+    const reveal = () =>
+      nav.current
+        ?.querySelector('.nav--on')
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    reveal()
+    void document.fonts?.ready.then(reveal)
+  }, [pathname, savedCount, pendingCount, isAdmin])
+
   return (
     <div className="shell">
       <aside className="side">
@@ -117,7 +140,7 @@ function Cabinet() {
           <span className="brand__name">gethire</span>
         </div>
 
-        <nav className="side__nav" aria-label="Разделы">
+        <nav className="side__nav" aria-label="Разделы" ref={nav}>
           <NavItem to="/search" icon={<SearchIcon />} busy={scanning || triaging}>
             Поиск
           </NavItem>
