@@ -66,19 +66,27 @@ const TOOL_TITLES: Record<string, string> = {
   save_vacancy: 'подготовил избранное',
 }
 
-const EXAMPLES = [
-  'Забыл написать — я год настраивал Kubernetes в последней компании.',
-  'Что мне не хватает по вакансии, которую я сохранил?',
-  'Почему ты отсеял вакансии про аналитику?',
-  'Мне ответили из Ромашки, вот их сообщение: «…». Что ответить?',
+/** An empty thread opens with a question, not with sample messages: worded
+ *  examples ("Мне ответили из Ромашки…") read as a script to follow and
+ *  narrowed what people thought the assistant was for. One is picked per
+ *  visit, so the screen is not the same every time. */
+const GREETINGS = [
+  'Что обсудим сегодня?',
+  'Чем помочь?',
+  'С чего начнём?',
+  'Что у вас на уме?',
+  'Над чем поработаем?',
+  'Как продвигается поиск?',
 ]
 
-/** A vacancy's thread starts from what people come to it for. */
-const VACANCY_EXAMPLES = [
-  'Чего мне не хватает для этой вакансии?',
-  'Мне ответили, вот их сообщение: «…». Что ответить?',
-  'К чему готовиться на интервью?',
+const VACANCY_GREETINGS = [
+  'Что обсудим по этой вакансии?',
+  'Чем помочь с этой вакансией?',
+  'С чего начнём?',
+  'Что хотите узнать о вакансии?',
 ]
+
+const pickOne = (list: readonly string[]) => list[Math.floor(Math.random() * list.length)]
 
 const NEW = 'new'
 
@@ -542,6 +550,11 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
   )
   const isSending = sending !== null
   const endRef = useRef<HTMLDivElement>(null)
+  // Once per thread opened (the component is keyed by it): a greeting
+  // that changed on every render would flicker as messages load.
+  const [greeting] = useState(() =>
+    pickOne(thread?.vacancy ? VACANCY_GREETINGS : GREETINGS),
+  )
 
   // Follow the conversation as it grows, the way a chat is expected to behave.
   // Guarded: scrollIntoView is missing in jsdom and in older mobile browsers,
@@ -612,7 +625,6 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
   const last = messages?.at(-1)
   const open = last?.role === 'assistant' && !isSending
   const openChoices = open ? (last.choices ?? []) : []
-  const examples = thread?.vacancy ? VACANCY_EXAMPLES : EXAMPLES
 
   return (
     <div className="chatmain">
@@ -632,18 +644,7 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
 
         {!isLoading && !hasMessages && !isSending ? (
           <div className="chat__empty">
-            <p className="eyebrow">Можно начать, например, так</p>
-            <div className="stack">
-              {examples.map((example) => (
-                <button
-                  key={example}
-                  className="chat__example"
-                  onClick={() => setText(example)}
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
+            <p className="chat__greeting">{greeting}</p>
           </div>
         ) : null}
 

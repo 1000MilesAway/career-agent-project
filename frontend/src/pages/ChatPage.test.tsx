@@ -101,12 +101,13 @@ const proposal: ChatProposal = {
 }
 
 describe('ChatPage', () => {
-  it('пустой разговор предлагает, с чего начать, и не выглядит поломкой', () => {
+  it('пустой разговор встречает вопросом, а не заготовленными фразами', () => {
     mocks.messages = []
     mocks.proposals = []
-    renderPage()
+    const { container } = renderPage()
 
-    expect(screen.getByText(/Можно начать/)).toBeTruthy()
+    expect(container.querySelector('.chat__greeting')?.textContent).toMatch(/\?$/)
+    expect(container.querySelector('.chat__example')).toBeNull()
   })
 
   it('сообщения показаны в том порядке, в котором пришли', () => {

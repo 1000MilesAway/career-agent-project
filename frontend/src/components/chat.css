@@ -420,8 +420,37 @@
   font-size: 13.5px;
 }
 
+/* The greeting sits in the middle of the empty conversation, in the
+   headline face: a question put to the user, not a hint under a field. */
 .chat__empty {
-  padding: 4px 0;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  padding: 24px 0;
+}
+
+.chat__greeting {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(26px, 4vw, 34px);
+  letter-spacing: -0.01em;
+  color: var(--ink-2);
+  text-align: center;
+  animation: chat-greeting-in 0.4s ease-out;
+}
+
+@keyframes chat-greeting-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat__greeting {
+    animation: none;
+  }
 }
 
 .chat__example {
