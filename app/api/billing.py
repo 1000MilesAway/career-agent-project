@@ -29,10 +29,6 @@ class Billing(BaseModel):
     # "free" or "paid", as in /api/auth/me.
     plan: str
     paid_until: datetime | None
-    # How many times the free week Pro allows, for "в 2,5 раза больше".
-    # From the settings, so retuned limits cannot leave the cabinet's claim
-    # stale; null when either week is switched off.
-    pro_vs_free: float | None
 
 
 class Checkout(BaseModel):
@@ -48,11 +44,6 @@ def _billing(user) -> Billing:
         days=s.pro_days,
         plan=plan,
         paid_until=user.paid_until if plan == PAID else None,
-        pro_vs_free=(
-            round(s.paid_week_usd / s.free_week_usd, 1)
-            if s.free_week_usd > 0 and s.paid_week_usd > 0
-            else None
-        ),
     )
 
 

@@ -210,8 +210,6 @@ export interface Billing {
   days: number
   plan: 'free' | 'paid'
   paid_until: string | null
-  /** How many times the free limit Pro gives; null when a limit is off. */
-  pro_vs_free: number | null
 }
 
 export interface Spend {

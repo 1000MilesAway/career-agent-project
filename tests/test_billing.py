@@ -136,7 +136,7 @@ class TestApi:
     async def test_the_plan_and_its_price(self, client, auth_headers, platega):
         body = (await client.get("/api/billing", headers=auth_headers)).json()
         assert body == {"enabled": True, "price_rub": 400, "days": 30, "plan": "free",
-                        "paid_until": None, "pro_vs_free": 2.5}
+                        "paid_until": None}
 
     async def test_without_keys_checkout_is_refused(self, client, auth_headers):
         assert (await client.get("/api/billing", headers=auth_headers)).json()["enabled"] is False

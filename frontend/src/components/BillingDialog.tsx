@@ -31,9 +31,6 @@ const until = (iso: string) =>
     month: 'long',
   })
 
-/** «2,5» rather than «2.5»; a whole number without the comma. */
-const times = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })
-
 export function BillingDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null)
   const { data } = useBilling(open)
@@ -98,12 +95,8 @@ function Plans({ billing }: { billing: Billing }) {
             <b>{billing.price_rub} ₽</b> / месяц
           </p>
           <ul className="plan__perks">
-            <li>
-              {billing.pro_vs_free
-                ? `Лимит в ${times(billing.pro_vs_free)} раза больше`
-                : 'Увеличенный лимит'}
-            </li>
-            <li>Без автопродления</li>
+            <li>Расширенные лимиты</li>
+            <li>Продвинутые функции</li>
           </ul>
           {paid && billing.paid_until ? (
             <p className="plan__badge">Ваш тариф до {until(billing.paid_until)}</p>

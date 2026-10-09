@@ -32,7 +32,6 @@ const FREE: Billing = {
   days: 30,
   plan: 'free',
   paid_until: null,
-  pro_vs_free: 2.5,
 }
 
 beforeAll(() => {
@@ -58,7 +57,7 @@ describe('BillingDialog', () => {
     dialog()
     expect(screen.getByText('Бесплатный')).toBeTruthy()
     expect(screen.getByText('400 ₽')).toBeTruthy()
-    expect(screen.getByText('Лимит в 2,5 раза больше')).toBeTruthy()
+    expect(screen.getByText('Расширенные лимиты')).toBeTruthy()
     expect(screen.getByText('Ваш тариф')).toBeTruthy()
   })
 
