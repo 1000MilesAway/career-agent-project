@@ -498,6 +498,32 @@ describe('ChatPage', () => {
       expect(screen.getByRole('button', { name: /Скопировать/ })).toBeTruthy()
     })
 
+    it('текст между строками --- — тоже блок с кнопкой копирования', () => {
+      mocks.messages = [
+        message(
+          'assistant',
+          'Собрал ответ.\n\n---\nЗдравствуйте!\n\nГотов к тестовому.\n---\n\nПара замечаний.',
+        ),
+      ]
+      mocks.proposals = []
+      const { container } = renderPage()
+
+      expect(
+        [...container.querySelectorAll('.quote__text')].map((q) => q.textContent),
+      ).toEqual(['Здравствуйте!\n\nГотов к тестовому.'])
+      expect(
+        [...container.querySelectorAll('.bubble__p')].map((p) => p.textContent),
+      ).toEqual(['Собрал ответ.', 'Пара замечаний.'])
+    })
+
+    it('одинокая черта --- без пары остаётся текстом', () => {
+      mocks.messages = [message('assistant', 'Раз.\n\n---\n\nДва.')]
+      mocks.proposals = []
+      const { container } = renderPage()
+
+      expect(container.querySelector('.quote')).toBeNull()
+    })
+
     it('кавычки внутри абзаца не превращаются в блок', () => {
       mocks.messages = [
         message('assistant', 'Пункт «будет преимуществом» — не требование.'),

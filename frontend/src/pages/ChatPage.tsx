@@ -857,15 +857,40 @@ type Block = { kind: 'text' | 'quote'; text: string }
  * to an employer, a question to ask at the interview. It leaves the cabinet
  * by copy and paste, so it is a block with its own copy button. A quote that
  * spans paragraphs (a letter with a greeting and a signature) is one block
- * from the opening « to the closing ». */
+ * from the opening « to the closing ».
+ *
+ * The prompt asks for «…», but a model also fences such text with --- lines,
+ * often glued to the first and last paragraph by a single newline. That is
+ * the same block, so it is read as one too. */
 function splitReply(text: string): Block[] {
   const paragraphs = text
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean)
+  const opensFence = /^-{3,}[ \t]*(\n|$)/
+  const closesFence = /(^|\n)[ \t]*-{3,}$/
   const blocks: Block[] = []
   for (let i = 0; i < paragraphs.length; i++) {
     const p = paragraphs[i]
+    if (opensFence.test(p)) {
+      const first = p.replace(opensFence, '')
+      const rest = [first, ...paragraphs.slice(i + 1)]
+      // The closing fence is the next one after the opening, possibly in the
+      // same paragraph; an empty remainder means "--- " stood alone.
+      const end = rest.findIndex((q, j) => (j > 0 || q !== '') && closesFence.test(q))
+      if (end >= 0) {
+        const quote = rest
+          .slice(0, end + 1)
+          .map((q, j) => (j === end ? q.replace(closesFence, '') : q).trim())
+          .filter(Boolean)
+          .join('\n\n')
+        if (quote) {
+          blocks.push({ kind: 'quote', text: quote })
+          i += end
+          continue
+        }
+      }
+    }
     if (p.startsWith('«')) {
       const end = paragraphs.findIndex((q, j) => j >= i && /»[.!?…]?$/.test(q))
       if (end >= 0) {

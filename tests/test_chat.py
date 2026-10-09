@@ -368,6 +368,14 @@ class TestPromptGuards:
 
         assert "не подставляй" in prompts.CHAT.lower() or "домысливать" in prompts.CHAT
 
+    def test_the_prompt_wraps_a_reply_to_an_employer_in_guillemets(self):
+        # The cabinet turns only a «…» paragraph into a copyable block
+        # (splitReply in ChatPage.tsx); without the rule the model fenced a
+        # reply with --- and it rendered as plain text.
+        from core import prompts
+
+        assert "в «ёлочки»" in prompts.CHAT
+
     def test_the_prompt_asks_before_proposing_a_vague_line(self):
         from core import prompts
 
