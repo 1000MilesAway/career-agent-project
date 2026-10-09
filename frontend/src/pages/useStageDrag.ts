@@ -22,7 +22,7 @@ const LONG_PRESS_MS = 350
 export const GRIP = { x: 28, y: 22 }
 
 /** Presses on controls inside the row are theirs, not the start of a drag. */
-const INTERACTIVE = 'a, button, select, input, textarea, label'
+const INTERACTIVE = 'a, button, select, input, textarea, label, [role="listbox"]'
 
 export type Held = { id: string; x: number; y: number }
 

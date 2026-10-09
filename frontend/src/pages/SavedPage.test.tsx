@@ -191,7 +191,7 @@ describe('SavedPage: статусы', () => {
     render(<SavedPage />, { wrapper: MemoryRouter })
     const values = screen
       .getAllByRole('combobox', { name: 'Статус отклика' })
-      .map((select) => (select as HTMLSelectElement).value)
+      .map((select) => (select as HTMLButtonElement).value)
     expect(values).toEqual(['none', 'applied'])
   })
 })

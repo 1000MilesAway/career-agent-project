@@ -1,0 +1,118 @@
+/* Dropdown: the .select trigger with a list drawn in the cabinet's own
+   surface, line and accent instead of the OS menu. */
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown__trigger {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+/* In a form the trigger is a full-width field; it borrows the .select chevron. */
+.dropdown:has(> .input) {
+  display: block;
+}
+
+.dropdown__trigger.input {
+  padding-right: 34px;
+  background: var(--surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237a776d' stroke-width='1.5'/%3E%3C/svg%3E")
+    no-repeat right 12px center;
+  color: var(--ink);
+}
+
+.dropdown__trigger.input + .dropdown__list .dropdown__option {
+  font-size: 14px;
+}
+
+.dropdown__trigger:hover,
+.dropdown--open .dropdown__trigger {
+  border-color: var(--ink-2);
+}
+
+.dropdown__trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dropdown__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  min-width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  animation: dropdown-in 0.12s ease-out;
+}
+
+.dropdown__list--start {
+  left: 0;
+}
+
+.dropdown__list--end {
+  right: 0;
+}
+
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.dropdown__option {
+  position: relative;
+  padding: 7px 28px 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.dropdown__option--active {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* The chosen option carries a check, as the native menu does. */
+.dropdown__option[aria-selected='true'] {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.dropdown__option[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 8px;
+  height: 4px;
+  border: solid var(--accent);
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-70%) rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropdown__list {
+    animation: none;
+  }
+}

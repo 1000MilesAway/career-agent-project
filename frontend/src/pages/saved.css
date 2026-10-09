@@ -87,6 +87,12 @@
   font-weight: 500;
 }
 
+/* As wide as the longest stage, like the native select was: rows with
+   different stages keep one column edge. */
+.dropdown:has(> .status) {
+  width: 184px;
+}
+
 .status--applied,
 .status--responded {
   color: var(--ink);

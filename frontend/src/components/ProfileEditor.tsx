@@ -17,6 +17,7 @@ import {
   type ProfileDraft,
 } from './profileDraft'
 import { CitySelect } from './CitySelect'
+import { Select } from './Select'
 import { useToast } from './toast'
 
 export function ProfileEditor({
@@ -83,18 +84,15 @@ export function ProfileEditor({
         />
         <label className="editor__field">
           <span className="eyebrow">Уровень по опыту</span>
-          <select
+          <Select
             className="input"
             value={draft.seniority}
-            onChange={(e) => set('seniority', e.target.value)}
-          >
-            <option value="">не определён</option>
-            {SENIORITY.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: '', label: 'не определён' },
+              ...SENIORITY.map((level) => ({ value: level, label: level })),
+            ]}
+            onChange={(v) => set('seniority', v)}
+          />
         </label>
         <Text
           label="Лет опыта"

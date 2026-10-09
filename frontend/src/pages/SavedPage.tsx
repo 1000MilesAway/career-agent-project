@@ -35,6 +35,7 @@ import type { ApplyStep, FoundVacancy } from '../api/types'
 import { AddVacancyDialog } from '../components/AddVacancyDialog'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DownloadButtons } from '../components/DownloadButtons'
+import { Select } from '../components/Select'
 import { VacancyRow } from '../components/VacancyRow'
 import { CloseIcon, PlusIcon } from '../components/icons'
 import { useToast } from '../components/toast'
@@ -228,18 +229,17 @@ export function SavedPage() {
                       <label className="sr-only" htmlFor={`status-${vacancy.id}`}>
                         Статус отклика
                       </label>
-                      <select
+                      <Select
                         id={`status-${vacancy.id}`}
                         className={`select status status--${vacancy.status ?? 'none'}`}
+                        align="end"
                         value={vacancy.status ?? 'none'}
-                        onChange={(e) => move(vacancy.id, e.target.value)}
-                      >
-                        {Object.entries(data.statuses).map(([key, value]) => (
-                          <option key={key} value={key}>
-                            {value.title}
-                          </option>
-                        ))}
-                      </select>
+                        options={Object.entries(data.statuses).map(([key, value]) => ({
+                          value: key,
+                          label: value.title,
+                        }))}
+                        onChange={(status) => move(vacancy.id, status)}
+                      />
                       <button
                         className="btn btn--quiet btn--small btn--icon"
                         onClick={() =>
