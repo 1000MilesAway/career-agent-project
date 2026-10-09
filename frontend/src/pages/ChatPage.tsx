@@ -769,10 +769,14 @@ function Conversation({
               thread?.vacancy ? 'Что обсудить по этой вакансии?' : 'Напишите сообщение'
             }
             onChange={(e) => setText(e.target.value)}
+            // On a touch keyboard the return key is the only way to break a
+            // line (there is no Shift to hold), so there it does that and
+            // sending is the button's job.
+            enterKeyHint={isTouch() ? 'enter' : 'send'}
             onKeyDown={(e) => {
               // Enter sends, Shift+Enter breaks the line: the box is a chat
               // input, not a form field.
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey && !isTouch()) {
                 e.preventDefault()
                 send()
               }
@@ -852,6 +856,14 @@ function AssistantHead({ tools }: { tools: string[] }) {
       ))}
     </div>
   )
+}
+
+/** A touch screen is the primary pointer — a phone or a tablet, where the
+ *  keyboard is on screen. Asked on each use: a tablet docks a keyboard and
+ *  a mouse, and the answer changes without a reload. The same query hides
+ *  the Shift+Enter hint in chat.css. */
+function isTouch(): boolean {
+  return window.matchMedia?.('(pointer: coarse)').matches ?? false
 }
 
 type Block = { kind: 'text' | 'quote'; text: string }

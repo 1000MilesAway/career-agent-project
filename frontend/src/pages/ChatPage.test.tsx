@@ -317,6 +317,35 @@ describe('ChatPage', () => {
     mocks.threads = []
   })
 
+  it('Enter отправляет с клавиатуры, а на сенсорном экране — нет', async () => {
+    const hooks = await import('../api/hooks')
+    vi.mocked(hooks.sendMessage).mockClear()
+    vi.mocked(hooks.sendMessage).mockResolvedValue({} as never)
+    mocks.messages = []
+    mocks.proposals = []
+    renderPage()
+    const input = screen.getByRole('textbox')
+
+    const touch = (coarse: boolean) =>
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: coarse && query === '(pointer: coarse)',
+      }))
+
+    touch(true)
+    fireEvent.change(input, { target: { value: 'строка' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+    expect(hooks.sendMessage).not.toHaveBeenCalled()
+
+    touch(false)
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+    expect(hooks.sendMessage).toHaveBeenCalledWith('t1', 'строка', undefined)
+    vi.unstubAllGlobals()
+  })
+
   it('«Обсудить» открывает чат этой вакансии', async () => {
     const hooks = await import('../api/hooks')
     vi.mocked(hooks.createThread).mockResolvedValueOnce(VACANCY_THREAD)
