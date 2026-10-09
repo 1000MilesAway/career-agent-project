@@ -35,7 +35,7 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   padding: 0 8px;
 }
 
@@ -45,6 +45,13 @@
   width: 20px;
   height: 20px;
   flex: none;
+}
+
+/* The header's mark carries the name, so it is drawn larger than the
+   one that tags the assistant's chat bubbles. */
+.brand .brand__mark {
+  width: 28px;
+  height: 28px;
 }
 
 .brand__mark rect {
@@ -57,7 +64,7 @@
 
 .brand__name {
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 23px;
   letter-spacing: -0.01em;
 }
 
