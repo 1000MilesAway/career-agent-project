@@ -42,7 +42,13 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Drawer } from '../components/drawer'
 import { ProposalCard } from '../components/ProposalCard'
 import { useToast } from '../components/toast'
-import { ExternalIcon, PlusIcon } from '../components/icons'
+import {
+  ExternalIcon,
+  MoreIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+} from '../components/icons'
 import { ErrorNote, PageHead, Skeleton } from '../components/ui'
 import '../components/chat.css'
 
@@ -141,9 +147,25 @@ function Waiting() {
   )
 }
 
+/** What a row's menu does, owned by the list: the confirmation and the
+ *  rename outlive the menu that started them. */
+interface ThreadActions {
+  menuFor: string | null
+  setMenuFor: (id: string | null) => void
+  renaming: { id: string; text: string } | null
+  setRenaming: (value: { id: string; text: string } | null) => void
+  rename: () => void
+  askDelete: (thread: ChatThread) => void
+}
+
 function ThreadList({ threads, currentId }: { threads: ChatThread[]; currentId: string }) {
   const navigate = useNavigate()
+  const { mutate } = useSWRConfig()
+  const toast = useToast()
   const [open, setOpen] = useState(false)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null)
+  const [deleting, setDeleting] = useState<ChatThread | null>(null)
   const current = threads.find((t) => t.id === currentId)
   const go = (id: string) => {
     setOpen(false)
@@ -154,10 +176,58 @@ function ThreadList({ threads, currentId }: { threads: ChatThread[]; currentId: 
     0,
   )
 
+  async function rename() {
+    if (!renaming) return
+    const { id, text } = renaming
+    setRenaming(null)
+    const title = text.trim()
+    const thread = threads.find((t) => t.id === id)
+    if (!thread || !title || title === thread.title) return
+    try {
+      await renameThread(id, title)
+      await mutate(THREADS_KEY)
+    } catch (e) {
+      toast.error(e)
+    }
+  }
+
+  async function remove() {
+    const thread = deleting
+    setDeleting(null)
+    if (!thread) return
+    try {
+      const out = await deleteThread(thread.id)
+      await Promise.all([mutate(THREADS_KEY), mutate(PROPOSALS_KEY)])
+      // Another thread deleted from the list leaves the open one where it is.
+      if (thread.id === currentId) navigate('/chat', { replace: true })
+      toast.info(
+        out.proposals
+          ? `Разговор удалён, ${out.proposals} неподтверждённых правок отброшено`
+          : 'Разговор удалён',
+      )
+    } catch (e) {
+      toast.error(e)
+    }
+  }
+
+  const actions: ThreadActions = {
+    menuFor,
+    setMenuFor,
+    renaming,
+    setRenaming,
+    rename,
+    askDelete: setDeleting,
+  }
+
   return (
     <>
       <nav className="threads" aria-label="Разговоры">
-        <ThreadGroups threads={threads} currentId={currentId} onPick={go} />
+        <ThreadGroups
+          threads={threads}
+          currentId={currentId}
+          onPick={go}
+          actions={actions}
+        />
       </nav>
 
       {/* A phone has no room for the panel: the current thread's name opens
@@ -183,10 +253,30 @@ function ThreadList({ threads, currentId }: { threads: ChatThread[]; currentId: 
         </button>
       </div>
       <Drawer open={open} title="Разговоры" onClose={() => setOpen(false)}>
-        <div className="threads threads--sheet">
-          <ThreadGroups threads={threads} currentId={currentId} onPick={go} />
-        </div>
+        {/* Only while open: the same rows as the panel's, and a menu opened on
+            one of them would open on its hidden twin as well. */}
+        {open ? (
+          <div className="threads threads--sheet">
+            <ThreadGroups
+              threads={threads}
+              currentId={currentId}
+              onPick={go}
+              actions={actions}
+            />
+          </div>
+        ) : null}
       </Drawer>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Удалить разговор?"
+        confirmLabel="Удалить"
+        onConfirm={remove}
+        onCancel={() => setDeleting(null)}
+      >
+        Переписка пропадёт, неподтверждённые правки из неё будут отброшены. Принятые правки
+        останутся в резюме.
+      </ConfirmDialog>
     </>
   )
 }
@@ -198,10 +288,12 @@ function ThreadGroups({
   threads,
   currentId,
   onPick,
+  actions,
 }: {
   threads: ChatThread[]
   currentId: string
   onPick: (id: string) => void
+  actions: ThreadActions
 }) {
   const groups = [
     { title: 'По вакансиям', items: threads.filter((t) => t.vacancy) },
@@ -219,14 +311,20 @@ function ThreadGroups({
         Новый разговор
       </button>
 
-      <div className="threads__scroll">
+      {/* The menu is fixed to the viewport; a scroll would leave it behind. */}
+      <div className="threads__scroll" onScroll={() => actions.setMenuFor(null)}>
         {groups.map((group) => (
           <section key={group.title} className="threads__group">
             <h2 className="threads__heading">{group.title}</h2>
             <ul className="threads__list">
               {group.items.map((t) => (
                 <li key={t.id}>
-                  <ThreadItem thread={t} current={t.id === currentId} onPick={onPick} />
+                  <ThreadItem
+                    thread={t}
+                    current={t.id === currentId}
+                    onPick={onPick}
+                    actions={actions}
+                  />
                 </li>
               ))}
             </ul>
@@ -241,10 +339,12 @@ function ThreadItem({
   thread,
   current,
   onPick,
+  actions,
 }: {
   thread: ChatThread
   current: boolean
   onPick: (id: string) => void
+  actions: ThreadActions
 }) {
   // A vacancy thread is named "Должность — Компания" by default; the company
   // goes to its own line, where a long title no longer cuts it off.
@@ -254,23 +354,169 @@ function ThreadItem({
     suffix && thread.title.endsWith(suffix)
       ? thread.title.slice(0, -suffix.length)
       : titleOf(thread)
+  const menuOpen = actions.menuFor === thread.id
+  const renaming = actions.renaming?.id === thread.id ? actions.renaming : null
+
+  if (renaming) {
+    return (
+      <div className="threads__row">
+        <input
+          className="threads__rename"
+          aria-label="Название разговора"
+          autoFocus
+          maxLength={120}
+          value={renaming.text}
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => actions.setRenaming({ id: thread.id, text: e.target.value })}
+          onBlur={actions.rename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') actions.rename()
+            if (e.key === 'Escape') {
+              // Escape inside the phone's window would close the window too.
+              e.stopPropagation()
+              e.preventDefault()
+              actions.setRenaming(null)
+            }
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
-    <button
-      className={current ? 'threads__item is-current' : 'threads__item'}
-      aria-current={current ? 'page' : undefined}
-      onClick={() => onPick(thread.id)}
-      title={titleOf(thread)}
-    >
-      <span className="threads__text">
-        <span className="threads__title">{title}</span>
-        {company ? <span className="threads__sub">{company}</span> : null}
-      </span>
-      {thread.pending ? (
-        <span className="threads__badge" title="Правки ждут решения">
-          {thread.pending}
+    <div className={menuOpen ? 'threads__row is-open' : 'threads__row'}>
+      <button
+        className={current ? 'threads__item is-current' : 'threads__item'}
+        aria-current={current ? 'page' : undefined}
+        onClick={() => onPick(thread.id)}
+        title={titleOf(thread)}
+      >
+        <span className="threads__text">
+          <span className="threads__title">{title}</span>
+          {company ? <span className="threads__sub">{company}</span> : null}
         </span>
+        {thread.pending ? (
+          <span className="threads__badge" title="Правки ждут решения">
+            {thread.pending}
+          </span>
+        ) : null}
+      </button>
+      <ThreadMenu
+        label={titleOf(thread)}
+        open={menuOpen}
+        onToggle={(open) => actions.setMenuFor(open ? thread.id : null)}
+        onRename={() => actions.setRenaming({ id: thread.id, text: thread.title })}
+        onDelete={() => actions.askDelete(thread)}
+      />
+    </div>
+  )
+}
+
+/** The row's «⋯», shown on hover, with the menu under it. The menu is fixed
+ *  to the viewport rather than placed in the row: the list scrolls and
+ *  clips, and the last row's menu would be cut off at its bottom edge. */
+function ThreadMenu({
+  label,
+  open,
+  onToggle,
+  onRename,
+  onDelete,
+}: {
+  label: string
+  open: boolean
+  onToggle: (open: boolean) => void
+  onRename: () => void
+  onDelete: () => void
+}) {
+  const trigger = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!menu.current?.contains(target) && !trigger.current?.contains(target))
+        onToggle(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open, onToggle])
+
+  // Apart from the listener: onToggle is new on every render, and focus
+  // must move once, when the menu opens, not on each revalidation.
+  useEffect(() => {
+    if (open) menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+  }, [open])
+
+  function toggle() {
+    const rect = trigger.current?.getBoundingClientRect()
+    if (rect) setAt({ top: rect.bottom + 4, left: rect.right })
+    onToggle(!open)
+  }
+
+  function choose(action: () => void) {
+    onToggle(false)
+    action()
+  }
+
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        className="threads__more"
+        aria-label={`Действия с разговором «${label}»`}
+        title="Действия"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <MoreIcon />
+      </button>
+      {open ? (
+        <div
+          ref={menu}
+          className="threads__menu"
+          role="menu"
+          style={at ? { top: at.top, left: at.left } : undefined}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault()
+              const items = [
+                ...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+              ]
+              const at = items.indexOf(document.activeElement as HTMLElement)
+              const step = e.key === 'ArrowDown' ? 1 : -1
+              items[(at + step + items.length) % items.length]?.focus()
+            }
+            if (e.key === 'Escape') {
+              e.stopPropagation()
+              e.preventDefault()
+              onToggle(false)
+              trigger.current?.focus()
+            }
+          }}
+        >
+          <button
+            role="menuitem"
+            className="threads__menuitem"
+            onClick={() => choose(onRename)}
+          >
+            <PencilIcon />
+            Переименовать
+          </button>
+          <button
+            role="menuitem"
+            className="threads__menuitem threads__menuitem--danger"
+            onClick={() => choose(onDelete)}
+          >
+            <TrashIcon />
+            Удалить
+          </button>
+        </div>
       ) : null}
-    </button>
+    </>
   )
 }
 
@@ -295,8 +541,6 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
     null,
   )
   const isSending = sending !== null
-  const [renaming, setRenaming] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   // Follow the conversation as it grows, the way a chat is expected to behave.
@@ -359,35 +603,6 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
     }
   }
 
-  async function rename() {
-    const title = renaming?.trim()
-    setRenaming(null)
-    if (!thread || !title || title === thread.title) return
-    try {
-      await renameThread(thread.id, title)
-      await mutate(THREADS_KEY)
-    } catch (e) {
-      toast.error(e)
-    }
-  }
-
-  async function remove() {
-    setConfirmDelete(false)
-    if (!thread) return
-    try {
-      const out = await deleteThread(thread.id)
-      await Promise.all([mutate(THREADS_KEY), mutate(PROPOSALS_KEY)])
-      navigate('/chat', { replace: true })
-      toast.info(
-        out.proposals
-          ? `Разговор удалён, ${out.proposals} неподтверждённых правок отброшено`
-          : 'Разговор удалён',
-      )
-    } catch (e) {
-      toast.error(e)
-    }
-  }
-
   // Only this thread's: a change proposed in another conversation is
   // answered there, where its reason can be read.
   const pending = (proposals ?? []).filter((p) => thread && p.thread_id === thread.id)
@@ -401,47 +616,7 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
 
   return (
     <div className="chatmain">
-      <PageHead
-        title={
-          renaming !== null ? (
-            <input
-              className="chat__rename"
-              aria-label="Название разговора"
-              autoFocus
-              maxLength={120}
-              value={renaming}
-              onChange={(e) => setRenaming(e.target.value)}
-              onBlur={rename}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') rename()
-                if (e.key === 'Escape') setRenaming(null)
-              }}
-            />
-          ) : thread ? (
-            titleOf(thread)
-          ) : (
-            'Помощник'
-          )
-        }
-        actions={
-          thread ? (
-            <>
-              <button
-                className="btn btn--quiet btn--small"
-                onClick={() => setRenaming(thread.title)}
-              >
-                Переименовать
-              </button>
-              <button
-                className="btn btn--quiet btn--small"
-                onClick={() => setConfirmDelete(true)}
-              >
-                Удалить
-              </button>
-            </>
-          ) : undefined
-        }
-      />
+      <PageHead title={thread ? titleOf(thread) : 'Помощник'} />
 
       <ErrorNote error={error} />
 
@@ -595,17 +770,6 @@ function Conversation({ thread }: { thread: ChatThread | null }) {
           </button>
         </div>
       </div>
-
-      <ConfirmDialog
-        open={confirmDelete}
-        title="Удалить разговор?"
-        confirmLabel="Удалить"
-        onConfirm={remove}
-        onCancel={() => setConfirmDelete(false)}
-      >
-        Переписка пропадёт, неподтверждённые правки из неё будут отброшены. Принятые правки
-        останутся в резюме.
-      </ConfirmDialog>
     </div>
   )
 }

@@ -126,6 +126,24 @@ export const InfoIcon = () => (
   </Icon>
 )
 
+export const MoreIcon = () => (
+  <Icon>
+    <path d="M5 10h.01M10 10h.01M15 10h.01" strokeWidth="2.4" />
+  </Icon>
+)
+
+export const PencilIcon = () => (
+  <Icon>
+    <path d="M13.5 3.5l3 3L7 16H4v-3z" />
+  </Icon>
+)
+
+export const TrashIcon = () => (
+  <Icon>
+    <path d="M4 6h12M8 6V4h4v2M5.5 6l.8 10h7.4l.8-10" />
+  </Icon>
+)
+
 export const CloseIcon = () => (
   <Icon>
     <path d="M5 5l10 10M15 5L5 15" />

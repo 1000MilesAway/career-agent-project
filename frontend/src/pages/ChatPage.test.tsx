@@ -381,4 +381,79 @@ describe('ChatPage', () => {
     expect(screen.getByText('Backend Python')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Разобрать эту' })).toBeNull()
   })
+
+  describe('меню «⋯» у разговора в списке', () => {
+    function openMenu(title: string) {
+      fireEvent.click(
+        screen.getByRole('button', { name: `Действия с разговором «${title}»` }),
+      )
+    }
+
+    it('в шапке разговора кнопок больше нет — они в меню строки', () => {
+      mocks.messages = []
+      mocks.proposals = []
+      renderPage()
+      expect(screen.queryByRole('button', { name: 'Переименовать' })).toBeNull()
+
+      openMenu('Про Kubernetes')
+      expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+        'Переименовать',
+        'Удалить',
+      ])
+    })
+
+    it('переименование — прямо в строке, Enter сохраняет', async () => {
+      mocks.messages = []
+      mocks.proposals = []
+      const hooks = await import('../api/hooks')
+      vi.mocked(hooks.renameThread).mockClear()
+      renderPage()
+
+      openMenu('Про Kubernetes')
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Переименовать' }))
+      const input = screen.getByRole('textbox', { name: 'Название разговора' })
+      fireEvent.change(input, { target: { value: 'Кубер' } })
+      await act(async () => {
+        fireEvent.keyDown(input, { key: 'Enter' })
+      })
+      expect(hooks.renameThread).toHaveBeenCalledWith('t1', 'Кубер')
+    })
+
+    it('Esc отменяет переименование', async () => {
+      mocks.messages = []
+      mocks.proposals = []
+      const hooks = await import('../api/hooks')
+      vi.mocked(hooks.renameThread).mockClear()
+      renderPage()
+
+      openMenu('Про Kubernetes')
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Переименовать' }))
+      const input = screen.getByRole('textbox', { name: 'Название разговора' })
+      fireEvent.change(input, { target: { value: 'Кубер' } })
+      await act(async () => {
+        fireEvent.keyDown(input, { key: 'Escape' })
+      })
+      expect(screen.queryByRole('textbox', { name: 'Название разговора' })).toBeNull()
+      expect(hooks.renameThread).not.toHaveBeenCalled()
+    })
+
+    it('удаление чужого разговора спрашивает и оставляет открытый на месте', async () => {
+      mocks.messages = []
+      mocks.proposals = []
+      const hooks = await import('../api/hooks')
+      vi.mocked(hooks.deleteThread)
+        .mockClear()
+        .mockResolvedValue({ messages: 0, proposals: 0 })
+      renderPage('/chat/t1')
+
+      openMenu('Python разработчик — Ромашка')
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }))
+      expect(hooks.deleteThread).not.toHaveBeenCalled()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Удалить', hidden: true }))
+      })
+      expect(hooks.deleteThread).toHaveBeenCalledWith('t2')
+      expect(screen.getByTestId('where').textContent).toBe('/chat/t1')
+    })
+  })
 })
