@@ -788,6 +788,11 @@ function Conversation({
             <ArrowUpIcon />
           </button>
         </div>
+        {/* Enter sends, so a user writing a letter sent it half-done: how to
+            break a line has to be said where it is typed. */}
+        <p className="chat__keys">
+          <kbd>Shift</kbd>+<kbd>Enter</kbd> — новая строка
+        </p>
       </div>
     </div>
   )

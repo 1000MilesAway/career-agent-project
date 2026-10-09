@@ -919,6 +919,28 @@
   border-color: var(--ink);
 }
 
+.chat__keys {
+  margin: 6px 0 -8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.chat__keys kbd {
+  font: inherit;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+/* A touch keyboard has no Shift to hold with Enter, so the hint would name
+   keys the user does not have. */
+@media (pointer: coarse) {
+  .chat__keys {
+    display: none;
+  }
+}
+
 .chat__input {
   flex: 1;
   background: transparent;
