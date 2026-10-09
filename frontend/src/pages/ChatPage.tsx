@@ -5,9 +5,10 @@
  * and nobody could find anything in it. A vacancy has its own thread, which
  * "Обсудить" opens.
  *
- * In a thread: the conversation, the pending changes, the input. The changes
- * sit under the last message rather than in a side panel, because they are
- * the answer to what was just said.
+ * In a thread: the conversation, the input, and over the input a folded
+ * line with the changes waiting for a decision. Laid out as cards under the
+ * last message they pushed the conversation up after every turn, while the
+ * user was still talking; folded, they stay in sight and wait.
  *
  * Nothing here writes to the profile. Every change goes through a card with
  * two buttons, and closing the page decides nothing — which is the product
@@ -37,7 +38,7 @@ import {
   useProposals,
   useThreads,
 } from '../api/hooks'
-import type { ChatThread, VacancyCard, VacancyRef } from '../api/types'
+import type { ChatProposal, ChatThread, VacancyCard, VacancyRef } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Drawer } from '../components/drawer'
 import { ProposalCard } from '../components/ProposalCard'
@@ -738,28 +739,13 @@ function Conversation({
           </>
         ) : null}
 
-        {pending.length ? (
-          <div className="stack chat__pending">
-            <p className="eyebrow" style={{ margin: 0 }}>
-              {pending.length === 1
-                ? 'Одна правка ждёт вашего решения:'
-                : `${pending.length} правки ждут вашего решения:`}
-            </p>
-            {pending.map((proposal) => (
-              <ProposalCard
-                key={proposal.id}
-                proposal={proposal}
-                onAccept={accept}
-                onReject={reject}
-              />
-            ))}
-          </div>
-        ) : null}
-
         <div ref={endRef} className="chat__end" />
       </div>
 
       <div className="chat__dock">
+        {pending.length ? (
+          <PendingTray pending={pending} onAccept={accept} onReject={reject} />
+        ) : null}
         <div className="chat__compose">
           <textarea
             className="chat__input"
@@ -854,6 +840,54 @@ function AssistantHead({ tools }: { tools: string[] }) {
           {TOOL_TITLES[tool] ?? tool}
         </span>
       ))}
+    </div>
+  )
+}
+
+/** The changes waiting for a yes or a no, folded into one line over the
+ *  input. Opened, the cards scroll in their own box: four of them would
+ *  otherwise cover the conversation they came from. */
+function PendingTray({
+  pending,
+  onAccept,
+  onReject,
+}: {
+  pending: ChatProposal[]
+  onAccept: (id: string) => Promise<void>
+  onReject: (id: string) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const n = pending.length
+  const label =
+    n === 1
+      ? 'Одна правка ждёт решения'
+      : `${n} ${n < 5 ? 'правки ждут' : 'правок ждут'} решения`
+  return (
+    <div className={open ? 'tray tray--open' : 'tray'}>
+      <button
+        type="button"
+        className="tray__toggle"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="tray__dot" aria-hidden="true" />
+        {label}
+        <span className="tray__caret" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div className="tray__list stack">
+          {pending.map((proposal) => (
+            <ProposalCard
+              key={proposal.id}
+              proposal={proposal}
+              onAccept={onAccept}
+              onReject={onReject}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

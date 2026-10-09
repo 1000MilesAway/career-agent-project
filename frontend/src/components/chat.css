@@ -856,17 +856,64 @@
 
 /* ── A change waiting for a decision ──────────────────────────────────── */
 
-.chat__pending {
-  gap: 10px;
+/* Folded into one line over the input (PendingTray). Opened, the cards
+   scroll in their own box so the conversation stays in sight above. */
+.tray {
+  margin-bottom: 8px;
+}
+
+.tray__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.tray__toggle:hover {
+  border-color: var(--ink-2);
+  color: var(--ink);
+}
+
+.tray__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.tray__caret {
+  font-size: 11px;
+  transition: transform 0.15s;
+}
+
+.tray--open .tray__caret {
+  transform: rotate(180deg);
+}
+
+.tray__list {
+  gap: 8px;
+  margin-top: 8px;
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .proposal {
   border: 1px solid var(--line);
   border-left: 3px solid var(--accent);
   border-radius: 10px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   background: var(--surface);
-  box-shadow: var(--shadow-pop);
 }
 
 .proposal__head {

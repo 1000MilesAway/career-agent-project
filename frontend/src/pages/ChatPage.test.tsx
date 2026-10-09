@@ -155,11 +155,13 @@ describe('ChatPage', () => {
     expect(screen.getByText('посмотрел резюме')).toBeTruthy()
   })
 
-  it('ждущая правка показана карточкой с двумя кнопками', () => {
+  it('ждущая правка свёрнута над полем ввода и раскрывается карточкой', () => {
     mocks.messages = [message('assistant', 'Подтвердите.')]
     mocks.proposals = [proposal]
     renderPage()
 
+    expect(screen.queryByText('Kubernetes')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Одна правка ждёт решения/ }))
     expect(screen.getByText('Kubernetes')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Добавить' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Не надо' })).toBeTruthy()
