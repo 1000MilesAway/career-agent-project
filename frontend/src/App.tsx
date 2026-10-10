@@ -138,6 +138,16 @@ function Cabinet() {
     void document.fonts?.ready.then(reveal)
   }, [pathname, savedCount, pendingCount, isAdmin])
 
+  // Every section opens at its top. The window is the one scroller for all of
+  // them, so without this a section opened where the last one was left, and
+  // Back/Forward put each back where the browser remembered it.
+  useEffect(() => {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+  }, [])
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+
   return (
     <div className={isRail(pathname) ? 'shell shell--rail' : 'shell'}>
       <aside className="side">
