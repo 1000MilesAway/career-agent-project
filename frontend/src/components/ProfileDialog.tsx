@@ -14,6 +14,7 @@ import type { AppState } from '../api/types'
 import { api } from '../api/client'
 import { useAuth } from '../auth'
 import { ConfirmDialog } from './ConfirmDialog'
+import { usePhotoUrl } from './PhotoPicker'
 import { CloseIcon, LogoutIcon } from './icons'
 import { TelegramLink } from './TelegramLogin'
 import { useToast } from './toast'
@@ -25,21 +26,29 @@ type User = AppState['user']
 export const displayName = (user: User): string =>
   user.name || user.email || user.telegram_name || 'Без имени'
 
-export function Avatar({ user }: { user: User }) {
+/** The CV portrait when there is one, else the initial. */
+export function Avatar({ user, photo = false }: { user: User; photo?: boolean }) {
   return (
     <span className="avatar" aria-hidden="true">
-      {displayName(user).charAt(0).toUpperCase()}
+      {photo ? <AvatarPhoto /> : displayName(user).charAt(0).toUpperCase()}
     </span>
   )
+}
+
+function AvatarPhoto() {
+  const url = usePhotoUrl(true)
+  return url ? <img src={url} alt="" className="avatar__img" /> : null
 }
 
 export function ProfileDialog({
   open,
   user,
+  hasPhoto = false,
   onClose,
 }: {
   open: boolean
   user: User
+  hasPhoto?: boolean
   onClose: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -66,7 +75,7 @@ export function ProfileDialog({
       }}
     >
       <header className="account__head">
-        <Avatar user={user} />
+        <Avatar user={user} photo={hasPhoto} />
         <h2 className="account__title">{displayName(user)}</h2>
         <button
           type="button"

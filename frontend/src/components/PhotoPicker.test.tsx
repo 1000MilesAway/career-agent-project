@@ -8,6 +8,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SWRConfig } from 'swr'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PhotoCard } from './PhotoPicker'
+import { Avatar } from './ProfileDialog'
 import { ToastProvider } from './toast'
 
 const shrunk = new Blob(['small'], { type: 'image/jpeg' })
@@ -30,11 +31,11 @@ function mockApi() {
   return calls
 }
 
-function renderCard(hasPhoto: boolean, editing = false) {
+function renderCard(hasPhoto: boolean) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <ToastProvider>
-        <PhotoCard hasPhoto={hasPhoto} editing={editing} />
+        <PhotoCard hasPhoto={hasPhoto} />
       </ToastProvider>
     </SWRConfig>,
   )
@@ -79,17 +80,9 @@ describe('PhotoCard', () => {
     expect(zone.className).not.toContain('drop--over')
   })
 
-  it('вне редактирования фото только показывается', async () => {
-    mockApi()
-    const { container } = renderCard(true)
-    expect(await screen.findByAltText('Ваше фото')).toBeTruthy()
-    expect(container.querySelector('input[type="file"]')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Удалить фото' })).toBeNull()
-  })
-
-  it('в редактировании фото заменяется и удаляется', async () => {
+  it('показывает загруженное фото, заменяет и удаляет его', async () => {
     const calls = mockApi()
-    renderCard(true, true)
+    renderCard(true)
     expect(screen.getByText('Заменить фото')).toBeTruthy()
 
     expect(((await screen.findByAltText('Ваше фото')) as HTMLImageElement).src).toBe(
@@ -102,5 +95,27 @@ describe('PhotoCard', () => {
         expect.objectContaining({ url: '/api/resumes/photo', method: 'DELETE' }),
       ),
     )
+  })
+})
+
+describe('Avatar', () => {
+  const user = { name: 'Макс', email: null, telegram_name: null } as never
+
+  it('с фото показывает фото вместо буквы', async () => {
+    mockApi()
+    const { container } = render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <Avatar user={user} photo />
+      </SWRConfig>,
+    )
+    await waitFor(() =>
+      expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:photo'),
+    )
+    expect(container.textContent).toBe('')
+  })
+
+  it('без фото — первая буква имени', () => {
+    const { container } = render(<Avatar user={user} />)
+    expect(container.textContent).toBe('М')
   })
 })

@@ -86,7 +86,7 @@
   border-top: 1px solid var(--line);
 }
 
-/* The initial stands in for a photo; the cabinet has none to show. */
+/* The CV portrait, or the initial in its place when none is uploaded. */
 .avatar {
   flex: none;
   width: 28px;
@@ -94,10 +94,19 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
+  overflow: hidden;
   background: var(--sunken);
   color: var(--ink-2);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* A portrait is 3:4 with the face near the top. */
+.avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
 }
 
 @media (max-width: 520px) {

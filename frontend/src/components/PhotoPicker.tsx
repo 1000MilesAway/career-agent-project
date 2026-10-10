@@ -82,7 +82,7 @@ function UploadButton({
 }
 
 /** A blob URL for the stored photo, revoked when it changes or unmounts. */
-function usePhotoUrl(hasPhoto: boolean): string | null {
+export function usePhotoUrl(hasPhoto: boolean): string | null {
   const { data } = usePhoto(hasPhoto)
   const url = useMemo(
     () => (data && hasPhoto ? URL.createObjectURL(data) : null),
@@ -142,10 +142,9 @@ function PhotoDrop({
   )
 }
 
-/** Outside the editor a photo is only shown: replacing or deleting it is an
- *  edit, and two big controls beside the CV read as the page's main action.
- *  Without a photo the upload stays, since there is nothing to show. */
-export function PhotoCard({ hasPhoto, editing }: { hasPhoto: boolean; editing: boolean }) {
+/** Shown only while the CV is edited: outside the editor the photo is the
+ *  user's picture in the sidebar and the profile, not a card beside the CV. */
+export function PhotoCard({ hasPhoto }: { hasPhoto: boolean }) {
   const { busy, upload, remove } = usePhotoActions()
   const url = usePhotoUrl(hasPhoto)
 
@@ -154,23 +153,17 @@ export function PhotoCard({ hasPhoto, editing }: { hasPhoto: boolean; editing: b
       <h2 className="card__title">Фото</h2>
       <div className="photo-card__body">
         {hasPhoto ? (
-          <div
-            className={
-              editing ? 'photo-card__frame' : 'photo-card__frame photo-card__frame--full'
-            }
-          >
+          <div className="photo-card__frame">
             {url ? <img src={url} alt="Ваше фото" className="photo-card__img" /> : null}
           </div>
         ) : null}
-        {editing || !hasPhoto ? (
-          <PhotoDrop
-            title={hasPhoto ? 'Заменить фото' : 'Перетащите фото сюда'}
-            busy={busy}
-            onFile={upload}
-          />
-        ) : null}
+        <PhotoDrop
+          title={hasPhoto ? 'Заменить фото' : 'Перетащите фото сюда'}
+          busy={busy}
+          onFile={upload}
+        />
       </div>
-      {hasPhoto && editing ? (
+      {hasPhoto ? (
         <button
           className="btn btn--quiet btn--small photo-card__remove"
           onClick={remove}

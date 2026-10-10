@@ -199,12 +199,14 @@ function Cabinet() {
             <>
               <UserMenu
                 user={data.user}
+                hasPhoto={data.has_photo}
                 onProfile={() => setProfileOpen(true)}
                 onBilling={openBilling}
               />
               <ProfileDialog
                 open={profileOpen}
                 user={data.user}
+                hasPhoto={data.has_photo}
                 onClose={() => setProfileOpen(false)}
               />
               <BillingDialog open={billingOpen} onClose={() => setBillingOpen(false)} />
@@ -384,10 +386,12 @@ const moscowDate = (iso: string, options: Intl.DateTimeFormatOptions): string =>
  *  that are needed rarely but must be one click away from anywhere. */
 function UserMenu({
   user,
+  hasPhoto,
   onProfile,
   onBilling,
 }: {
   user: AppState['user']
+  hasPhoto: boolean
   onProfile: () => void
   onBilling: () => void
 }) {
@@ -493,7 +497,7 @@ function UserMenu({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <Avatar user={user} />
+        <Avatar user={user} photo={hasPhoto} />
         <span className="side__name">{displayName(user)}</span>
         <span className="side__caret" aria-hidden="true">
           ▾

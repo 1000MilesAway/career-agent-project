@@ -169,16 +169,18 @@ export function ResumePage() {
         </div>
 
         <aside className="resume__side">
-          <PhotoCard hasPhoto={data.has_photo} editing={editing} />
-
-          {/* The file is replaced while editing, like the photo, and outside
-              it its name alone is not worth a card. */}
+          {/* Photo and file are changed while editing; outside it the photo
+              is shown in the sidebar and the profile, and a file's name alone
+              is not worth a card. */}
           {editing ? (
-            <section className="card">
-              <h2 className="card__title">Файл</h2>
-              <p className="resume__file">{data.resume_name}</p>
-              {uploader}
-            </section>
+            <>
+              <PhotoCard hasPhoto={data.has_photo} />
+              <section className="card">
+                <h2 className="card__title">Файл</h2>
+                <p className="resume__file">{data.resume_name}</p>
+                {uploader}
+              </section>
+            </>
           ) : null}
 
           {data.resume_history && data.resume_history.length > 1 ? (
