@@ -142,7 +142,10 @@ function PhotoDrop({
   )
 }
 
-export function PhotoCard({ hasPhoto }: { hasPhoto: boolean }) {
+/** Outside the editor a photo is only shown: replacing or deleting it is an
+ *  edit, and two big controls beside the CV read as the page's main action.
+ *  Without a photo the upload stays, since there is nothing to show. */
+export function PhotoCard({ hasPhoto, editing }: { hasPhoto: boolean; editing: boolean }) {
   const { busy, upload, remove } = usePhotoActions()
   const url = usePhotoUrl(hasPhoto)
 
@@ -155,13 +158,15 @@ export function PhotoCard({ hasPhoto }: { hasPhoto: boolean }) {
             {url ? <img src={url} alt="Ваше фото" className="photo-card__img" /> : null}
           </div>
         ) : null}
-        <PhotoDrop
-          title={hasPhoto ? 'Заменить фото' : 'Перетащите фото сюда'}
-          busy={busy}
-          onFile={upload}
-        />
+        {editing || !hasPhoto ? (
+          <PhotoDrop
+            title={hasPhoto ? 'Заменить фото' : 'Перетащите фото сюда'}
+            busy={busy}
+            onFile={upload}
+          />
+        ) : null}
       </div>
-      {hasPhoto ? (
+      {hasPhoto && editing ? (
         <button
           className="btn btn--quiet btn--small photo-card__remove"
           onClick={remove}

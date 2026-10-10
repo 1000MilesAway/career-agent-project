@@ -30,11 +30,11 @@ function mockApi() {
   return calls
 }
 
-function renderCard(hasPhoto: boolean) {
+function renderCard(hasPhoto: boolean, editing = false) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <ToastProvider>
-        <PhotoCard hasPhoto={hasPhoto} />
+        <PhotoCard hasPhoto={hasPhoto} editing={editing} />
       </ToastProvider>
     </SWRConfig>,
   )
@@ -79,9 +79,18 @@ describe('PhotoCard', () => {
     expect(zone.className).not.toContain('drop--over')
   })
 
-  it('показывает загруженное фото и удаляет его', async () => {
+  it('вне редактирования фото только показывается', async () => {
+    mockApi()
+    const { container } = renderCard(true)
+    expect(await screen.findByAltText('Ваше фото')).toBeTruthy()
+    expect(container.querySelector('input[type="file"]')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Удалить фото' })).toBeNull()
+  })
+
+  it('в редактировании фото заменяется и удаляется', async () => {
     const calls = mockApi()
-    renderCard(true)
+    renderCard(true, true)
+    expect(screen.getByText('Заменить фото')).toBeTruthy()
 
     expect(((await screen.findByAltText('Ваше фото')) as HTMLImageElement).src).toBe(
       'blob:photo',
