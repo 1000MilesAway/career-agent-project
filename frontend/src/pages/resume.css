@@ -377,6 +377,14 @@
   overflow: hidden;
 }
 
+/* Outside the editor the photo is alone in its card and takes all of it. */
+.photo-card__frame--full {
+  flex: 1;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+}
+
 .photo-card__img {
   display: block;
   width: 100%;

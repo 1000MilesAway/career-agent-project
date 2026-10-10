@@ -171,13 +171,15 @@ export function ResumePage() {
         <aside className="resume__side">
           <PhotoCard hasPhoto={data.has_photo} editing={editing} />
 
-          {/* The file is replaced while editing, like the photo: outside it
-              the card only names what the CV was read from. */}
-          <section className="card">
-            <h2 className="card__title">Файл</h2>
-            <p className="resume__file">{data.resume_name}</p>
-            {editing ? uploader : null}
-          </section>
+          {/* The file is replaced while editing, like the photo, and outside
+              it its name alone is not worth a card. */}
+          {editing ? (
+            <section className="card">
+              <h2 className="card__title">Файл</h2>
+              <p className="resume__file">{data.resume_name}</p>
+              {uploader}
+            </section>
+          ) : null}
 
           {data.resume_history && data.resume_history.length > 1 ? (
             <VersionHistory versions={data.resume_history} />

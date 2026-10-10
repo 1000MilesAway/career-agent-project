@@ -154,7 +154,11 @@ export function PhotoCard({ hasPhoto, editing }: { hasPhoto: boolean; editing: b
       <h2 className="card__title">Фото</h2>
       <div className="photo-card__body">
         {hasPhoto ? (
-          <div className="photo-card__frame">
+          <div
+            className={
+              editing ? 'photo-card__frame' : 'photo-card__frame photo-card__frame--full'
+            }
+          >
             {url ? <img src={url} alt="Ваше фото" className="photo-card__img" /> : null}
           </div>
         ) : null}
