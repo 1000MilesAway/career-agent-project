@@ -148,8 +148,21 @@ label.btn.is-disabled {
   pointer-events: none;
 }
 
+/* A link styled as a button keeps its variant's colour once visited. The
+   plain `a:visited` would otherwise win over the variant, and a single
+   `.btn:visited` gave every variant the filled button's text: a visited
+   ghost link (the support one on the error screen) went dark on dark. */
 .btn:visited {
   color: var(--on-ink);
+}
+
+.btn--ghost:visited,
+.btn--quiet:visited {
+  color: var(--ink-2);
+}
+
+.btn--done:visited {
+  color: var(--ok);
 }
 
 .btn:hover:not(:disabled) {
