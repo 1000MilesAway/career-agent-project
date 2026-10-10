@@ -1,19 +1,8 @@
-/* A CV list as tags: chips and a field to type in, in one box that looks
-   like an input. The list under it is the city combobox's (city.css). */
+/* A CV list as tags: the chips above, the search field (the city
+   combobox's, city.css) under them. */
 
-.tags__box.input {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  height: auto;
-  min-height: 40px;
-  padding: 6px 8px;
-  cursor: text;
-}
-
-.tags--open .tags__box {
-  border-color: var(--ink);
+.tags__chips {
+  margin-bottom: 2px;
 }
 
 .tags__chip {
@@ -41,24 +30,4 @@
 .tags__remove:hover {
   background: var(--line);
   color: var(--ink);
-}
-
-.tags__input {
-  flex: 1;
-  min-width: 140px;
-  height: 26px;
-  padding: 0 4px;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 14px;
-  color: var(--ink);
-}
-
-.tags__input:focus {
-  outline: none;
-}
-
-.tags__input::placeholder {
-  color: var(--muted);
 }

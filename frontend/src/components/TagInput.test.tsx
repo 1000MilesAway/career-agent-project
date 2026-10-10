@@ -55,18 +55,19 @@ describe('TagInput', () => {
     expect(value()).toBe('Go|Rust')
   })
 
-  it('набранное и брошенное не теряется', () => {
+  it('брошенный поиск не становится тегом', () => {
     render(<Harness />)
-    fireEvent.change(field(), { target: { value: 'Kotlin' } })
+    fireEvent.change(field(), { target: { value: 'Kot' } })
     fireEvent.blur(field())
-    expect(value()).toBe('Go|Kotlin')
+    expect(value()).toBe('Go')
+    expect((field() as HTMLInputElement).value).toBe('')
   })
 
-  it('тег убирается крестиком и Backspace в пустом поле', () => {
+  it('тег убирается только крестиком, Backspace теги не трогает', () => {
     render(<Harness initial={['Go', 'Python', 'Docker']} />)
+    fireEvent.keyDown(field(), { key: 'Backspace' })
+    expect(value()).toBe('Go|Python|Docker')
     fireEvent.click(screen.getByRole('button', { name: 'Убрать «Python»' }))
     expect(value()).toBe('Go|Docker')
-    fireEvent.keyDown(field(), { key: 'Backspace' })
-    expect(value()).toBe('Go')
   })
 })
