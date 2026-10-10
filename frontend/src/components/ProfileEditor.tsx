@@ -1,7 +1,8 @@
 /** The parsed CV, corrected by hand.
  *
- * Lists are edited as one item per line: a chip editor per list would be five
- * widgets to learn, and a textarea is what a CV is written in anyway.
+ * Directions and skills are tags with popular ones suggested: short items,
+ * picked more often than written. The other lists stay one item per line,
+ * since a degree or an achievement is a sentence, not a tag.
  */
 
 import { useState, useTransition, type FormEvent } from 'react'
@@ -18,6 +19,8 @@ import {
 } from './profileDraft'
 import { CitySelect } from './CitySelect'
 import { Select } from './Select'
+import { DIRECTIONS, SKILLS } from './tagSuggestions'
+import { TagInput } from './TagInput'
 import { useToast } from './toast'
 
 export function ProfileEditor({
@@ -117,15 +120,16 @@ export function ProfileEditor({
         rows={4}
         onChange={(v) => set('summary', v)}
       />
-      <Area
+      <TagInput
         label="Направления"
         value={draft.directions}
+        suggestions={DIRECTIONS}
         onChange={(v) => set('directions', v)}
       />
-      <Area
+      <TagInput
         label="Навыки"
         value={draft.skills}
-        rows={6}
+        suggestions={SKILLS}
         onChange={(v) => set('skills', v)}
       />
 

@@ -1,6 +1,7 @@
 /** The CV profile as editable form text, and back.
  *
- * Lists are one item per line; the server trims lines and drops blanks and
+ * Directions and skills are kept as tags, the other lists as one item per
+ * line; the server trims lines and drops blanks and
  * repeats, so nothing here has to.
  */
 
@@ -30,8 +31,8 @@ export interface ProfileDraft {
   /** Where the person lives and can work on site; the search starts there. */
   city: string
   summary: string
-  directions: string
-  skills: string
+  directions: string[]
+  skills: string[]
   education: string
   languages: string
   experience: JobDraft[]
@@ -69,8 +70,8 @@ export function toDraft(profile: ResumeProfile): ProfileDraft {
     field: profile.field ?? '',
     city: profile.preferences?.city ?? '',
     summary: profile.summary ?? '',
-    directions: lines(profile.directions),
-    skills: lines(profile.skills),
+    directions: profile.directions ?? [],
+    skills: profile.skills ?? [],
     education: lines(profile.education),
     languages: lines(profile.languages),
     experience: (profile.experience ?? []).map(jobDraft),
@@ -89,8 +90,8 @@ export function fromDraft(draft: ProfileDraft): ResumeProfile {
     // The city alone: the server merges it into the stored preferences.
     preferences: { city: draft.city },
     summary: draft.summary,
-    directions: split(draft.directions),
-    skills: split(draft.skills),
+    directions: draft.directions,
+    skills: draft.skills,
     education: split(draft.education),
     languages: split(draft.languages),
     experience: draft.experience.map((job) => ({

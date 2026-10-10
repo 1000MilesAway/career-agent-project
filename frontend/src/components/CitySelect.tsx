@@ -11,7 +11,7 @@ import { CITIES } from './cities'
 import './city.css'
 
 /** Case and ё folded: "орел" finds "Орёл", "спб" does not — no aliases. */
-const fold = (text: string) => text.trim().toLowerCase().replaceAll('ё', 'е')
+export const fold = (text: string) => text.trim().toLowerCase().replaceAll('ё', 'е')
 
 /** Cities containing the query, those that start with it first. */
 export function matchCities(cities: readonly string[], query: string): string[] {
@@ -27,7 +27,7 @@ export function matchCities(cities: readonly string[], query: string): string[] 
   return [...starts, ...contains]
 }
 
-function Highlight({ text, query }: { text: string; query: string }) {
+export function Highlight({ text, query }: { text: string; query: string }) {
   const q = fold(query)
   const at = q ? fold(text).indexOf(q) : -1
   if (at < 0) return <>{text}</>
