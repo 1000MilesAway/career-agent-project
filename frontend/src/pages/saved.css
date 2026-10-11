@@ -70,8 +70,14 @@
 @media (hover: hover) and (pointer: fine) {
   .funnel {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    /* Narrow enough that all nine stages share one row on a laptop: at
+       112px they needed ~1070px and the last one fell to a second row. */
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
     overflow-x: visible;
+  }
+
+  .funnel__step {
+    padding: 12px;
   }
 
   /* A fixed track no longer grows to its label: «Техническое интервью»
