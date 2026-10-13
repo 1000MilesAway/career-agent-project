@@ -19,6 +19,7 @@ import {
   startScan,
   startTriage,
   useAppState,
+  useRefreshJob,
   useScanJob,
   useTriageJob,
   useTriageSettled,
@@ -136,6 +137,19 @@ export function SearchPage() {
   const isScanning = isQueueing || isActive(scanJob)
   const scanNote = scanJob?.status === 'done' ? scanJob.result : null
   const scanError = scanJob?.status === 'failed' ? scanJob.error : null
+  // The listings the scan answered from a stale pool are re-read behind it,
+  // a minute or two later. Unannounced, the list changing then read as noise.
+  const { job: refreshJob } = useRefreshJob()
+  const followsScan =
+    scanNote !== null &&
+    refreshJob !== null &&
+    Date.parse(refreshJob.created_at) >= Date.parse(scanJob!.created_at)
+  const isRefreshing = followsScan && isActive(refreshJob)
+  // Rows found since the scan was started — by it or by its refresh. Counted
+  // off the list itself: the server's «new» also counts rows the list folds,
+  // and «новых 21» over 19 rows was the complaint.
+  const newSince = scanNote ? Date.parse(scanJob!.created_at) : null
+  const [onlyNew, setOnlyNew] = useState(false)
   // Triage is a job as well: the button only queues it, and the cabinet
   // shell reports the verdicts wherever the user is by then.
   const { job: triageJob } = useTriageJob()
@@ -182,7 +196,7 @@ export function SearchPage() {
   // One pass over the list: the split feeds the counters, the bucket filter
   // and the rendered rows alike. `base` keeps the payload's order, so a
   // toggled-in group lands where its rows were found rather than at the end.
-  const { counts, base, scored, misses, untriaged } = useMemo(() => {
+  const { counts, base, scored, misses, untriaged, fresh, freshFolded } = useMemo(() => {
     const shownGroups: Record<Group, boolean> = {
       kept: true,
       // Dropped and inactive rows are not shown at all for now, against the
@@ -210,18 +224,29 @@ export function SearchPage() {
     // conditions keep — a row they fold away is not worth a paid verdict.
     const untriaged: string[] = []
     let scored = 0
+    // New rows the list shows, and new rows it folds (closed, old, not under
+    // the conditions): the summary names both, so the numbers add up.
+    const fresh = new Set<string>()
+    let freshFolded = 0
     for (const row of rows) {
       const miss = conditionMiss(row, conditions)
       if (miss) misses.set(row.id, miss)
       const group = groupOf(row, miss)
       counts[group]++
+      if (newSince !== null && row.found_at && Date.parse(row.found_at) >= newSince) {
+        if (group === 'kept') fresh.add(row.id)
+        else if (group !== 'hidden') freshFolded++
+      }
       if (group === 'kept' && row.score != null) scored++
       if (group === 'kept' && row.stage === 'shortlist' && !row.triage && row.score == null)
         untriaged.push(row.id)
       if (shownGroups[group]) base.push(row)
     }
-    return { counts, base, scored, misses, untriaged }
-  }, [rows, conditions, showHidden])
+    return { counts, base, scored, misses, untriaged, fresh, freshFolded }
+  }, [rows, conditions, showHidden, newSince])
+  // A filter with nothing left to show lets itself go rather than leave an
+  // empty list behind a summary that says «новых 0».
+  const showOnlyNew = onlyNew && fresh.size > 0
 
   const bucketCounts = useMemo(() => {
     const counts = new Map<BucketKey, number>()
@@ -243,10 +268,10 @@ export function SearchPage() {
   // collapse to the list it already shows.
   const scoredShown = useMemo(() => bucketed.filter((row) => row.score != null), [bucketed])
 
-  const visible = useMemo(
-    () => sortRows(scoredOnly ? scoredShown : bucketed, sort),
-    [bucketed, scoredShown, scoredOnly, sort],
-  )
+  const visible = useMemo(() => {
+    const shown = scoredOnly ? scoredShown : bucketed
+    return sortRows(showOnlyNew ? shown.filter((row) => fresh.has(row.id)) : shown, sort)
+  }, [bucketed, scoredShown, scoredOnly, sort, showOnlyNew, fresh])
 
   // The order is held until the view changes, the user asks, or a scan
   // brings rows the order has never seen — see frozenOrder.ts. The key has
@@ -261,13 +286,19 @@ export function SearchPage() {
     showHidden,
     JSON.stringify(conditions),
     epoch,
+    showOnlyNew,
     // A finished triage reshapes the list like a clear does — once its
     // verdicts are in the rows (see useTriageSettled).
     triageSettled,
   ].join('|')
   // The job turns "done" a moment before its rows arrive, so a new scan
-  // retakes the order only once the rows it found are actually here.
-  const scanMark = scanJob?.status === 'done' ? scanJob.finished_at : null
+  // retakes the order only once the rows it found are actually here. The
+  // refresh behind it counts as part of it: its rows used to land after the
+  // last held row, past «показать ещё», where nobody found them.
+  const scanMark =
+    scanJob?.status === 'done'
+      ? `${scanJob.finished_at}|${followsScan && refreshJob!.status === 'done' ? refreshJob!.finished_at : ''}`
+      : null
   const [frozen, setFrozen] = useState<FrozenOrder | null>(null)
   const liveIds = useMemo(() => visible.map((row) => row.id), [visible])
   const heldIds = useMemo(() => new Set(frozen?.ids), [frozen])
@@ -357,6 +388,7 @@ export function SearchPage() {
   // the sidebar. Queueing returns at once; the cabinet shell reports the end.
   async function scan() {
     setQueueing(true)
+    setOnlyNew(false)
     try {
       const job = await startScan({
         source: 'all',
@@ -533,35 +565,69 @@ export function SearchPage() {
               only matter when a number looks wrong. A failed source is named in
               the summary, so folding never hides an error. */}
           {scanNote && !isScanning ? (
-            <details className="scan__result scan__report">
-              <summary role="status">
+            <div className="scan__result">
+              <div className="scan__fresh" role="status">
                 {scanJob?.finished_at
                   ? `Поиск ${whenText(scanJob.finished_at)}: `
                   : 'Поиск: '}
-                найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
-                <b className="num">{scanNote.kept ?? 0}</b>, новых{' '}
-                <b className="num">{scanNote.new}</b>
-                {failedSources(scanNote.sources) ? (
-                  <span className="scan__source--err">
+                {fresh.size ? (
+                  <button
+                    className="linkish"
+                    aria-pressed={showOnlyNew}
+                    onClick={() => setOnlyNew(!showOnlyNew)}
+                    title={
+                      showOnlyNew
+                        ? 'Показать весь список'
+                        : 'Показать в списке только новые'
+                    }
+                  >
+                    {showOnlyNew ? 'показаны только новые' : 'новых в списке'}{' '}
+                    <b className="num">{fresh.size}</b>
+                  </button>
+                ) : (
+                  <>новых вакансий нет</>
+                )}
+                {freshFolded ? (
+                  <span className="muted">
                     {' '}
-                    · не прочитано источников: {failedSources(scanNote.sources)}
+                    · ещё <span className="num">{freshFolded}</span> закрыты или не под
+                    условия
                   </span>
                 ) : null}
-                <span className="scan__more">подробнее</span>
-              </summary>
-              {scanNote.duplicates ? (
-                <p className="scan__total">
-                  Уже найдены в другом месте: {scanNote.duplicates}.
-                </p>
+              </div>
+              {isRefreshing ? (
+                <div className="scan__progress" role="status">
+                  <span className="scan__bar" aria-hidden="true" />
+                  Дочитываю источники, где данные устарели, — новые вакансии добавятся в
+                  список сами.
+                </div>
               ) : null}
-              <ul className="scan__sources">
-                {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
-                  <li key={name} className={s.error ? 'scan__source--err' : undefined}>
-                    {sourceLine(name, s)}
-                  </li>
-                ))}
-              </ul>
-            </details>
+              <details className="scan__report">
+                <summary>
+                  найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
+                  <b className="num">{scanNote.kept ?? 0}</b>
+                  {failedSources(scanNote.sources) ? (
+                    <span className="scan__source--err">
+                      {' '}
+                      · не прочитано источников: {failedSources(scanNote.sources)}
+                    </span>
+                  ) : null}
+                  <span className="scan__more">подробнее</span>
+                </summary>
+                {scanNote.duplicates ? (
+                  <p className="scan__total">
+                    Уже найдены в другом месте: {scanNote.duplicates}.
+                  </p>
+                ) : null}
+                <ul className="scan__sources">
+                  {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
+                    <li key={name} className={s.error ? 'scan__source--err' : undefined}>
+                      {sourceLine(name, s)}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
           ) : null}
         </div>
       </section>
@@ -716,6 +782,7 @@ export function SearchPage() {
                 <VacancyRow
                   key={vacancy.id}
                   vacancy={vacancy}
+                  isNew={fresh.has(vacancy.id)}
                   mismatch={misses.get(vacancy.id)}
                   actions={
                     <>

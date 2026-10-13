@@ -55,9 +55,12 @@ function VacancyRowInner({
   actions,
   footer,
   mismatch,
+  isNew = false,
 }: {
   vacancy: FoundVacancy
   actions: ReactNode
+  /** Brought by the latest scan: «новых 21» has to point at rows. */
+  isNew?: boolean
   /** Why the row fails the conditions above the list, when it is shown
    *  anyway under «не под условия». */
   mismatch?: string | null
@@ -104,6 +107,7 @@ function VacancyRowInner({
     <article className={dimmed ? 'vrow vrow--dim' : 'vrow'}>
       <div className="vrow__main">
         <h3 className="vrow__title">
+          {isNew ? <span className="vrow__new">новая</span> : null}
           {vacancy.url ? (
             <a href={vacancy.url} target="_blank" rel="noopener noreferrer">
               {vacancy.title}

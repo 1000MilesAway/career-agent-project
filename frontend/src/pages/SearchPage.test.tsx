@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   clearFound: vi.fn(),
   found: [] as unknown[],
   scanJob: null as unknown,
+  refreshJob: null as unknown,
 }))
 
 vi.mock('../api/hooks', () => ({
@@ -42,6 +43,7 @@ vi.mock('../api/hooks', () => ({
   isActive: (job: { status?: string } | null) =>
     job?.status === 'queued' || job?.status === 'running',
   useScanJob: () => ({ job: mocks.scanJob }),
+  useRefreshJob: () => ({ job: mocks.refreshJob }),
   TRIAGE_JOB_KEY: '/api/jobs?kind=triage&limit=1',
   useTriageJob: () => ({ job: null }),
   useTriageSettled: () => null,
@@ -309,6 +311,39 @@ describe('SearchPage', () => {
       screen.getByText(/Telegram-каналы: .*уже найдены в другом месте 5.*пропущено: 1/),
     ).toBeTruthy()
     mocks.scanJob = null
+  })
+
+  it('«новых» считает строки списка, отмечает их и показывает по нажатию', () => {
+    mocks.scanJob = job('done', { result })
+    mocks.refreshJob = job('running', {
+      id: 'r1',
+      kind: 'refresh',
+      created_at: '2026-09-28T10:01:00Z',
+    })
+    mocks.found = [
+      row('old', { title: 'Старая', found_at: '2026-09-27T10:00:00Z' }),
+      row('a', { title: 'Новая А', found_at: '2026-09-28T10:00:30Z' }),
+      row('b', { title: 'Новая Б', found_at: '2026-09-28T10:02:00Z' }),
+      row('c', { title: 'Закрытая', found_at: '2026-09-28T10:00:30Z', stale: 'давно' }),
+    ]
+    render(<SearchPage />)
+
+    // The server said 38; the list holds two of them, a third is folded.
+    const toggle = screen.getByRole('button', { name: /новых в списке 2/ })
+    expect(document.querySelector('.scan__fresh')!.textContent).toContain(
+      'ещё 1 закрыты или не под условия',
+    )
+    expect(screen.getByText(/Дочитываю источники/)).toBeTruthy()
+    expect(document.querySelectorAll('.vrow__new')).toHaveLength(2)
+
+    fireEvent.click(toggle)
+    expect(screen.queryByText('Старая')).toBeNull()
+    expect(screen.getByText('Новая А')).toBeTruthy()
+    expect(screen.getByText('Новая Б')).toBeTruthy()
+
+    mocks.scanJob = null
+    mocks.refreshJob = null
+    mocks.found = []
   })
 
   it('упавший поиск назван с причиной, а не выглядит пустым', () => {

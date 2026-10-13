@@ -73,6 +73,18 @@
   margin: 0;
 }
 
+.vrow__new {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 2px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
 .vrow__title a {
   text-decoration: none;
   color: var(--ink);

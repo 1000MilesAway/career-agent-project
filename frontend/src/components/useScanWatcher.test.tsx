@@ -53,7 +53,7 @@ describe('useScanWatcher', () => {
     mocks.refresh = null
   })
 
-  it('закончившийся поиск обновляет список и говорит, сколько нового', () => {
+  it('закончившийся поиск обновляет список и говорит, что новые отмечены в списке', () => {
     mocks.job = job('running')
     const { rerender } = renderHook(() => useScanWatcher())
     mocks.job = job('done', {
@@ -62,7 +62,9 @@ describe('useScanWatcher', () => {
     rerender()
 
     expect(mocks.mutate).toHaveBeenCalledWith('/api/state')
-    expect(mocks.info).toHaveBeenCalledWith('Поиск закончен: новых вакансий 3.')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Поиск закончен, новые вакансии отмечены в списке.',
+    )
   })
 
   it('упавший поиск назван с причиной', () => {
@@ -93,7 +95,7 @@ describe('useScanWatcher', () => {
 
     expect(mocks.mutate).toHaveBeenCalledWith('/api/jobs?kind=refresh&limit=1')
     expect(mocks.info).toHaveBeenCalledWith(
-      'Поиск закончен: новых вакансий 2. Источники обновляются в фоне — свежие вакансии появятся сами.',
+      'Поиск закончен, новые вакансии отмечены в списке. Источники обновляются в фоне — свежие вакансии появятся сами.',
     )
   })
 
@@ -109,7 +111,9 @@ describe('useScanWatcher', () => {
     rerender()
 
     expect(mocks.mutate).toHaveBeenCalledWith('/api/state')
-    expect(mocks.info).toHaveBeenCalledWith('Источники обновлены: ещё новых вакансий 3.')
+    expect(mocks.info).toHaveBeenCalledWith(
+      'Источники обновлены, новые вакансии добавлены в список.',
+    )
   })
 
   it('обновление без новых вакансий не шумит', () => {

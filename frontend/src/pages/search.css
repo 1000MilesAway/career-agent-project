@@ -81,6 +81,22 @@
   color: var(--ink-2);
 }
 
+/* The answer first — how many new rows the list holds — and the source
+   totals under it: «найдено 400, новых 21» over a list of 19 read as a lie. */
+.scan__result {
+  display: grid;
+  gap: 6px;
+}
+
+.scan__fresh {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.scan__fresh .linkish[aria-pressed='true'] {
+  font-weight: 600;
+}
+
 .scan__progress {
   display: flex;
   align-items: center;
@@ -145,7 +161,7 @@
   display: block;
   cursor: pointer;
   list-style: none;
-  color: var(--ink);
+  color: var(--muted);
 }
 
 .scan__report summary::-webkit-details-marker {

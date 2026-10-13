@@ -210,6 +210,9 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 # Brought by the user: lives in «Мои вакансии», not in search.
                 "added_at": v.added_at.isoformat() if v.added_at else None,
                 "published": v.published.isoformat() if v.published else None,
+                # When the row reached this user: the cabinet marks what the
+                # last scan (and the refresh behind it) brought.
+                "found_at": v.created_at.isoformat(),
             }
         )
 

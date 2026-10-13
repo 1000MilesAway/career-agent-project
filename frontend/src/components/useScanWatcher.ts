@@ -11,7 +11,13 @@
 
 import { useEffect, useRef } from 'react'
 import { useSWRConfig } from 'swr'
-import { REFRESH_JOB_KEY, STATE_KEY, isActive, useRefreshJob, useScanJob } from '../api/hooks'
+import {
+  REFRESH_JOB_KEY,
+  STATE_KEY,
+  isActive,
+  useRefreshJob,
+  useScanJob,
+} from '../api/hooks'
 import type { ScanJob } from '../api/types'
 import { useToast } from './toast'
 
@@ -44,7 +50,12 @@ export function useScanWatcher(): ScanJob | null {
       toast.error(`Поиск не удался: ${done.error ?? 'причина не записана'}`)
       return
     }
-    const found = `Поиск закончен: новых вакансий ${done.result?.new ?? 0}.`
+    // No count here: the server's also covers rows the list folds, and a
+    // second number beside the page's own did not add up. The page counts
+    // what it shows and marks those rows.
+    const found = done.result?.new
+      ? 'Поиск закончен, новые вакансии отмечены в списке.'
+      : 'Поиск закончен: новых вакансий нет.'
     if (done.result?.deferred) {
       // The refresh is already queued; asking for it starts its polling.
       void mutate(REFRESH_JOB_KEY)
@@ -59,7 +70,7 @@ export function useScanWatcher(): ScanJob | null {
     if (done.status === 'failed') {
       toast.error(`Источники не обновились: ${done.error ?? 'причина не записана'}`)
     } else if (done.result?.new) {
-      toast.info(`Источники обновлены: ещё новых вакансий ${done.result.new}.`)
+      toast.info('Источники обновлены, новые вакансии добавлены в список.')
     }
   })
 
