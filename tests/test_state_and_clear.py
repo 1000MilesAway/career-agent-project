@@ -91,6 +91,25 @@ class TestState:
         assert dropped["title"] == "Бариста"
         assert dropped["reason"]
 
+    async def test_moving_a_card_refreshes_its_updated_at(
+        self, client, session, user, auth_headers
+    ):
+        """«Обновлено N назад» counts the user's own move, not only the source."""
+        await scan.persist(session, user.id, "habr", kept=[(posting("1"), "")], dropped=[])
+        await session.commit()
+        [row] = (await client.get("/api/state", headers=auth_headers)).json()["found"]
+        before = row["updated_at"]
+
+        r = await client.put(
+            f"/api/vacancies/{row['id']}/status",
+            headers=auth_headers,
+            json={"status": "applied"},
+        )
+        assert r.status_code == 200, r.text
+
+        [moved] = (await client.get("/api/state", headers=auth_headers)).json()["found"]
+        assert moved["updated_at"] > before
+
     async def test_the_quota_travels_with_the_state_as_shares(
         self, client, auth_headers
     ):

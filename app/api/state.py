@@ -153,6 +153,15 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         if artifacts:
             with_artifacts += 1
 
+        # The card's «обновлено N назад» is its latest touch: a fetch that
+        # returned the posting, or the user moving it along the tracker
+        # (`set_status` stamps every move in `application.status_at`). The
+        # source's stamp alone would freeze at the scan that brought the row
+        # in, and a card the user just dragged to «Отказ» would read old.
+        touched = v.posting.last_seen_at
+        if v.application is not None and v.application.status_at is not None:
+            touched = max(touched, v.application.status_at)
+
         found.append(
             {
                 "id": str(v.id),
@@ -210,9 +219,9 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
                 # Brought by the user: lives in «Мои вакансии», not in search.
                 "added_at": v.added_at.isoformat() if v.added_at else None,
                 "published": v.published.isoformat() if v.published else None,
-                # When a fetch last returned this posting — the card's "обновлено
-                # N назад": the moment the source last confirmed the text.
-                "updated_at": v.posting.last_seen_at.isoformat(),
+                # When the card was last touched, by source or by user: see
+                # `touched` above.
+                "updated_at": touched.isoformat(),
                 # When the row reached this user: the cabinet marks what the
                 # last scan (and the refresh behind it) brought.
                 "found_at": v.created_at.isoformat(),
