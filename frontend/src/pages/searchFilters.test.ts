@@ -18,6 +18,8 @@ import {
   sortRows,
 } from './searchFilters'
 
+const STORAGE_KEY = 'search-filters'
+
 afterEach(() => {
   localStorage.clear()
   vi.restoreAllMocks()
@@ -33,7 +35,7 @@ describe('searchFilters', () => {
     const chosen = {
       buckets: ['skip', null],
       sort: 'score',
-      scoredOnly: true,
+      hideScored: true,
       showDropped: true,
       showInactive: true,
       showHidden: false,
@@ -50,6 +52,14 @@ describe('searchFilters', () => {
     } as const
     saveFilters({ ...chosen, buckets: [...chosen.buckets] })
     expect(loadFilters()).toEqual(chosen)
+  })
+
+  it('старый ключ «только оценённые» не читается: смысл флага перевёрнут', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...DEFAULT_FILTERS, scoredOnly: true }),
+    )
+    expect(loadFilters().hideScored).toBe(false)
   })
 
   it('пустой выбор — тоже выбор, а не повод вернуть умолчания', () => {

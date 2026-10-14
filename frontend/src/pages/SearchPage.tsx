@@ -168,7 +168,7 @@ export function SearchPage() {
     () => new Set(initialFilters.buckets),
   )
   const [sort, setSort] = useState<SortKey>(initialFilters.sort)
-  const [scoredOnly, setScoredOnly] = useState(initialFilters.scoredOnly)
+  const [hideScored, setHideScored] = useState(initialFilters.hideScored)
   const [showDropped, setShowDropped] = useState(initialFilters.showDropped)
   const [showInactive, setShowInactive] = useState(initialFilters.showInactive)
   const [showHidden, setShowHidden] = useState(initialFilters.showHidden)
@@ -264,21 +264,21 @@ export function SearchPage() {
     return base.filter((row) => visibleBuckets.has(bucketOf(row)))
   }, [base, anyJudged, visibleBuckets])
 
-  // Counted before «только оценённые» so the toggle's own number does not
-  // collapse to the list it already shows.
+  // Counted before «скрыть оценённые» so the toggle's own number — what the
+  // filter would take away — does not collapse to an empty list.
   const scoredShown = useMemo(() => bucketed.filter((row) => row.score != null), [bucketed])
 
   const visible = useMemo(() => {
-    const shown = scoredOnly ? scoredShown : bucketed
+    const shown = hideScored ? bucketed.filter((row) => row.score == null) : bucketed
     return sortRows(showOnlyNew ? shown.filter((row) => fresh.has(row.id)) : shown, sort)
-  }, [bucketed, scoredShown, scoredOnly, sort, showOnlyNew, fresh])
+  }, [bucketed, hideScored, sort, showOnlyNew, fresh])
 
   // The order is held until the view changes, the user asks, or a scan
   // brings rows the order has never seen — see frozenOrder.ts. The key has
   // every input the user chooses; a changed score or verdict is not one.
   const viewKey = [
     sort,
-    scoredOnly,
+    hideScored,
     [...visibleBuckets].map(String).sort().join(','),
     showDropped,
     showMismatch,
@@ -330,7 +330,7 @@ export function SearchPage() {
     saveFilters({
       buckets: [...visibleBuckets],
       sort,
-      scoredOnly,
+      hideScored,
       showDropped,
       showInactive,
       showHidden,
@@ -362,10 +362,10 @@ export function SearchPage() {
     persist({ sort: next })
   }
 
-  function toggleScoredOnly() {
-    setScoredOnly(!scoredOnly)
+  function toggleHideScored() {
+    setHideScored(!hideScored)
     setLimit(PAGE_SIZE)
-    persist({ scoredOnly: !scoredOnly })
+    persist({ hideScored: !hideScored })
   }
 
   function toggleGroup(group: Exclude<Group, 'kept'>) {
@@ -722,13 +722,13 @@ export function SearchPage() {
                   по баллу
                 </button>
               </div>
-              {scoredShown.length || scoredOnly ? (
+              {scoredShown.length || hideScored ? (
                 <label
                   className="toggle"
-                  title="Только вакансии с полной оценкой — без очереди на оценку"
+                  title="Убрать вакансии с полной оценкой — оставить очередь на оценку"
                 >
-                  <input type="checkbox" checked={scoredOnly} onChange={toggleScoredOnly} />
-                  только оценённые <span className="num">{scoredShown.length}</span>
+                  <input type="checkbox" checked={hideScored} onChange={toggleHideScored} />
+                  скрыть оценённые <span className="num">{scoredShown.length}</span>
                 </label>
               ) : null}
             </div>
@@ -754,8 +754,8 @@ export function SearchPage() {
         ) : ordered.length === 0 ? (
           <div className="card">
             <Empty title="Под фильтр ничего не попало">
-              {scoredOnly ? (
-                <p>Оценённых среди них нет — снимите «только оценённые».</p>
+              {hideScored ? (
+                <p>Оценённые скрыты — снимите «скрыть оценённые».</p>
               ) : (
                 <p>Ослабьте условия, включите другие вердикты или покажите скрытые.</p>
               )}

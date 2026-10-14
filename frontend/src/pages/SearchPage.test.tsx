@@ -200,7 +200,7 @@ describe('SearchPage', () => {
     mocks.found.length = 0
   })
 
-  it('«только оценённые» оставляет оценённые, «по баллу» ставит лучший первым', () => {
+  it('«скрыть оценённые» убирает оценённые, «по баллу» ставит лучший первым', () => {
     localStorage.clear()
     mocks.found.splice(
       0,
@@ -217,8 +217,8 @@ describe('SearchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'по баллу' }))
     expect(titles()).toEqual(['Вакансия high', 'Вакансия low', 'Вакансия new'])
 
-    fireEvent.click(screen.getByLabelText(/только оценённые/))
-    expect(titles()).toEqual(['Вакансия high', 'Вакансия low'])
+    fireEvent.click(screen.getByLabelText(/скрыть оценённые/))
+    expect(titles()).toEqual(['Вакансия new'])
     mocks.found.length = 0
     localStorage.clear()
   })

@@ -19,8 +19,11 @@ export type SortKey = 'fresh' | 'score'
 export interface SearchFilters {
   buckets: BucketKey[]
   sort: SortKey
-  /** Only rows with a full evaluation — the result, without the queue. */
-  scoredOnly: boolean
+  /** Hide rows with a full evaluation — watch the queue, not the results.
+   *  Inverted from an earlier «only evaluated» toggle: users asked for the
+   *  opposite, so the stored key is renamed and the old value is not read
+   *  (copying it would turn the old choice into its opposite). */
+  hideScored: boolean
   showDropped: boolean
   /** Closed at the source, or too old to trust where the source cannot say. */
   showInactive: boolean
@@ -69,7 +72,7 @@ const KNOWN: readonly BucketKey[] = ['worth', 'maybe', 'skip', null]
 export const DEFAULT_FILTERS: SearchFilters = {
   buckets: ['worth'],
   sort: 'fresh',
-  scoredOnly: false,
+  hideScored: false,
   showDropped: false,
   showInactive: false,
   showHidden: false,
@@ -156,7 +159,7 @@ export function loadFilters(): SearchFilters {
     const {
       buckets,
       sort,
-      scoredOnly,
+      hideScored,
       showDropped,
       showInactive,
       showHidden,
@@ -170,7 +173,7 @@ export function loadFilters(): SearchFilters {
         ? KNOWN.filter((key) => buckets.includes(key))
         : DEFAULT_FILTERS.buckets,
       sort: sort === 'score' ? 'score' : DEFAULT_FILTERS.sort,
-      scoredOnly: flag(scoredOnly, DEFAULT_FILTERS.scoredOnly),
+      hideScored: flag(hideScored, DEFAULT_FILTERS.hideScored),
       showDropped: flag(showDropped, DEFAULT_FILTERS.showDropped),
       showInactive: flag(showInactive, DEFAULT_FILTERS.showInactive),
       showHidden: flag(showHidden, DEFAULT_FILTERS.showHidden),
