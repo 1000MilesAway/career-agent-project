@@ -120,6 +120,8 @@ export interface FoundVacancy {
   /** Hidden by the user; folded, never deleted. */
   hidden?: boolean
   published?: string | null
+  /** When a fetch last returned the posting — shown as "обновлено N назад". */
+  updated_at?: string | null
   /** When the row reached this user; the latest scan's rows are marked new. */
   found_at?: string
   /** Brought by the user by link: saved on adding, deleted rather than unsaved. */

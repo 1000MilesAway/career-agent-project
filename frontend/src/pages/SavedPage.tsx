@@ -221,6 +221,7 @@ export function SavedPage() {
               >
                 <VacancyRow
                   vacancy={vacancy}
+                  showUpdated
                   actions={
                     <>
                       {/* For every row, evaluated or not: a row dragged to a

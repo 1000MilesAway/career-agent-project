@@ -13,6 +13,7 @@
 
 import { memo, type ReactNode } from 'react'
 import type { FoundVacancy, TriageBucket, Verdict } from '../api/types'
+import { relTime } from '../relTime'
 import { ExternalIcon } from './icons'
 import { Score } from './ui'
 import './vacancy.css'
@@ -56,6 +57,7 @@ function VacancyRowInner({
   footer,
   mismatch,
   isNew = false,
+  showUpdated = false,
 }: {
   vacancy: FoundVacancy
   actions: ReactNode
@@ -66,6 +68,9 @@ function VacancyRowInner({
   mismatch?: string | null
   /** A second line of controls under the row, for the shortlist's materials. */
   footer?: ReactNode
+  /** «Обновлено N назад» in the meta line. Shortlist only: in search the
+   *  whole list is one scan, so every row would say the same thing. */
+  showUpdated?: boolean
 }) {
   const dropped = DROPPED_STAGES.has(vacancy.stage)
   const dimmed =
@@ -81,6 +86,11 @@ function VacancyRowInner({
     vacancy.accredited ? 'ИТ-аккредитация' : null,
     // In «Избранное» an added row sits among found ones; this says whose pick it was.
     vacancy.added_at ? 'добавлена вами' : (sourceLabel ?? null),
+    // Last touch from the source, at the end of the line: it is the row's
+    // bookkeeping, not its substance.
+    showUpdated && relTime(vacancy.updated_at)
+      ? `обновлено ${relTime(vacancy.updated_at)}`
+      : null,
   ].filter(Boolean)
 
   // Closed is marked, not hidden: what was bought for it stays readable. An

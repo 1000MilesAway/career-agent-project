@@ -108,4 +108,21 @@ describe('VacancyRow', () => {
     expect(screen.getByText('Python-разработчик')).toBeTruthy()
     expect(container.querySelector('a')).toBeNull()
   })
+
+  it('«обновлено N назад» появляется только когда строка его просит', () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+    const { rerender } = render(
+      <VacancyRow vacancy={{ ...base, updated_at: twoHoursAgo }} actions={null} />,
+    )
+    expect(screen.queryByText(/обновлено/)).toBeNull()
+
+    rerender(
+      <VacancyRow
+        vacancy={{ ...base, updated_at: twoHoursAgo }}
+        actions={null}
+        showUpdated
+      />,
+    )
+    expect(screen.getByText('обновлено 2 часа назад')).toBeTruthy()
+  })
 })
