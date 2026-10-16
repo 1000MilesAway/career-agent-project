@@ -42,7 +42,7 @@ from core import tg_scan
 from core.filters import PreScreen, SearchProfile
 from core.llm import LLM, Ledger
 from core.pipeline import build_search_profile
-from core.sources import employers, geekjob, habr_api, hh, telegram, tg_channels
+from core.sources import employers, geekjob, habr_api, hh, telegram, tg_channels, tg_chats
 from core.sources.habr_api import Posting
 
 from ..models import Application, Evaluation, Resume, User, Vacancy
@@ -68,22 +68,26 @@ SOURCE_LABELS = {
     "telegram": "в Telegram",
     "geekjob": "на geekjob",
     "company": "на сайте компании",
+    "telethon": "в Telegram-чате",
 }
 
 # Order sources are written and matched in. It decides which copy of a
 # vacancy becomes the original and which the duplicate: sources with real
 # fields (Habr's grade and division, an employer's own text) go first, so the
 # row the user keeps is the richest one, and a Telegram retelling points at it.
-ALL_SOURCES = ("habr", "hh", "company", "geekjob", "telegram")
+ALL_SOURCES = ("habr", "hh", "company", "geekjob", "telegram", "telethon")
+
+# Sources read through a provider on another host: asked only when it is set.
+PROVIDERS = {"hh": hh.configured, "telethon": tg_chats.configured}
 
 
 def active_sources() -> tuple[str, ...]:
-    """The sources a scan of everything asks: hh only when its provider is set.
+    """The sources a scan of everything asks: providers only when they are set.
 
     Without HH_PROVIDER_URL every scan would carry an "hh: не настроен" error
     — on a laptop, in CI — for a source nobody switched on.
     """
-    return tuple(s for s in ALL_SOURCES if s != "hh" or hh.configured())
+    return tuple(s for s in ALL_SOURCES if s not in PROVIDERS or PROVIDERS[s]())
 
 # Postings a scan matches: seen by some fetch this recently. One that dropped
 # off every listing it was on ages out of new matches; rows a user already
@@ -340,6 +344,31 @@ def fetch_telegram(
     )
 
 
+def fetch_telethon(days: int = tg_chats.DAYS) -> Batch:
+    """Telegram chats through the tg-provider userbot (core/sources/tg_chats.py).
+
+    One read serves every user: the provider has already scanned its chats,
+    and PreScreen does the filtering, as for a channel. The message is the
+    whole vacancy, so its text is stored; a teaser's linked description is
+    read later, for the posts some user's filters keep (`_enrich`).
+    """
+    posts, problems, chats = tg_chats.collect(days)
+    sightings = [
+        Sighting(
+            tg_scan.as_posting(post),
+            text=post.full_text() or None,
+            needs_text=bool(post.description_url),
+            description_url=post.description_url or None,
+        )
+        for post in posts
+    ]
+    return Batch(
+        "telethon",
+        sightings,
+        extra={"chats": chats, "problems": [{"channel": c, "why": w} for c, w in problems]},
+    )
+
+
 def fetch_employers(queries: list[str], group: str, skip: frozenset[str] = frozenset()) -> Batch:
     """One group of employers' own career sites (core/sources/employers.py).
 
@@ -498,6 +527,16 @@ def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
             )
             for g in options.telegram_groups
         ], segments=options.telegram_groups)
+    if source == "telethon":
+        if not tg_chats.configured():
+            raise ValueError("Telegram-чаты не подключены: не задан адрес провайдера")
+        # Read whole, like geekjob's feed: without keywords PreScreen would
+        # pass every vacancy posted to the chats.
+        if not profile.positive:
+            raise ValueError("в профиле поиска нет ключевых слов — чаты сами не фильтруют")
+        return Plan("telethon", [
+            Listing(pool.listing_key(days=tg_chats.DAYS), fetch_telethon),
+        ])
     raise ValueError(f"неизвестный источник: {source}")
 
 
@@ -538,7 +577,7 @@ MAX_ENRICHED = tg_scan.MAX_ENRICHED
 
 def _read_descriptions(source: str, rows: list[tuple[str, str, str]]) -> dict[str, str]:
     """Texts for (external_id, url, description_url) triples. Network only."""
-    if source == "telegram":
+    if source in ("telegram", "telethon"):
         posts = [
             telegram.Post(id=ext, url=url, channel="", text="", description_url=durl)
             for ext, url, durl in rows
@@ -572,7 +611,7 @@ async def _enrich(session: AsyncSession, source: str, kept: list[Pooled]) -> int
         text = texts.get(row.external_id)
         if not text:
             continue
-        if source == "telegram":
+        if source in ("telegram", "telethon"):
             # A teaser gains what it links to, labelled — the one write to
             # the text after creation (see Post.full_text).
             row.raw_text = (
@@ -602,7 +641,7 @@ async def _match(
     counts = await attach(session, user_id, decided)
     enriched = await _enrich(session, p.source, [row for row, why in decided if not why])
     out: dict[str, Any] = {"collected": len(rows), **counts}
-    if p.source == "telegram":
+    if p.source in ("telegram", "telethon"):
         # How many teasers gave up their description. Worth reporting: a
         # scan that read none of them is judging headlines.
         out["enriched"] = enriched
@@ -962,7 +1001,7 @@ async def explain_screened(
 class ScanRequest(BaseModel):
     # "all" is what the cabinet sends: one button, every source. The single
     # sources stay for the API and for debugging one board.
-    source: Literal["all", "habr", "hh", "telegram", "geekjob", "company"] = "habr"
+    source: Literal["all", "habr", "hh", "telegram", "geekjob", "company", "telethon"] = "habr"
     # Depth override for a single source. None = the source's own default
     # (services/scan.py). Not shown in the cabinet: a "page" meant something
     # different per source and told the user nothing.
@@ -1068,6 +1107,11 @@ async def run_scan(
         )
     if body.source == "company":
         return await collect_employers(session, user.id, search_profile, company_groups)
+    if body.source == "telethon":
+        result = await collect(
+            session, user.id, search_profile, ("telethon",), raise_errors=True
+        )
+        return result["sources"]["telethon"]
     return await collect_telegram(
         session, user.id, search_profile,
         channels=body.channels, pages=body.pages or TELEGRAM_PAGES,

@@ -84,6 +84,7 @@ const SOURCE_TITLES: Record<string, string> = {
   company: 'Сайты компаний',
   geekjob: 'geekjob',
   telegram: 'Telegram-каналы',
+  telethon: 'Telegram-чаты',
 }
 
 /** One line per source. A source that failed is named with its error rather

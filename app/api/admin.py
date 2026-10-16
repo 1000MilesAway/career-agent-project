@@ -477,7 +477,9 @@ async def funnel(
 
 # Searched by query, so they have no part to switch off: listed for their
 # numbers only. Russian: the page shows them.
-AGGREGATORS = {"habr": "Хабр Карьера", "hh": "hh.ru", "geekjob": "geekjob"}
+AGGREGATORS = {
+    "habr": "Хабр Карьера", "hh": "hh.ru", "geekjob": "geekjob", "telethon": "Telegram-чаты",
+}
 
 # Telegram groups in the order the page lists them; `special` is in the file
 # but no scan reads it, which is worth seeing next to the channels that are.

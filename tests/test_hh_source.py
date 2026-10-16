@@ -67,7 +67,7 @@ def test_not_configured_is_off_not_broken(monkeypatch):
 
 
 def test_configured_joins_the_scan_of_everything(provider):
-    assert scan.active_sources() == scan.ALL_SOURCES
+    assert "hh" in scan.active_sources()
 
 
 def test_vacancy_urls():

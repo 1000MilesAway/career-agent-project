@@ -58,7 +58,7 @@ export function useAppState(enabled = true) {
 
 export interface ScanParams {
   /** The cabinet sends 'all'; single sources remain for the API. */
-  source: 'all' | 'habr' | 'hh' | 'telegram' | 'geekjob' | 'company'
+  source: 'all' | 'habr' | 'hh' | 'telegram' | 'geekjob' | 'company' | 'telethon'
   salary_min?: number | null
   any_salary?: boolean
   remote_only?: boolean

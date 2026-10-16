@@ -48,6 +48,9 @@ FRESH_FOR = {
     # a query goes to hh at most once a day (decided 2026-10-03). Every scan
     # in between is answered from the pool.
     "hh": timedelta(days=1),
+    # tg-provider scans its chats once a day; a read is a file served by our
+    # own provider, so an hour only bounds how late a fresh scan shows up.
+    "telethon": timedelta(hours=1),
 }
 
 # A posting closes as taken down after this many full reads of its feed in a

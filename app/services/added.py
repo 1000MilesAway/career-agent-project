@@ -44,7 +44,7 @@ from .scan import FORM_OWNED, SCREENED_OUT, SHORTLIST, _profile
 LISTED_SOURCE = "company"
 # Pool rows a user may not take by id: a Telegram post can say anything, and a
 # pasted text is someone else's own.
-NOT_ADDABLE = (user_added.TEXT_SOURCE, "telegram")
+NOT_ADDABLE = (user_added.TEXT_SOURCE, "telegram", "telethon")
 
 
 async def _listed(session: AsyncSession, url: str) -> Pooled | None:

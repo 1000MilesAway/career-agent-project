@@ -69,11 +69,18 @@ origin. API напрямую — порт 8000, `/api/health` там остаё�
   Telethon (решение 10-15; репозиторий — `Desktop/tg-provider`, своего remote
   пока нет, код синхронизируется scp). `.env` — `TG_SESSION` и `TG_CHATS`;
   tdata купленного аккаунта — `data/tdata` (права 700, только root); вывод —
-  `data/posts.jsonl`, ошибки — `data/scan.log`. Cron
+  `data/posts.jsonl`, итог последнего скана — `data/last_scan.json`, ошибки —
+  `data/scan.log`. Cron
   `/etc/cron.d/tg-provider` — `tg-scan` раз в сутки в **06:20 UTC** (сервер в
   UTC). Сессия собрана из tdata **на самом сервере**: с машины разработки
   MTProto-адреса Telegram провайдер режет, поэтому юзербот ходит в Telegram с
   IP сервера и переносить сессию в другое место не нужно.
+  HTTP для career-agent — systemd-юнит **`tg-provider-http`** (`tg-serve`,
+  порт **8091**, Bearer `TG_PROVIDER_TOKEN` из `/opt/tg-provider/.env`). В
+  Telegram он не ходит, только отдаёт файлы скана. Порт открыт в ufw только
+  для `82.25.161.103`; на боевом сервере в `~/career-agent/.env` —
+  `TG_PROVIDER_URL=http://185.153.180.173:8091` и тот же токен. Без них
+  источник `telethon` выключен, и скан всего его пропускает.
 
 ## CI и деплой
 

@@ -1,0 +1,70 @@
+{
+ "chats": [
+  "hr_breakfast_emergency"
+ ],
+ "status": {
+  "finished_at": "2026-10-15T06:21:30+00:00",
+  "chats": [
+   {
+    "chat": "hr_breakfast_emergency",
+    "emitted": 3,
+    "skipped": 41
+   }
+  ]
+ },
+ "posts": [
+  {
+   "chat": "hr_breakfast_emergency",
+   "message_id": 104409,
+   "date": "2026-10-15T10:28:04+00:00",
+   "text": "#вакансия #job #работа #автор #копирайтер\n🔥SEO- копирайтер (тематика - iGaming) на удаленку\n\nИщем SEO-копирайтеров на постоянную работу в издательство интернет-порталов с командой более 100 человек редакторского и авторского состава.\n\n💰Что мы предлагаем:\n- Базовая ставка 210-300 рос. рублей за 1000 знаков;\n- Обеспечиваем стабильную ежедневную нагрузку до 20 000 символов.\n\n✍️Что предстоит делать:\n– Писать информационные и развлекательные статьи;\n– Работать по чётким ТЗ, укладываться в сроки.\n\n✅ Вы нам подойдёте, если:\n– Имеется опыт написания SEO-текстов;\n\nОписание: https://telegra.ph/SEO-kopirajter-10-15\nОтклик: @example_hr",
+   "tags": [
+    "#вакансия"
+   ],
+   "topic": null,
+   "link": "https://t.me/hr_breakfast_emergency/104409"
+  },
+  {
+   "chat": "hr_breakfast_emergency",
+   "message_id": 104410,
+   "date": "2026-10-15T10:40:00+00:00",
+   "text": "#vacancy #remote #fulltime #qa\nQA Engineer (Middle), удалённо\n\nКомпания: Example Soft\nИщем в команду тестировщика мобильных приложений. Опыт от 2 лет, Postman, SQL, Charles.\nВилка: 150 000 – 200 000 ₽ на руки.\nРезюме присылайте: @example_recruiter",
+   "tags": [
+    "#vacancy"
+   ],
+   "topic": null,
+   "link": "https://t.me/hr_breakfast_emergency/104410"
+  },
+  {
+   "chat": "hr_breakfast_emergency",
+   "message_id": 104411,
+   "date": "2026-10-15T10:45:00+00:00",
+   "text": "#резюме #cv #resume #opentowork\nИщу работу: QA Engineer, опыт 3 года, удалённо.\nРучное и автоматизированное тестирование, Python, pytest. Контакты: @example_seeker",
+   "tags": [
+    "#резюме"
+   ],
+   "topic": null,
+   "link": "https://t.me/hr_breakfast_emergency/104411"
+  },
+  {
+   "chat": "hr_breakfast_emergency",
+   "message_id": 104420,
+   "date": "2026-10-15T12:00:00+00:00",
+   "text": "#vacancy #remote #fulltime #qa\nQA Engineer (Middle), удалённо\n\nКомпания: Example Soft\nИщем в команду тестировщика мобильных приложений. Опыт от 2 лет, Postman, SQL, Charles.\nВилка: 150 000 – 200 000 ₽ на руки.\nРезюме присылайте: @example_recruiter",
+   "tags": [
+    "#vacancy"
+   ],
+   "topic": null,
+   "link": "https://t.me/hr_breakfast_emergency/104420"
+  },
+  {
+   "chat": "private_group",
+   "message_id": 7,
+   "date": "2026-10-15T12:00:00+00:00",
+   "text": "#vacancy #remote #fulltime #qa\nQA Lead (Middle), удалённо\n\nКомпания: Example Soft\nИщем в команду тестировщика мобильных приложений. Опыт от 2 лет, Postman, SQL, Charles.\nВилка: 150 000 – 200 000 ₽ на руки.\nРезюме присылайте: @example_recruiter",
+   "tags": [],
+   "topic": null,
+   "link": null
+  }
+ ]
+}

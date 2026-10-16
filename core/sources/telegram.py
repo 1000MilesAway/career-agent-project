@@ -266,7 +266,6 @@ def _parse_post(node, channel: str) -> Post | None:
     # `external_id`, unique per (user, source, external_id). Two channels with
     # a post 101 collapsed into one row that kept the first post's text under
     # the second one's title and link, so an evaluation judged the wrong ad.
-    post_id = post_path
 
     # The preview embeds forwarded posts and pinned neighbours from OTHER
     # channels. They are someone else's publication: counting them makes a
@@ -285,7 +284,16 @@ def _parse_post(node, channel: str) -> Post | None:
     hrefs = [
         a.attributes.get("href") or "" for a in body.css("a[href]")
     ]
-    hrefs = [h for h in hrefs if h]
+    return build_post(channel, post_path, text, when, [h for h in hrefs if h])
+
+
+def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[str]) -> Post:
+    """A Post from a message's text and links, however the message was read.
+
+    Shared by the `t.me/s/` preview and the tg-provider chats
+    (core/sources/tg_chats.py), so a vacancy is parsed the same way whichever
+    door it came through.
+    """
     link = apply_link.pick(hrefs)
     # The same anchors answer a second question: where the vacancy is described.
     # A teaser's "Смотреть вакансию" is usually NOT the apply link — apply_link
@@ -296,7 +304,7 @@ def _parse_post(node, channel: str) -> Post | None:
     stack = STACK_RE.search(text)
     band = salary_text.parse_salary(text)
     return Post(
-        id=post_id,
+        id=post_path,
         url=f"{BASE}/{post_path}" if post_path else f"{BASE}/{channel}",
         apply_url=link.url if link else "",
         apply_kind=link.kind if link else "",

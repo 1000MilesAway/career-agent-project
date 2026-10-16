@@ -46,6 +46,7 @@ const SOURCE_LABELS: Record<string, string> = {
   telegram: 'Telegram',
   geekjob: 'geekjob',
   company: 'сайт компании',
+  telethon: 'Telegram-чат',
 }
 
 /** Stages where a free filter or triage threw the posting out. */
