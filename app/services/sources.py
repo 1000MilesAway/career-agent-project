@@ -2,7 +2,8 @@
 
 Two settings, both from the admin's "Источники" page:
 
-  - a Telegram channel or an employer's board can be hidden. It is then not
+  - a Telegram channel, a Telegram chat (Telethon) or an employer's board
+    can be hidden. It is then not
     read, not matched to anyone, and its rows leave the search results —
     except a vacancy the user saved or bought a report for, which is theirs;
   - a company name as a source wrote it can be shown under another name,
@@ -26,7 +27,7 @@ from ..models import CompanyName, SourceSetting
 from ..models import Posting as Pooled
 
 # Sources with parts the owner can hide: channels and boards.
-SWITCHABLE = ("telegram", "company")
+SWITCHABLE = ("telegram", "company", "telethon")
 
 
 def board_of(external_id: str) -> str:
@@ -52,11 +53,18 @@ class Switches:
     def boards(self) -> set[str]:
         return self.hidden.get("company", set())
 
+    def chats(self) -> set[str]:
+        """Telegram chats switched off on the Telethon tab. The provider stops
+        scanning them too; this hides what the pool already holds."""
+        return self.hidden.get("telethon", set())
+
     def is_hidden(self, source: str, external_id: str, company: str | None) -> bool:
         if source == "telegram":
             return channel_of(company) in self.channels()
         if source == "company":
             return board_of(external_id) in self.boards()
+        if source == "telethon":
+            return channel_of(company) in self.chats()
         return False
 
     def company(self, name: str | None) -> str | None:
@@ -69,6 +77,8 @@ class Switches:
         """SQL: a pooled posting of `source` is not in a hidden part."""
         if source == "telegram" and self.channels():
             return Pooled.company.not_in([f"@{c}" for c in self.channels()])
+        if source == "telethon" and self.chats():
+            return Pooled.company.not_in([f"@{c}" for c in self.chats()])
         if source == "company" and self.boards():
             # `kind/slug/native`: the trailing slash keeps "huntflow/lime"
             # from also hiding a board slugged "huntflow/limehr".
@@ -80,12 +90,11 @@ class Switches:
 
     def visible_any(self) -> ColumnElement[bool]:
         """SQL: a pooled posting of any source is not in a hidden part."""
-        if not self.channels() and not self.boards():
+        if not self.channels() and not self.boards() and not self.chats():
             return true()
         return or_(
             Pooled.source.not_in(SWITCHABLE),
-            and_(Pooled.source == "telegram", self.visible("telegram")),
-            and_(Pooled.source == "company", self.visible("company")),
+            *(and_(Pooled.source == s, self.visible(s)) for s in SWITCHABLE),
         )
 
 

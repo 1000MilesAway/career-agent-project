@@ -10,6 +10,7 @@ import type { AdminSources } from '../api/types'
 const mocks = vi.hoisted(() => ({
   setSourceHidden: vi.fn(() => Promise.resolve()),
   setCompanyName: vi.fn(() => Promise.resolve()),
+  addChat: vi.fn(() => Promise.resolve('devops_jobs')),
 }))
 
 const stats = { postings: 10, active: 4, last_seen_at: null }
@@ -47,12 +48,37 @@ const data: AdminSources = {
       ...stats,
     },
   ],
+  chats: [
+    {
+      key: 'hr_chat',
+      name: '@hr_chat',
+      display_name: null,
+      hidden: false,
+      added_at: null,
+      emitted: 12,
+      error: null,
+      ...stats,
+    },
+    {
+      key: 'myjobit',
+      name: '@myjobit',
+      display_name: null,
+      hidden: true,
+      added_at: null,
+      emitted: null,
+      error: 'ChannelPrivateError',
+      ...stats,
+    },
+  ],
+  chats_error: null,
+  chats_scanned_at: '2026-10-16T06:21:00+00:00',
 }
 
 vi.mock('../api/hooks', () => ({
   useAdminSources: () => ({ data, error: null, isLoading: false }),
   setSourceHidden: mocks.setSourceHidden,
   setCompanyName: mocks.setCompanyName,
+  addChat: mocks.addChat,
 }))
 
 vi.mock('../components/toast', () => ({
@@ -115,5 +141,28 @@ describe('AdminSourcesPage', () => {
     expect(screen.getByText('основные')).toBeTruthy()
     fireEvent.click(screen.getByLabelText('Показывать пользователям: @pydevjob'))
     expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telegram', 'pydevjob', true)
+  })
+  it('Telegram channels are now "Tg public", chats have their own tab', () => {
+    at('/admin/sources')
+    expect(screen.getByRole('button', { name: /Tg public/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Telethon/ })).toBeTruthy()
+  })
+
+  it('a chat is switched off and on, and its scan error is shown', () => {
+    at('/admin/sources?tab=chats')
+    expect(screen.getByText('ошибка: ChannelPrivateError')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Показывать пользователям: @hr_chat'))
+    expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telethon', 'hr_chat', true)
+    fireEvent.click(screen.getByLabelText('Показывать пользователям: @myjobit'))
+    expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telethon', 'myjobit', false)
+  })
+
+  it('a chat is added from the form', () => {
+    at('/admin/sources?tab=chats')
+    fireEvent.change(screen.getByLabelText('Добавить чат'), {
+      target: { value: 'https://t.me/devops_jobs' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить чат' }))
+    expect(mocks.addChat).toHaveBeenCalledWith('https://t.me/devops_jobs')
   })
 })

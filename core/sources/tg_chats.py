@@ -25,6 +25,7 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -70,15 +71,17 @@ def configured() -> bool:
     return True
 
 
-def _get(path: str, params: Any = None) -> dict[str, Any]:
+def _call(method: str, path: str, params: Any = None, json: Any = None) -> dict[str, Any]:
     base, token = _config()
     try:
-        r = httpx.get(
+        r = httpx.request(
+            method,
             f"{base}{path}",
             params=params,
+            json=json,
             headers={"Authorization": f"Bearer {token}"},
-            # The provider reads a file it already has; no Telegram request
-            # happens on this call.
+            # The provider reads or writes a file it already has; no Telegram
+            # request happens on this call.
             timeout=httpx.Timeout(30.0, connect=10.0),
         )
     except httpx.HTTPError as e:
@@ -86,6 +89,26 @@ def _get(path: str, params: Any = None) -> dict[str, Any]:
     if r.status_code != 200:
         raise ProviderError(f"провайдер Telegram-чатов ответил {r.status_code}: {r.text[:120]}")
     return r.json()
+
+
+def _get(path: str, params: Any = None) -> dict[str, Any]:
+    return _call("GET", path, params=params)
+
+
+def list_chats() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The provider's chat list (`chat`, `enabled`, `added_at`) and last scan status."""
+    data = _get("/chats")
+    return list(data.get("chats") or []), dict(data.get("status") or {})
+
+
+def set_chat(name: str, enabled: bool) -> dict[str, Any]:
+    """Add a chat to the provider's list, or switch one on or off.
+
+    The provider owns the list because its cron scan reads it; the next
+    scan (once a day) reads a newly added chat. Raises ProviderError with
+    the provider's words for a name that is not a chat.
+    """
+    return _call("PUT", f"/chats/{quote(name.strip(), safe='')}", json={"enabled": enabled})
 
 
 def as_post(record: dict[str, Any]) -> telegram.Post | None:

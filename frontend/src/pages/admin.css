@@ -529,3 +529,8 @@
   height: 30px;
   font-size: 13px;
 }
+
+.sources__note {
+  margin: 0 0 12px;
+  font-size: 13px;
+}

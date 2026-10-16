@@ -34,13 +34,13 @@ def provider(monkeypatch):
     calls: list[tuple[str, object]] = []
     answers = {"/posts": httpx.Response(200, json=ANSWER)}
 
-    def fake_get(url, params=None, headers=None, timeout=None):
-        calls.append((url, params))
+    def fake_request(method, url, params=None, json=None, headers=None, timeout=None):
+        calls.append((url, params) if method == "GET" else (method, url, json))
         assert headers == {"Authorization": "Bearer secret"}
         path = url.removeprefix("http://provider:8091")
         return answers.get(path, httpx.Response(404, text="not found"))
 
-    monkeypatch.setattr(tg_chats.httpx, "get", fake_get)
+    monkeypatch.setattr(tg_chats.httpx, "request", fake_request)
     return calls, answers
 
 
@@ -120,9 +120,21 @@ def test_provider_errors_are_errors_not_empty_lists(provider, monkeypatch):
     def down(*args, **kwargs):
         raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(tg_chats.httpx, "get", down)
+    monkeypatch.setattr(tg_chats.httpx, "request", down)
     with pytest.raises(tg_chats.ProviderError, match="не ответил"):
         tg_chats.collect()
+
+
+def test_set_chat_puts_the_quoted_name(provider):
+    calls, answers = provider
+    answers["/chats/https%3A%2F%2Ft.me%2Fru_python"] = httpx.Response(
+        200, json={"chat": "ru_python", "enabled": True, "added_at": "2026-10-16T06:00:00+00:00"}
+    )
+    item = tg_chats.set_chat("https://t.me/ru_python", True)
+    assert item["chat"] == "ru_python"
+    assert calls[-1] == (
+        "PUT", "http://provider:8091/chats/https%3A%2F%2Ft.me%2Fru_python", {"enabled": True}
+    )
 
 
 def test_plan_reads_the_chats_whole_and_needs_keywords(provider):

@@ -17,13 +17,14 @@ import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy import Date, and_, cast, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
-from core.sources import employers, tg_channels
+from core.sources import employers, tg_channels, tg_chats
 
 from ..core.deps import AdminDep, SessionDep
 from ..models import (
@@ -477,9 +478,7 @@ async def funnel(
 
 # Searched by query, so they have no part to switch off: listed for their
 # numbers only. Russian: the page shows them.
-AGGREGATORS = {
-    "habr": "Хабр Карьера", "hh": "hh.ru", "geekjob": "geekjob", "telethon": "Telegram-чаты",
-}
+AGGREGATORS = {"habr": "Хабр Карьера", "hh": "hh.ru", "geekjob": "geekjob"}
 
 # Telegram groups in the order the page lists them; `special` is in the file
 # but no scan reads it, which is worth seeing next to the channels that are.
@@ -513,6 +512,18 @@ class ChannelItem(CompanyAlias):
     hidden: bool
 
 
+class ChatItem(CompanyAlias):
+    """A Telegram chat the tg-provider userbot reads (the Telethon tab)."""
+
+    key: str
+    # Switched off: the provider does not scan it, and its rows are hidden.
+    hidden: bool
+    added_at: datetime | None = None
+    # From the provider's last scan: messages it handed over, or its error.
+    emitted: int | None = None
+    error: str | None = None
+
+
 class BoardItem(SourceStats):
     key: str
     label: str
@@ -527,6 +538,11 @@ class Sources(BaseModel):
     aggregators: list[Aggregator]
     channels: list[ChannelItem]
     boards: list[BoardItem]
+    chats: list[ChatItem] = []
+    # Why the chat list could not be read: the provider is not set or down.
+    chats_error: str | None = None
+    # When the provider's last scan finished; null — never, or it failed.
+    chats_scanned_at: datetime | None = None
 
 
 def _stats() -> list:
@@ -631,15 +647,83 @@ async def sources(session: SessionDep, _: AdminDep) -> Sources:
     for item in boards.values():
         item.hidden = item.key in state.boards()
 
+    chats, chats_error, scanned_at = await _chats(session, state)
     return Sources(
         aggregators=aggregators,
         channels=list(channels.values()),
         boards=list(boards.values()),
+        chats=chats,
+        chats_error=chats_error,
+        chats_scanned_at=scanned_at,
     )
 
 
+def _when(value: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+async def _chats(
+    session, state: switches.Switches
+) -> tuple[list[ChatItem], str | None, datetime | None]:
+    """The provider's chat list with pool numbers. The provider owns the list
+    (its cron scan reads it); a chat only in the pool is listed too, so its
+    rows can still be hidden while they age out."""
+    items: dict[str, ChatItem] = {}
+    error = scanned_at = None
+    if not tg_chats.configured():
+        error = "провайдер не подключён: нет TG_PROVIDER_URL или TG_PROVIDER_TOKEN"
+    else:
+        try:
+            listed, status = await run_in_threadpool(tg_chats.list_chats)
+        except tg_chats.ProviderError as e:
+            error = str(e)
+        else:
+            scanned_at = _when(status.get("finished_at"))
+            last = {c.get("chat"): c for c in status.get("chats") or []}
+            for chat in listed:
+                key = chat["chat"]
+                items[key.casefold()] = ChatItem(
+                    key=key, name=f"@{key}", hidden=not chat.get("enabled"),
+                    added_at=_when(chat.get("added_at")),
+                    emitted=(last.get(key) or {}).get("emitted"),
+                    error=(last.get(key) or {}).get("error"),
+                )
+    rows = await session.execute(
+        select(Posting.company, *_stats())
+        .where(Posting.source == "telethon")
+        .group_by(Posting.company)
+    )
+    for row in rows:
+        key = switches.channel_of(row.company)
+        if not key:
+            continue
+        item = items.setdefault(key.casefold(), ChatItem(
+            key=key, name=f"@{key}", hidden=key in state.chats(),
+        ))
+        _add(item, row)
+    for item in items.values():
+        item.display_name = state.names.get(item.name)
+    return list(items.values()), error, scanned_at
+
+
+async def _switch_chat(name: str, enabled: bool) -> str:
+    """Tell the provider first: if it is down, nothing is half-switched."""
+    if not tg_chats.configured():
+        raise HTTPException(503, "Провайдер Telegram-чатов не подключён")
+    try:
+        item = await run_in_threadpool(tg_chats.set_chat, name, enabled)
+    except tg_chats.ProviderError as e:
+        status = 422 if " 400:" in str(e) else 502
+        detail = "Это не похоже на чат Telegram" if status == 422 else str(e)
+        raise HTTPException(status, detail) from e
+    return item["chat"]
+
+
 class SourceSwitch(BaseModel):
-    source: Literal["telegram", "company"]
+    source: Literal["telegram", "company", "telethon"]
     key: str = Field(min_length=1, max_length=255)
     hidden: bool
 
@@ -653,16 +737,42 @@ async def set_hidden(body: SourceSwitch, session: SessionDep, _: AdminDep) -> So
     deleted, so showing it again restores the rows as they were.
     """
     key = body.key.strip().removeprefix("@") if body.source == "telegram" else body.key.strip()
-    await session.execute(
-        insert(SourceSetting)
-        .values(source=body.source, key=key, hidden=body.hidden)
-        .on_conflict_do_update(
-            index_elements=["source", "key"],
-            set_={"hidden": body.hidden, "updated_at": func.now()},
-        )
-    )
+    if body.source == "telethon":
+        # Off also stops the provider scanning the chat, not only the rows.
+        key = await _switch_chat(key, not body.hidden)
+    await _store_hidden(session, body.source, key, body.hidden)
     await session.commit()
     return SourceSwitch(source=body.source, key=key, hidden=body.hidden)
+
+
+async def _store_hidden(session, source: str, key: str, hidden: bool) -> None:
+    await session.execute(
+        insert(SourceSetting)
+        .values(source=source, key=key, hidden=hidden)
+        .on_conflict_do_update(
+            index_elements=["source", "key"],
+            set_={"hidden": hidden, "updated_at": func.now()},
+        )
+    )
+
+
+class ChatAdd(BaseModel):
+    # `@chat`, `chat`, a t.me link, or a private group's numeric id.
+    chat: str = Field(min_length=1, max_length=255)
+
+
+@router.post("/sources/chats", response_model=SourceSwitch)
+async def add_chat(body: ChatAdd, session: SessionDep, _: AdminDep) -> SourceSwitch:
+    """Add a Telegram chat for the userbot to read, switched on.
+
+    The provider's next scan (once a day) reads it. A private group is read
+    only if the account is a member; otherwise the scan names the error on
+    the chat's row.
+    """
+    key = await _switch_chat(body.chat, True)
+    await _store_hidden(session, "telethon", key, False)
+    await session.commit()
+    return SourceSwitch(source="telethon", key=key, hidden=False)
 
 
 class CompanyRename(BaseModel):

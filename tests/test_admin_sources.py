@@ -195,3 +195,73 @@ def test_switches_without_settings_hide_nothing():
     assert not state.is_hidden("telegram", "chan/1", "@chan")
     assert state.company("ПАО Сбербанк") == "ПАО Сбербанк"
     assert state.company(None) is None
+
+
+@pytest.fixture
+def chat_provider(monkeypatch):
+    """A fake tg-provider holding the chat list in memory."""
+    from core.sources import tg_chats
+
+    monkeypatch.setenv("TG_PROVIDER_URL", "http://provider:8091")
+    monkeypatch.setenv("TG_PROVIDER_TOKEN", "secret")
+    listed = [{"chat": "hr_chat", "enabled": True, "added_at": None}]
+
+    def set_chat(name, enabled):
+        if name == "bad name":
+            raise tg_chats.ProviderError("провайдер Telegram-чатов ответил 400: not a chat")
+        chat = name.removeprefix("https://t.me/").removeprefix("@")
+        for item in listed:
+            if item["chat"] == chat:
+                item["enabled"] = enabled
+                return item
+        listed.append({"chat": chat, "enabled": enabled, "added_at": "2026-10-16T06:00:00+00:00"})
+        return listed[-1]
+
+    status = {"finished_at": "2026-10-16T06:21:00+00:00",
+              "chats": [{"chat": "hr_chat", "emitted": 12}]}
+    monkeypatch.setattr(tg_chats, "list_chats", lambda: (listed, status))
+    monkeypatch.setattr(tg_chats, "set_chat", set_chat)
+    return listed
+
+
+async def test_chats_are_listed_added_and_switched(
+    client, session, user, admin_headers, chat_provider
+):
+    session.add(_vacancy(user.id, source="telethon", external_id="hr_chat/1",
+                         company="@hr_chat", title="Из чата", stage=scan.SHORTLIST))
+    await session.commit()
+
+    data = (await client.get("/api/admin/sources", headers=admin_headers)).json()
+    assert data["chats_error"] is None
+    assert [(c["key"], c["hidden"], c["emitted"], c["postings"]) for c in data["chats"]] == [
+        ("hr_chat", False, 12, 1)
+    ]
+    # Telethon has its own tab, not a row among the aggregators.
+    assert "telethon" not in {a["source"] for a in data["aggregators"]}
+
+    added = await client.post(
+        "/api/admin/sources/chats", headers=admin_headers, json={"chat": "https://t.me/devops_jobs"}
+    )
+    assert added.json() == {"source": "telethon", "key": "devops_jobs", "hidden": False}
+    bad = await client.post(
+        "/api/admin/sources/chats", headers=admin_headers, json={"chat": "bad name"}
+    )
+    assert bad.status_code == 422
+
+    off = await client.put(
+        "/api/admin/sources/hidden", headers=admin_headers,
+        json={"source": "telethon", "key": "hr_chat", "hidden": True},
+    )
+    assert off.status_code == 200
+    assert chat_provider[0]["enabled"] is False
+    assert "Из чата" not in await _found(client, admin_headers)
+
+
+async def test_chats_without_provider_say_why(client, admin_headers, monkeypatch):
+    monkeypatch.delenv("TG_PROVIDER_URL", raising=False)
+    data = (await client.get("/api/admin/sources", headers=admin_headers)).json()
+    assert data["chats"] == [] and "не подключён" in data["chats_error"]
+    response = await client.post(
+        "/api/admin/sources/chats", headers=admin_headers, json={"chat": "devops_jobs"}
+    )
+    assert response.status_code == 503

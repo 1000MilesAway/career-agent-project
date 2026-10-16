@@ -432,7 +432,7 @@ export async function setSourceHidden(
   key: string,
   hidden: boolean,
 ) {
-  const list = source === 'telegram' ? 'channels' : 'boards'
+  const list = ({ telegram: 'channels', company: 'boards', telethon: 'chats' } as const)[source]
   await mutate<AdminSources>(
     ADMIN_SOURCES_KEY,
     async (current) => {
@@ -454,6 +454,17 @@ export async function setSourceHidden(
       revalidate: true,
     },
   )
+}
+
+/** Add a Telegram chat for the userbot, switched on. The provider's next
+ *  daily scan reads it. Returns the chat's normalized name. */
+export async function addChat(chat: string): Promise<string> {
+  const added = await api<{ key: string }>('/api/admin/sources/chats', {
+    method: 'POST',
+    json: { chat },
+  })
+  await mutate(ADMIN_SOURCES_KEY)
+  return added.key
 }
 
 /** Show a company under another name; empty — under its own. */

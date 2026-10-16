@@ -583,10 +583,25 @@ export interface AdminBoard extends SourceStats {
   names: AdminCompanyName[]
 }
 
+/** A Telegram chat the tg-provider userbot reads (the Telethon tab). */
+export interface AdminChat extends AdminCompanyName {
+  key: string
+  /** Switched off: not scanned, and its rows are hidden. */
+  hidden: boolean
+  added_at: string | null
+  /** From the provider's last scan. */
+  emitted: number | null
+  error: string | null
+}
+
 export interface AdminSources {
   aggregators: AdminAggregator[]
   channels: AdminChannel[]
   boards: AdminBoard[]
+  chats: AdminChat[]
+  /** Why the chat list could not be read. */
+  chats_error: string | null
+  chats_scanned_at: string | null
 }
 
-export type SwitchableSource = 'telegram' | 'company'
+export type SwitchableSource = 'telegram' | 'company' | 'telethon'

@@ -1,18 +1,22 @@
 /** Источники: where vacancies come from, and the owner's switches over them.
  *
  * Aggregators are searched by query and only have numbers here. Employer
- * boards and Telegram channels can be hidden from every user's results, and
- * any company name a board or channel carries can be shown under another one
+ * boards, Telegram channels (Tg public, read through t.me/s/) and Telegram
+ * chats (Telethon, read by the tg-provider userbot) can be hidden from every
+ * user's results; chats are also added here, and a chat switched off is no
+ * longer scanned. Any
+ * company name a board or channel carries can be shown under another one
  * ("ПАО Сбербанк" as "Сбербанк"). The tab and the search live in the URL,
  * like the other dashboard pages.
  */
 
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { setCompanyName, setSourceHidden, useAdminSources } from '../api/hooks'
+import { addChat, setCompanyName, setSourceHidden, useAdminSources } from '../api/hooks'
 import type {
   AdminBoard,
   AdminChannel,
+  AdminChat,
   AdminCompanyName,
   AdminSources,
   ChannelGroup,
@@ -23,12 +27,13 @@ import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
 import { formatCount, formatDateTime } from './adminFormat'
 import './admin.css'
 
-type Tab = 'aggregators' | 'boards' | 'channels'
+type Tab = 'aggregators' | 'boards' | 'channels' | 'chats'
 
 const TABS: { value: Tab; label: string; count: (d: AdminSources) => number }[] = [
   { value: 'aggregators', label: 'Агрегаторы', count: (d) => d.aggregators.length },
   { value: 'boards', label: 'Сайты компаний', count: (d) => d.boards.length },
-  { value: 'channels', label: 'Telegram-каналы', count: (d) => d.channels.length },
+  { value: 'channels', label: 'Tg public', count: (d) => d.channels.length },
+  { value: 'chats', label: 'Telethon', count: (d) => d.chats.length },
 ]
 
 const BOARD_GROUPS: Record<string, string> = { ru: 'РФ', global: 'зарубежные' }
@@ -86,7 +91,7 @@ export function AdminSourcesPage() {
           <input
             type="search"
             className="input admin-toolbar__search"
-            placeholder={tab === 'boards' ? 'Компания' : 'Канал'}
+            placeholder={tab === 'boards' ? 'Компания' : tab === 'chats' ? 'Чат' : 'Канал'}
             aria-label="Поиск по источникам"
             value={q}
             onChange={(event) => update('q', event.target.value || null)}
@@ -107,6 +112,11 @@ export function AdminSourcesPage() {
               matches(needle, b.label, b.key) ||
               b.names.some((n) => matches(needle, n.name, n.display_name)),
           )}
+        />
+      ) : tab === 'chats' ? (
+        <Chats
+          data={data}
+          chats={data.chats.filter((c) => matches(needle, c.name, c.display_name))}
         />
       ) : (
         <Channels
@@ -254,14 +264,114 @@ function Channels({ channels }: { channels: AdminChannel[] }) {
   )
 }
 
+function Chats({ data, chats }: { data: AdminSources; chats: AdminChat[] }) {
+  return (
+    <>
+      <AddChat />
+      <ErrorNote error={data.chats_error} />
+      {data.chats_scanned_at ? (
+        <p className="muted sources__note">
+          Последний скан: {formatDateTime(data.chats_scanned_at)}
+        </p>
+      ) : null}
+      {chats.length === 0 ? (
+        <Empty title="Чатов нет" />
+      ) : (
+        <div className="table-wrap">
+          <table className="table sources">
+            <thead>
+              <tr>
+                <th scope="col">Чат</th>
+                <th scope="col">Последний скан</th>
+                <NumberHeads />
+                <th scope="col">Читается</th>
+              </tr>
+            </thead>
+            <tbody>
+              {chats.map((chat) => (
+                <tr key={chat.key} className={chat.hidden ? 'sources__off' : undefined}>
+                  <td>
+                    <NameField
+                      item={chat}
+                      link={/^-?\d+$/.test(chat.key) ? undefined : `https://t.me/${chat.key}`}
+                    />
+                  </td>
+                  <td className={chat.error ? 'err' : 'muted'}>
+                    {chat.error
+                      ? `ошибка: ${chat.error}`
+                      : chat.emitted == null
+                        ? '—'
+                        : `сообщений: ${formatCount(chat.emitted)}`}
+                  </td>
+                  <Numbers stats={chat} />
+                  <td>
+                    <Shown
+                      label={chat.name}
+                      hidden={chat.hidden}
+                      on="включён"
+                      off="выключен"
+                      onChange={(hidden) => setSourceHidden('telethon', chat.key, hidden)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+function AddChat() {
+  const toast = useToast()
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!value.trim() || busy) return
+    setBusy(true)
+    try {
+      const key = await addChat(value.trim())
+      toast.info(`Чат @${key} добавлен`)
+      setValue('')
+    } catch (error) {
+      toast.error(error)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="admin-toolbar" onSubmit={submit}>
+      <input
+        className="input admin-toolbar__search"
+        placeholder="@chat, ссылка t.me или id группы"
+        aria-label="Добавить чат"
+        value={value}
+        disabled={busy}
+        onChange={(event) => setValue(event.target.value)}
+      />
+      <button type="submit" className="btn btn--small" disabled={busy || !value.trim()}>
+        Добавить чат
+      </button>
+    </form>
+  )
+}
+
 function Shown({
   label,
   hidden,
   onChange,
+  on = 'показан',
+  off = 'скрыт',
 }: {
   label: string
   hidden: boolean
   onChange: (hidden: boolean) => Promise<void>
+  on?: string
+  off?: string
 }) {
   const toast = useToast()
   return (
@@ -272,7 +382,7 @@ function Shown({
         aria-label={`Показывать пользователям: ${label}`}
         onChange={(event) => onChange(!event.target.checked).catch(toast.error)}
       />
-      {hidden ? 'скрыт' : 'показан'}
+      {hidden ? off : on}
     </label>
   )
 }
