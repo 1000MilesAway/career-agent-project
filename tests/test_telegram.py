@@ -110,8 +110,37 @@ class TestTitleLine:
         """godevjob opens with "🔥" — taking it literally titled every vacancy "🔥"."""
         assert _first_title_line("🔥\nGo Developer\nот 150 000 ₽") == "Go Developer"
 
-    def test_keeps_an_emoji_that_sits_next_to_words(self):
-        assert _first_title_line("🔥 Go Developer") == "🔥 Go Developer"
+    def test_drops_an_emoji_that_sits_next_to_words(self):
+        assert _first_title_line("🔥 Go Developer") == "Go Developer"
+
+    @pytest.mark.parametrize("text, title", [
+        ("#вакансия #remote\n\nПривет! Мы в поиске Senior Python Developer для CVAT.ai!",
+         "Senior Python Developer для CVAT.ai"),
+        ("Всем привет, коллеги\nНа долгосрочный проект ищу Tech Lead NLP Engineer",
+         "Tech Lead NLP Engineer"),
+        ("Всем привет! На долгосрочный проект ищу Специалист комплаенс-контроля (KYC/AML)",
+         "Специалист комплаенс-контроля (KYC/AML)"),
+        ("Компания: Evenbeter\nPython Backend Developer", "Python Backend Developer"),
+        ("Уровень\nMiddle\nGo Developer", "Go Developer"),
+        ("#.NET\nSenior .NET Developer", "Senior .NET Developer"),
+        ("📍Вакансия: Senior Backend Engineer Go — Custody Platform (The Vault)",
+         "Senior Backend Engineer Go — Custody Platform (The Vault)"),
+        ("Position: Machine Learning Engineer", "Machine Learning Engineer"),
+        ("iOS Developer (Senior) | VPN-приложение", "iOS Developer (Senior) | VPN-приложение"),
+        ("🚀 Ищем C++ Developer (Middle)", "Ищем C++ Developer (Middle)"),
+        ("Hi! Now I'm looking for Senior DevOps Engineer in our company 🚀",
+         "Senior DevOps Engineer"),
+        ("Andersen Lab ☀️ is hiring a 𝐅𝐮𝐥𝐥 𝐒𝐭𝐚𝐜𝐤 𝐐𝐀 𝐄𝐧𝐠𝐢𝐧𝐞𝐞𝐫 for a project developing a platform",
+         "Full Stack QA Engineer"),
+        ("We are looking for a CPO (Chief Product Officer) at AskCraft — launching a product "
+         "line in the international market with a long tail of words",
+         "CPO (Chief Product Officer) at AskCraft"),
+        ("✦ IT / SOLUTION ARCHITECT (CRYPTO) ✦ ║ ║ Infrastructure amp; Platform",
+         "IT / SOLUTION ARCHITECT (CRYPTO) Infrastructure & Platform"),
+    ])
+    def test_chat_prose_gives_the_role(self, text, title):
+        """Chat messages (source "telethon") are prose, not channel layout."""
+        assert _first_title_line(text) == title
 
     def test_empty_text_gives_empty_title(self):
         assert _first_title_line("\n  \n") == ""
@@ -137,6 +166,17 @@ class TestLooksLikeVacancy:
             "#cv #резюме Python Backend Developer. Ищу работу в продуктовой команде, "
             "требуется удалёнка. Опыт пять лет: Python, FastAPI, PostgreSQL, Docker, CI. "
             "Готов к интервью, рассматриваю предложения. Связь: @kandidat"
+        )
+        ok, why = looks_like_vacancy(post(text))
+        assert not ok
+        assert "резюме" in why
+
+    def test_a_recommended_candidate_is_not_a_vacancy(self):
+        """Job chats carry "хочу порекомендовать <человека>" — a CV by proxy."""
+        text = (
+            "Всем привет, коллеги\nХочу порекомендовать Head of Marketing — ищем ей команду, "
+            "в которой она сможет вырасти. Опыт восемь лет в B2B SaaS, запуск продуктов, "
+            "performance и бренд. Вакансии и вопросы — в личку: @example_contact"
         )
         ok, why = looks_like_vacancy(post(text))
         assert not ok

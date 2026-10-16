@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -77,7 +78,9 @@ MAX_EXTERNAL_CHARS = 8000
 # like django_jobs_board are half these, and they must not reach the report.
 SEEKER_RE = re.compile(
     r"(#cv\b|#резюме|#opentowork|ищу работу|ищу проект|ищу заказы|ищу подработ"
-    r"|open to work|рассматриваю предложения)",
+    r"|open to work|рассматриваю предложения"
+    # Someone recommending a candidate in a job chat: a CV by proxy.
+    r"|хочу порекомендовать|рекомендую (?:кандидата|специалиста|коллегу))",
     re.IGNORECASE,
 )
 # An employer is hiring. "Грейд:"/"Стек:" are in here because the runello_rus_*
@@ -230,21 +233,121 @@ class MarkupChanged(Exception):
     """
 
 
+# Lines that are a field of the ad, not its headline: "Компания: Evenbeter"
+# and a bare "Уровень" came out as titles of chat vacancies.
+_FIELD_LINE_RE = re.compile(
+    r"^(?:компания|company|employer|работодатель|уровень|грейд|grade|level|формат|format"
+    r"|локация|location|город|city|зарплата|зп|з/п|вилка|salary|оклад|стек|stack|график"
+    r"|занятость|schedule|опыт|experience|контакты?|contacts?)\b",
+    re.IGNORECASE,
+)
+# Greetings that open a chat message: "Привет!", "Всем привет, коллеги",
+# "Hi all". Stripped from the start of a line; a line that is nothing else
+# is skipped.
+_GREETING_RE = re.compile(
+    r"^(?:(?:всем\s+)?(?:привет|приветствую|здравствуйте)(?:\s+всем)?|добрый\s+(?:день|вечер)"
+    r"|доброе\s+утро|hi|hello|hey)(?:\s+(?:всем|all|everyone|коллеги|друзья|team))?"
+    r"(?:\s*,\s*(?:коллеги|друзья|все|all|everyone))?\s*[!.,)]*\s*",
+    re.IGNORECASE,
+)
+# "Вакансия: X", "Position: X" — the label adds nothing to a title.
+_LABEL_RE = re.compile(
+    r"^(?:вакансия|позиция|должность|роль|position|vacancy|role|job)\s*[:\-–—]\s*",
+    re.IGNORECASE,
+)
+# The role follows these words: "Мы в поиске X", "Andersen Lab is hiring a X".
+_HIRING_RE = re.compile(
+    r"(?:\bмы\s+)?(?:\bв\s+поиске|\bищем|\bищу|\bищет|\bтребуется|\bтребуются|\bнужен|\bнужна"
+    r"|\bis\s+hiring|\bare\s+hiring|\bwe[’']re\s+hiring|\bhiring"
+    r"|\bis\s+looking\s+for|\bare\s+looking\s+for|\blooking\s+for)\s+"
+    r"(?:(?:a|an|two|three|опытного|опытную)\s+)?",
+    re.IGNORECASE,
+)
+# A Russian ad opening with its hiring verb reads as a title already
+# ("Ищем C++ Developer (Middle)"); only a phrase further in is cut to.
+_RU_OPENING_RE = re.compile(r"^(?:ищем|ищу|требуется|требуются|нужен|нужна)\b", re.IGNORECASE)
+# Trailing filler after the role: "in our company", "для участия в проекте".
+_FILLER_RE = re.compile(
+    r"\s+(?:(?:in|into|to)\s+our\s+(?:company|team)|to\s+join|for\s+(?:a|our)\s+project"
+    r"|в\s+(?:нашу\s+|нашей\s+|нашу\s+дружную\s+)?(?:компанию|команду|компании|команде)"
+    r"|для\s+участия|на\s+(?:долгосрочный\s+)?проект)\b.*$",
+    re.IGNORECASE,
+)
+# A line that is only a grade ("Middle", "Senior+") belongs to a field above.
+_GRADE_ONLY_RE = re.compile(
+    r"^(?:intern|junior|middle|senior|lead|стажер|стажёр|джун|мидл|сеньор)\+?$", re.IGNORECASE
+)
+TITLE_MAX = 90
+
+
+def _clean_line(raw: str) -> str:
+    """One line without tags, emoji and decoration, in plain letters.
+
+    NFKC turns the "bold" mathematical letters some posters use (𝐒𝐞𝐧𝐢𝐨𝐫)
+    into plain ones; symbols (emoji, ✦, ║) and joiners are dropped, so the
+    same vacancy titled with and without 🚀 compares equal in dedup.
+    """
+    line = unicodedata.normalize("NFKC", raw)
+    line = re.sub(r"&?amp;", "&", line)
+    line = re.sub(r"#[\wЀ-ӿ.+]+", "", line)
+    line = "".join(
+        ch for ch in line
+        if unicodedata.category(ch) not in ("So", "Sk", "Cf", "Mn", "Co")
+    )
+    return re.sub(r"\s+", " ", line).strip(" -–—:|,·•*\t")
+
+
+def _shorten(title: str) -> str:
+    """Cut at a natural break before TITLE_MAX, else at a word."""
+    title = title.rstrip(" !.?;")
+    if len(title) <= TITLE_MAX:
+        return title
+    for sep in (" — ", " – ", " | ", ". ", ", ", " ("):
+        cut = title.find(sep, 20, TITLE_MAX)
+        if cut != -1:
+            return title[:cut].rstrip(" !.?;,")
+    return title[:TITLE_MAX].rsplit(" ", 1)[0] + "…"
+
+
+def _title_from_line(line: str) -> str:
+    line = _GREETING_RE.sub("", line, count=1)
+    line = _LABEL_RE.sub("", line, count=1)
+    m = _HIRING_RE.search(line)
+    cut = bool(m) and not _RU_OPENING_RE.match(line)
+    if cut:
+        line = line[m.end():]
+    # The first sentence: "Senior Python Developer для CVAT.ai! Удалённо…"
+    line = re.split(r"[!?]|\.\s", line, maxsplit=1)[0]
+    line = _FILLER_RE.sub("", line)
+    line = line.strip(" -–—:|,·•*")
+    # "ищу специалиста…" cut to "специалиста…" starts lower-case; a title as
+    # written ("iOS Developer") keeps its own case.
+    if cut and line[:1].islower():
+        line = line[0].upper() + line[1:]
+    return _shorten(line)
+
+
 def _first_title_line(text: str) -> str:
-    """The first line carrying actual words — the closest thing to a title.
+    """The headline of a post: the role, as far as the text makes it out.
 
-    Channels put the role on line one and the tags either above it or below, so
-    skipping tag-only lines recovers the headline surprisingly reliably. A line
-    with tags AND words (`#golang Senior Go Engineer`) is kept, minus the tags.
-
-    A line must contain a letter or a digit to count. godevjob opens posts with a
-    lone emoji ("🔥\nGo Developer\nот 150 000 ₽"), and taking that line literally
-    gave every vacancy from that channel the title "🔥".
+    Channels put the role on line one and tags above or below it, so the
+    first line with words is the start. Chat messages are prose ("Привет! Мы
+    в поиске Senior Python Developer для CVAT.ai!"), so greetings, field
+    lines ("Компания: …"), labels ("Вакансия:") and the hiring phrase around
+    the role are taken off. A line must contain a letter or a digit to count:
+    godevjob opens with a lone "🔥".
     """
     for raw in text.split("\n"):
-        line = re.sub(r"#[\wЀ-ӿ]+", "", raw).strip(" -–—:|,\t")
-        if _HAS_WORD_RE.search(line):
-            return line
+        line = _clean_line(raw)
+        if (
+            not _HAS_WORD_RE.search(line)
+            or _FIELD_LINE_RE.match(line)
+            or _GRADE_ONLY_RE.match(line)
+        ):
+            continue
+        title = _title_from_line(line)
+        if _HAS_WORD_RE.search(title):
+            return title
     return ""
 
 
