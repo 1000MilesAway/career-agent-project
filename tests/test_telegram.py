@@ -16,6 +16,7 @@ from core.sources.telegram import (
     HTMLParser,
     Post,
     _channel_is_silent,
+    _company_of,
     _first_title_line,
     _parse_post,
     looks_like_vacancy,
@@ -147,6 +148,39 @@ class TestTitleLine:
 
     def test_decoration_only_text_gives_empty_title(self):
         assert _first_title_line("✨ — ✨\n···") == ""
+
+
+class TestCompany:
+    @pytest.mark.parametrize("text, company", [
+        ("Компания: Evenbeter\nPython Backend Developer", "Evenbeter"),
+        ("Компания — Combo Tech, продуктовая\nGo Developer", "Combo Tech"),
+        ("Andersen Lab ☀️ is hiring a 𝐅𝐮𝐥𝐥 𝐒𝐭𝐚𝐜𝐤 𝐐𝐀 𝐄𝐧𝐠𝐢𝐧𝐞𝐞𝐫 for a project", "Andersen Lab"),
+        ("Traffic Jam ищет Go-разработчика", "Traffic Jam"),
+        ("Привет! Мы в поиске Senior Python Developer для CVAT.ai!", "CVAT.ai"),
+        ("We are looking for a CPO (Chief Product Officer) at AskCraft — launching", "AskCraft"),
+    ])
+    def test_a_named_employer_is_found(self, text, company):
+        assert _company_of(text, _first_title_line(text)) == company
+
+    @pytest.mark.parametrize("text", [
+        # An agency is not the employer.
+        "Компания: Selecty (КА)\nQA Engineer",
+        "Рекрутинговое агентство Brightman ищет аналитика",
+        # Descriptions where a name should be.
+        "Международная IT-команда в поиске Python Developer",
+        "Компания: The largest online marketplace for debt trading\nDeveloper",
+        "Мы ищем Java разработчика",
+        "Python Developer для финтех-проекта",
+        "Golang разработчик\nГрейд: Middle",
+    ])
+    def test_no_name_means_no_company_not_the_channel(self, text):
+        assert _company_of(text, _first_title_line(text)) == ""
+
+    def test_the_post_carries_it(self):
+        built = telegram.build_post(
+            "jobchannel", "jobchannel/1", "Компания: Evenbeter\nPython Backend Developer", "", []
+        )
+        assert built.company == "Evenbeter"
 
 
 class TestLooksLikeVacancy:

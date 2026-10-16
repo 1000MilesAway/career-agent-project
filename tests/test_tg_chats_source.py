@@ -151,7 +151,8 @@ def test_fetch_stores_text_and_marks_teasers(provider):
     teaser = by_id["hr_breakfast_emergency/104409"]
     assert teaser.needs_text is True
     assert teaser.text and "SEO" in teaser.text
-    assert teaser.posting.company == "@hr_breakfast_emergency"
+    # The chat is not the employer: it stays in the id, and this teaser names none.
+    assert teaser.posting.company == ""
     assert batch.extra["problems"] == []
 
 

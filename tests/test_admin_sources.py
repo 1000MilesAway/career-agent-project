@@ -58,11 +58,11 @@ async def test_hidden_channel_leaves_results_but_not_the_saved(
     client, session, user, admin_headers
 ):
     session.add_all([
-        _vacancy(user.id, source="telegram", external_id="chan/1", company="@chan",
+        _vacancy(user.id, source="telegram", external_id="chan/1", company="Ромашка",
                  title="Из канала", stage=scan.SHORTLIST),
-        _vacancy(user.id, source="telegram", external_id="chan/2", company="@chan",
+        _vacancy(user.id, source="telegram", external_id="chan/2", company=None,
                  title="Сохранённая", stage=scan.SHORTLIST, is_saved=True),
-        _vacancy(user.id, source="telegram", external_id="other/1", company="@other",
+        _vacancy(user.id, source="telegram", external_id="other/1", company="Ромашка",
                  title="Из другого", stage=scan.SHORTLIST),
     ])
     await session.commit()
@@ -131,7 +131,8 @@ async def test_listing_groups_boards_and_names(client, session, user, admin_head
         _vacancy(user.id, source="company", external_id="sber/sber/1", company="ПАО Сбербанк"),
         _vacancy(user.id, source="company", external_id="sber/sber/2", company="ПАО Сбербанк"),
         _vacancy(user.id, source="company", external_id="sber/sber/3", company='АО "СберТех"'),
-        _vacancy(user.id, source="telegram", external_id="lonely/1", company="@lonely"),
+        _vacancy(user.id, source="telegram", external_id="lonely/1", company="Evenbeter"),
+        _vacancy(user.id, source="telegram", external_id="lonely/2", company=None),
         _vacancy(user.id, source="habr", external_id="1", company="Ромашка"),
         SourceSetting(source="telegram", key="lonely", hidden=True),
     ])
@@ -147,7 +148,9 @@ async def test_listing_groups_boards_and_names(client, session, user, admin_head
     ]
     # Only in the pool, from a named scan: listed so it can be switched.
     lonely = next(c for c in data["channels"] if c["key"] == "lonely")
-    assert (lonely["group"], lonely["hidden"], lonely["postings"]) == (None, True, 1)
+    assert (lonely["group"], lonely["hidden"], lonely["postings"]) == (None, True, 2)
+    # The channel is the id's prefix; the company is the employer a post named.
+    assert [(n["name"], n["postings"]) for n in lonely["names"]] == [("Evenbeter", 1)]
     habr = next(a for a in data["aggregators"] if a["source"] == "habr")
     assert habr["postings"] == habr["active"] == 1
 
@@ -168,7 +171,7 @@ async def test_hidden_parts_are_neither_read_nor_matched(session, monkeypatch):
     def telegram(channels, group, pages, skip=frozenset()):
         asked["telegram"] = skip
         return scan.Batch("telegram", [
-            Sighting(Posting(id=f"{c}/1", url="u", title="Python", company=f"@{c}"), "Python")
+            Sighting(Posting(id=f"{c}/1", url="u", title="Python", company=""), "Python")
             for c in ("hidden_chan", "open_chan")
         ])
 
@@ -186,13 +189,13 @@ async def test_hidden_parts_are_neither_read_nor_matched(session, monkeypatch):
     assert asked == {"telegram": {"hidden_chan"}, "company": {"sber/sber"}}
     # Pooled for when the switch goes back, matched to nobody meanwhile.
     rows = (await session.execute(select(Vacancy))).scalars().all()
-    assert [r.company for r in rows] == ["@open_chan"]
+    assert [r.external_id for r in rows] == ["open_chan/1"]
     assert result["new"] == 1
 
 
 def test_switches_without_settings_hide_nothing():
     state = sources.Switches()
-    assert not state.is_hidden("telegram", "chan/1", "@chan")
+    assert not state.is_hidden("telegram", "chan/1")
     assert state.company("ПАО Сбербанк") == "ПАО Сбербанк"
     assert state.company(None) is None
 
@@ -228,7 +231,7 @@ async def test_chats_are_listed_added_and_switched(
     client, session, user, admin_headers, chat_provider
 ):
     session.add(_vacancy(user.id, source="telethon", external_id="hr_chat/1",
-                         company="@hr_chat", title="Из чата", stage=scan.SHORTLIST))
+                         company="CVAT.ai", title="Из чата", stage=scan.SHORTLIST))
     await session.commit()
 
     data = (await client.get("/api/admin/sources", headers=admin_headers)).json()
@@ -236,6 +239,7 @@ async def test_chats_are_listed_added_and_switched(
     assert [(c["key"], c["hidden"], c["emitted"], c["postings"]) for c in data["chats"]] == [
         ("hr_chat", False, 12, 1)
     ]
+    assert [n["name"] for n in data["chats"][0]["names"]] == ["CVAT.ai"]
     # Telethon has its own tab, not a row among the aggregators.
     assert "telethon" not in {a["source"] for a in data["aggregators"]}
 

@@ -505,23 +505,29 @@ class CompanyAlias(SourceStats):
     display_name: str | None = None
 
 
-class ChannelItem(CompanyAlias):
+class ChannelItem(SourceStats):
     key: str
+    name: str
     # The list-file group, or null for a channel only a named scan read.
     group: str | None
     hidden: bool
+    # The employers its posts name (core/sources/telegram.py `_company_of`);
+    # posts naming none are counted on the channel only.
+    names: list[CompanyAlias] = []
 
 
-class ChatItem(CompanyAlias):
+class ChatItem(SourceStats):
     """A Telegram chat the tg-provider userbot reads (the Telethon tab)."""
 
     key: str
+    name: str
     # Switched off: the provider does not scan it, and its rows are hidden.
     hidden: bool
     added_at: datetime | None = None
     # From the provider's last scan: messages it handed over, or its error.
     emitted: int | None = None
     error: str | None = None
+    names: list[CompanyAlias] = []
 
 
 class BoardItem(SourceStats):
@@ -564,6 +570,27 @@ def _add(into: SourceStats, row) -> None:
         into.last_seen_at = row.last_seen_at
 
 
+async def _by_channel(session, source: str) -> list:
+    """Pool numbers of a Telegram source per channel (the id's prefix) and
+    the employer its posts name."""
+    channel = func.split_part(Posting.external_id, "/", 1)
+    rows = await session.execute(
+        select(channel.label("channel"), Posting.company, *_stats())
+        .where(Posting.source == source)
+        .group_by(channel, Posting.company)
+        .order_by(func.count().desc())
+    )
+    return [row for row in rows if row.channel]
+
+
+def _add_names(item: ChannelItem | ChatItem, row, state: switches.Switches) -> None:
+    _add(item, row)
+    if row.company:
+        alias = CompanyAlias(name=row.company, display_name=state.names.get(row.company))
+        _add(alias, row)
+        item.names.append(alias)
+
+
 @router.get("/sources", response_model=Sources)
 async def sources(session: SessionDep, _: AdminDep) -> Sources:
     """Aggregators, Telegram channels and employer boards, with pool numbers.
@@ -601,22 +628,14 @@ async def sources(session: SessionDep, _: AdminDep) -> Sources:
             channels.setdefault(name, ChannelItem(
                 key=name, name=f"@{name}", group=group, hidden=False,
             ))
-    rows = await session.execute(
-        select(Posting.company, *_stats())
-        .where(Posting.source == "telegram")
-        .group_by(Posting.company)
-    )
-    for row in rows:
-        key = switches.channel_of(row.company)
-        if not key:
-            continue
+    for row in await _by_channel(session, "telegram"):
         item = channels.setdefault(
-            key, ChannelItem(key=key, name=f"@{key}", group=None, hidden=False)
+            row.channel, ChannelItem(key=row.channel, name=f"@{row.channel}", group=None,
+                                     hidden=False)
         )
-        _add(item, row)
+        _add_names(item, row, state)
     for item in channels.values():
         item.hidden = item.key in state.channels()
-        item.display_name = state.names.get(item.name)
 
     boards = {
         b.key: BoardItem(key=b.key, label=b.name, group=b.group, hidden=False, names=[])
@@ -691,21 +710,12 @@ async def _chats(
                     emitted=(last.get(key) or {}).get("emitted"),
                     error=(last.get(key) or {}).get("error"),
                 )
-    rows = await session.execute(
-        select(Posting.company, *_stats())
-        .where(Posting.source == "telethon")
-        .group_by(Posting.company)
-    )
-    for row in rows:
-        key = switches.channel_of(row.company)
-        if not key:
-            continue
+    for row in await _by_channel(session, "telethon"):
+        key = row.channel
         item = items.setdefault(key.casefold(), ChatItem(
             key=key, name=f"@{key}", hidden=key in state.chats(),
         ))
-        _add(item, row)
-    for item in items.values():
-        item.display_name = state.names.get(item.name)
+        _add_names(item, row, state)
     return list(items.values()), error, scanned_at
 
 

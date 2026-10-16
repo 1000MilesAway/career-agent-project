@@ -35,7 +35,7 @@ from typing import Any, Literal
 
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import tg_scan
@@ -420,8 +420,8 @@ class Plan:
     # Match only postings from these segments (employer groups, channel
     # groups). None: the source has no segments.
     segments: tuple[str, ...] | None = None
-    # Match only these companies — Telegram channels named explicitly.
-    companies: list[str] | None = None
+    # Match only these Telegram channels, named explicitly (the id's prefix).
+    channels: list[str] | None = None
 
 
 @dataclass
@@ -517,7 +517,7 @@ def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
                         channels, None, pages, skip=frozenset(options.switches.channels())
                     ),
                 ),
-            ], companies=[f"@{c}" for c in channels])
+            ], channels=channels)
         return Plan("telegram", [
             Listing(
                 pool.listing_key(group=g, pages=pages),
@@ -565,8 +565,8 @@ async def _candidates(
         # Rows pooled before segments were recorded carry none; they gain
         # one the next time a fetch returns them.
         query = query.where(or_(Pooled.segment.in_(p.segments), Pooled.segment.is_(None)))
-    if p.companies is not None:
-        query = query.where(Pooled.company.in_(p.companies))
+    if p.channels is not None:
+        query = query.where(func.split_part(Pooled.external_id, "/", 1).in_(p.channels))
     return list((await session.execute(query)).scalars())
 
 

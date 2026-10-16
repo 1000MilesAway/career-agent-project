@@ -568,11 +568,14 @@ export interface AdminCompanyName extends SourceStats {
 
 export type ChannelGroup = 'core' | 'adjacent' | 'special'
 
-export interface AdminChannel extends AdminCompanyName {
+export interface AdminChannel extends SourceStats {
   key: string
+  name: string
   /** null — only in the pool, read by a scan that named it. */
   group: ChannelGroup | null
   hidden: boolean
+  /** Employers its posts name. */
+  names: AdminCompanyName[]
 }
 
 export interface AdminBoard extends SourceStats {
@@ -584,14 +587,17 @@ export interface AdminBoard extends SourceStats {
 }
 
 /** A Telegram chat the tg-provider userbot reads (the Telethon tab). */
-export interface AdminChat extends AdminCompanyName {
+export interface AdminChat extends SourceStats {
   key: string
+  name: string
   /** Switched off: not scanned, and its rows are hidden. */
   hidden: boolean
   added_at: string | null
   /** From the provider's last scan. */
   emitted: number | null
   error: string | null
+  /** Employers its messages name. */
+  names: AdminCompanyName[]
 }
 
 export interface AdminSources {

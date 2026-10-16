@@ -141,6 +141,10 @@ class Post:
     apply_url: str = ""
     apply_kind: str = ""
     title: str = ""
+    # The employer, only where the text names it ("Компания: X", "X is
+    # hiring", "… at X"); empty otherwise. Never the channel or chat: that is
+    # where the post was read, not who hires (it lives in `id`).
+    company: str = ""
     grade: str = ""
     stack: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -166,6 +170,7 @@ class Post:
             "apply_url": self.apply_url,
             "channel": self.channel,
             "title": self.title,
+            "company": self.company,
             "grade": self.grade,
             "stack": self.stack,
             "tags": self.tags,
@@ -351,6 +356,80 @@ def _first_title_line(text: str) -> str:
     return ""
 
 
+# "Компания: Evenbeter", "Работодатель — Combo Tech".
+_COMPANY_FIELD_RE = re.compile(
+    r"^(?:компания|company|employer|работодатель|наниматель)\s*[:\-–—]\s*(.+)$", re.IGNORECASE
+)
+# "Andersen Lab is hiring", "Traffic Jam ищет": the name is what precedes the verb.
+_COMPANY_HIRING_RE = re.compile(
+    r"^(.{2,60}?)\s+(?:is\s+hiring|are\s+hiring|is\s+looking\s+for|are\s+looking\s+for"
+    r"|ищет|ищут|в\s+поиске|расширяет\s+команду|открывает\s+вакансию)\b",
+    re.IGNORECASE,
+)
+# "CPO at AskCraft", "Senior Python Developer для CVAT.ai": a capitalised
+# name closing the title. Lower case ("для финтех-проекта") is not a name.
+_COMPANY_TAIL_RE = re.compile(
+    r"\s(?:at|@|для|в\s+компанию|в\s+компании)\s+"
+    r"([A-ZА-ЯЁ0-9][\w.&+'’-]*(?:\s+[A-ZА-ЯЁ0-9][\w.&+'’-]*){0,3})(?:\s[—–|]\s.*)?$"
+)
+# A recruiter is not the employer: "Selecty (КА)", "кадровое агентство X".
+# Their vacancy has no company rather than the agency's name, which would
+# also merge different clients' openings with one title in dedup.
+_AGENCY_RE = re.compile(
+    r"\(\s*ка\s*\)|\bкадров\w*\s+агентств|\bрекрутингов\w*\s+агентств"
+    r"|\brecruit(?:ing|ment)\s+agency\b|\bhr[- ]агентств",
+    re.IGNORECASE,
+)
+# Words that stand where a name should but describe instead: "Мы ищем",
+# "Международная IT-команда в поиске", "The largest online marketplace…".
+_NOT_A_NAME_RE = re.compile(
+    r"^(?:мы|я|we|i|our|наш\w*|команда|компания|стартап|проект|team|company|startup|the|a|an"
+    r"|международн\w*|крупн\w*|российск\w*|продуктов\w*|молод\w*|быстрорастущ\w*"
+    r"|hr|рекрутер|recruiter|коллеги|друзья|всем)\b",
+    re.IGNORECASE,
+)
+COMPANY_MAX_WORDS = 4
+
+
+def _as_company(raw: str) -> str:
+    """A name as written, or "" when the words are a description or an agency."""
+    if _AGENCY_RE.search(raw):
+        return ""
+    name = re.split(r"\s[—–|]\s|[.!?;,(]\s|[!?;(]", raw, maxsplit=1)[0]
+    name = name.strip(" -–—:|,·•*\"«»'")
+    if (
+        not name
+        or not name[:1].isupper() and not name[:1].isdigit()
+        or len(name.split()) > COMPANY_MAX_WORDS
+        or _NOT_A_NAME_RE.match(name)
+    ):
+        return ""
+    return name
+
+
+def _company_of(text: str, title: str) -> str:
+    """The employer, where the post names it; "" otherwise.
+
+    Three shapes only, the ones a measurement on the chats found named
+    cleanly (docs/decisions.md, 2026-10-16): a field line, a "X is hiring"
+    opening, a "… at X" closing the title. Anything looser guessed
+    descriptions ("Международная IT-команда") as names; an empty company is
+    shown as "компания не указана", a wrong one misleads.
+    """
+    lines = [_GREETING_RE.sub("", _clean_line(raw), count=1) for raw in text.split("\n")]
+    lines = [line for line in lines if _HAS_WORD_RE.search(line)]
+    for line in lines:
+        if m := _COMPANY_FIELD_RE.match(line):
+            return _as_company(m.group(1))
+    for line in lines[:3]:
+        if m := _COMPANY_HIRING_RE.match(line):
+            if name := _as_company(m.group(1)):
+                return name
+    if m := _COMPANY_TAIL_RE.search(title):
+        return _as_company(m.group(1))
+    return ""
+
+
 def _parse_post(node, channel: str) -> Post | None:
     """Build a Post from one `.tgme_widget_message_wrap` node."""
     body = node.css_first(".tgme_widget_message_text")
@@ -406,6 +485,7 @@ def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[s
     grade = GRADE_RE.search(text)
     stack = STACK_RE.search(text)
     band = salary_text.parse_salary(text)
+    title = _first_title_line(text)
     return Post(
         id=post_path,
         url=f"{BASE}/{post_path}" if post_path else f"{BASE}/{channel}",
@@ -414,7 +494,8 @@ def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[s
         channel=channel,
         text=text,
         published=when,
-        title=_first_title_line(text),
+        title=title,
+        company=_company_of(text, title),
         grade=grade.group(1).strip() if grade else "",
         stack=[s.strip() for s in stack.group(1).split(",") if s.strip()] if stack else [],
         tags=re.findall(r"#([\wЀ-ӿ]+)", text),

@@ -41,8 +41,10 @@ def no_network(monkeypatch):
 
 
 class TestAsPosting:
-    def test_channel_becomes_the_company(self):
-        assert tg_scan.as_posting(post("1")).company == "@chan"
+    def test_the_channel_is_not_the_company(self):
+        """The channel is where the post was read; it stays in the id."""
+        assert tg_scan.as_posting(post("1")).company == ""
+        assert tg_scan.as_posting(post("1", company="Evenbeter")).company == "Evenbeter"
 
     def test_divisions_stay_empty_so_the_specialization_check_cannot_fire(self):
         """Telegram states no specialization. Guessing one would drop real jobs."""

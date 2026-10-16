@@ -42,32 +42,32 @@ const data: AdminSources = {
     {
       key: 'pydevjob',
       name: '@pydevjob',
-      display_name: null,
       group: 'core',
       hidden: false,
       ...stats,
+      names: [{ name: 'Evenbeter', display_name: null, ...stats }],
     },
   ],
   chats: [
     {
       key: 'hr_chat',
       name: '@hr_chat',
-      display_name: null,
       hidden: false,
       added_at: null,
       emitted: 12,
       error: null,
       ...stats,
+      names: [{ name: 'CVAT.ai', display_name: null, ...stats }],
     },
     {
       key: 'myjobit',
       name: '@myjobit',
-      display_name: null,
       hidden: true,
       added_at: null,
       emitted: null,
       error: 'ChannelPrivateError',
       ...stats,
+      names: [],
     },
   ],
   chats_error: null,
@@ -142,6 +142,13 @@ describe('AdminSourcesPage', () => {
     fireEvent.click(screen.getByLabelText('Показывать пользователям: @pydevjob'))
     expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telegram', 'pydevjob', true)
   })
+
+  it('a chat lists the employers its messages name, renameable', () => {
+    at('/admin/sources?tab=chats&q=cvat')
+    expect(screen.getByLabelText('Название для пользователей: CVAT.ai')).toBeTruthy()
+    expect(screen.queryByText('@myjobit')).toBeNull()
+  })
+
   it('Telegram channels are now "Tg public", chats have their own tab', () => {
     at('/admin/sources')
     expect(screen.getByRole('button', { name: /Tg public/ })).toBeTruthy()

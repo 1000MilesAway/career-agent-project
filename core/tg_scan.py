@@ -36,7 +36,9 @@ def as_posting(post: telegram.Post) -> habr_api.Posting:
         id=post.id,
         url=post.url,
         title=post.title,
-        company=f"@{post.channel}",
+        # The employer when the post names it, else empty. Not "@channel":
+        # the channel is where the post was read, and it stays in `id`.
+        company=post.company,
         qualification=post.grade,
         remote=post.remote,
         skills=post.stack,
@@ -157,7 +159,7 @@ def as_rows(kept: list[tuple[telegram.Post, str]]) -> list[dict]:
             # losing the apply path would leave them to re-find it by hand.
             "apply_url": post.apply_url,
             "title": post.title,
-            "company": f"@{post.channel}",
+            "company": post.company,
             "qualification": post.grade,
             "remote": post.remote,
             "salary_text": salary_label(post),

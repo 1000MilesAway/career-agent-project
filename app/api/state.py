@@ -135,7 +135,7 @@ async def state(session: SessionDep, user: UserDep) -> dict[str, Any]:
         # A channel or board the owner hid leaves the results, but not what
         # the user made theirs: a saved vacancy, a bought report, a tracked one.
         if (
-            switches.is_hidden(v.source, v.external_id, v.company)
+            switches.is_hidden(v.source, v.external_id)
             and not v.is_saved
             and not v.evaluations
             and v.application is None

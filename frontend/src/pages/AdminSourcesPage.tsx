@@ -5,7 +5,7 @@
  * chats (Telethon, read by the tg-provider userbot) can be hidden from every
  * user's results; chats are also added here, and a chat switched off is no
  * longer scanned. Any
- * company name a board or channel carries can be shown under another one
+ * company name a board, channel or chat carries can be shown under another one
  * ("ПАО Сбербанк" as "Сбербанк"). The tab and the search live in the URL,
  * like the other dashboard pages.
  */
@@ -116,11 +116,19 @@ export function AdminSourcesPage() {
       ) : tab === 'chats' ? (
         <Chats
           data={data}
-          chats={data.chats.filter((c) => matches(needle, c.name, c.display_name))}
+          chats={data.chats.filter(
+            (c) =>
+              matches(needle, c.name) ||
+              c.names.some((n) => matches(needle, n.name, n.display_name)),
+          )}
         />
       ) : (
         <Channels
-          channels={data.channels.filter((c) => matches(needle, c.name, c.display_name))}
+          channels={data.channels.filter(
+            (c) =>
+              matches(needle, c.name) ||
+              c.names.some((n) => matches(needle, n.name, n.display_name)),
+          )}
         />
       )}
     </div>
@@ -239,11 +247,13 @@ function Channels({ channels }: { channels: AdminChannel[] }) {
             <th scope="col">В выдаче</th>
           </tr>
         </thead>
-        <tbody>
-          {channels.map((channel) => (
-            <tr key={channel.key} className={channel.hidden ? 'sources__off' : undefined}>
+        {channels.map((channel) => (
+          <tbody key={channel.key} className={channel.hidden ? 'sources__off' : undefined}>
+            <tr>
               <td>
-                <NameField item={channel} link={`https://t.me/s/${channel.key}`} />
+                <a href={`https://t.me/s/${channel.key}`} target="_blank" rel="noreferrer">
+                  {channel.name}
+                </a>
               </td>
               <td className="muted">
                 {channel.group ? CHANNEL_GROUPS[channel.group] : 'вне списка'}
@@ -257,8 +267,9 @@ function Channels({ channels }: { channels: AdminChannel[] }) {
                 />
               </td>
             </tr>
-          ))}
-        </tbody>
+            <Names names={channel.names} />
+          </tbody>
+        ))}
       </table>
     </div>
   )
@@ -287,14 +298,17 @@ function Chats({ data, chats }: { data: AdminSources; chats: AdminChat[] }) {
                 <th scope="col">Читается</th>
               </tr>
             </thead>
-            <tbody>
-              {chats.map((chat) => (
-                <tr key={chat.key} className={chat.hidden ? 'sources__off' : undefined}>
+            {chats.map((chat) => (
+              <tbody key={chat.key} className={chat.hidden ? 'sources__off' : undefined}>
+                <tr>
                   <td>
-                    <NameField
-                      item={chat}
-                      link={/^-?\d+$/.test(chat.key) ? undefined : `https://t.me/${chat.key}`}
-                    />
+                    {/^-?\d+$/.test(chat.key) ? (
+                      chat.name
+                    ) : (
+                      <a href={`https://t.me/${chat.key}`} target="_blank" rel="noreferrer">
+                        {chat.name}
+                      </a>
+                    )}
                   </td>
                   <td className={chat.error ? 'err' : 'muted'}>
                     {chat.error
@@ -314,8 +328,9 @@ function Chats({ data, chats }: { data: AdminSources; chats: AdminChat[] }) {
                     />
                   </td>
                 </tr>
-              ))}
-            </tbody>
+                <Names names={chat.names} />
+              </tbody>
+            ))}
           </table>
         </div>
       )}
@@ -358,6 +373,20 @@ function AddChat() {
       </button>
     </form>
   )
+}
+
+/** Employers a channel's or chat's posts name, each renameable. */
+function Names({ names }: { names: AdminCompanyName[] }) {
+  return names.map((name) => (
+    <tr key={name.name} className="sources__name">
+      <td>
+        <NameField item={name} />
+      </td>
+      <td />
+      <Numbers stats={name} />
+      <td />
+    </tr>
+  ))
 }
 
 function Shown({

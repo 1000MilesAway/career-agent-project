@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import ColumnElement, and_, not_, or_, select, true
+from sqlalchemy import ColumnElement, and_, func, not_, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.sources import employers
@@ -35,9 +35,16 @@ def board_of(external_id: str) -> str:
     return employers.board_key(external_id)
 
 
-def channel_of(company: str | None) -> str:
-    """A Telegram posting's channel: its `company` is "@channel"."""
-    return (company or "").removeprefix("@")
+def channel_of(external_id: str) -> str:
+    """A Telegram posting's channel or chat: its id is "channel/101".
+
+    Not `company`: that is the employer the post names, or empty.
+    """
+    return external_id.split("/", 1)[0]
+
+
+# SQL twin of channel_of().
+_CHANNEL = func.split_part(Pooled.external_id, "/", 1)
 
 
 @dataclass
@@ -58,13 +65,13 @@ class Switches:
         scanning them too; this hides what the pool already holds."""
         return self.hidden.get("telethon", set())
 
-    def is_hidden(self, source: str, external_id: str, company: str | None) -> bool:
+    def is_hidden(self, source: str, external_id: str) -> bool:
         if source == "telegram":
-            return channel_of(company) in self.channels()
+            return channel_of(external_id) in self.channels()
         if source == "company":
             return board_of(external_id) in self.boards()
         if source == "telethon":
-            return channel_of(company) in self.chats()
+            return channel_of(external_id) in self.chats()
         return False
 
     def company(self, name: str | None) -> str | None:
@@ -76,9 +83,9 @@ class Switches:
     def visible(self, source: str) -> ColumnElement[bool]:
         """SQL: a pooled posting of `source` is not in a hidden part."""
         if source == "telegram" and self.channels():
-            return Pooled.company.not_in([f"@{c}" for c in self.channels()])
+            return _CHANNEL.not_in(self.channels())
         if source == "telethon" and self.chats():
-            return Pooled.company.not_in([f"@{c}" for c in self.chats()])
+            return _CHANNEL.not_in(self.chats())
         if source == "company" and self.boards():
             # `kind/slug/native`: the trailing slash keeps "huntflow/lime"
             # from also hiding a board slugged "huntflow/limehr".
