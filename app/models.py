@@ -341,6 +341,32 @@ class SourceSetting(Base, TimestampMixin):
     )
 
 
+class FoundChannel(Base, TimestampMixin):
+    """A Telegram channel the discovery came across (services/channel_discovery.py).
+
+    `added` channels passed the preview check and joined `group` hidden (a
+    `source_settings` row): the owner turns them on in the admin page. A
+    `rejected` one keeps its reason and is looked at again after a while,
+    so the same lead is not re-read every day.
+    """
+
+    __tablename__ = "found_channels"
+
+    # As the channel's own posts spell it: the hide switch matches post ids.
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # added | rejected
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    # How it came up: "похож на @pydevjob", "#вакансия", "ссылка в @godevjob".
+    via: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    group: Mapped[str] = mapped_column(String(32), nullable=False, server_default="core")
+    title: Mapped[str | None] = mapped_column(String(255))
+    subscribers: Mapped[int | None] = mapped_column(Integer)
+    posts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    vacancies: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class CompanyName(Base, TimestampMixin):
     """What users see instead of a company name as a source wrote it.
 

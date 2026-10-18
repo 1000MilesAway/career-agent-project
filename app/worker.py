@@ -31,7 +31,7 @@ from core.pipeline import cover_letter, evaluate, interview_prep, tailor_resume
 
 from .core.db import SessionLocal
 from .models import Artifact, Evaluation, Job, Resume, User, Vacancy
-from .services import liveness, scan, triage
+from .services import channel_discovery, liveness, scan, triage
 from .services.spend import charge, exhausted_reason, ledger_totals
 
 log = logging.getLogger("worker")
@@ -45,6 +45,9 @@ SWEEP_SECONDS = 300.0
 # every four hours closes it in about a day without anyone scanning, at six
 # reads a day of each company's feed.
 FEEDS_SECONDS = 4 * 3600.0
+# How often the worker asks whether channel discovery is due; it runs at most
+# once in `channel_discovery.EVERY`, restarts included.
+DISCOVERY_SECONDS = 3600.0
 MAX_ATTEMPTS = 3
 # Kinds that fail on the first error; see `tick`.
 NOT_RETRIED = frozenset({"scan", "refresh", "triage"})
@@ -359,6 +362,15 @@ async def feeds_once() -> dict[str, int]:
         return counts
 
 
+async def discovery_once() -> dict[str, int]:
+    async with SessionLocal() as session:
+        if not await channel_discovery.due(session):
+            return {}
+        counts = await channel_discovery.run(session)
+        await session.commit()
+        return counts
+
+
 async def _every(stopping: asyncio.Event, seconds: float, name: str, once) -> None:
     """Run `once` in the background every `seconds` until the worker stops.
 
@@ -387,6 +399,11 @@ async def feeds_loop(stopping: asyncio.Event) -> None:
     """Read the ATS feeds in the background, so a taken-down posting closes
     without waiting for someone's scan."""
     await _every(stopping, FEEDS_SECONDS, "feeds sweep", feeds_once)
+
+
+async def discovery_loop(stopping: asyncio.Event) -> None:
+    """Look for new Telegram job channels; found ones are added hidden."""
+    await _every(stopping, DISCOVERY_SECONDS, "channel discovery", discovery_once)
 
 
 async def lane_loop(stopping: asyncio.Event, scans: bool) -> None:
@@ -422,6 +439,7 @@ async def main() -> None:
     sweepers = [
         asyncio.create_task(sweep_loop(stopping)),
         asyncio.create_task(feeds_loop(stopping)),
+        asyncio.create_task(discovery_loop(stopping)),
     ]
     lanes = [asyncio.create_task(lane_loop(stopping, scans)) for scans in (True, False)]
 

@@ -32,7 +32,10 @@ def provider(monkeypatch):
     monkeypatch.setenv("TG_PROVIDER_URL", "http://provider:8091/")
     monkeypatch.setenv("TG_PROVIDER_TOKEN", "secret")
     calls: list[tuple[str, object]] = []
-    answers = {"/posts": httpx.Response(200, json=ANSWER)}
+    # A scan finished just now: the recorded date would read as a stopped
+    # scan once the test runs more than STALE_AFTER after it was recorded.
+    fresh = {**ANSWER, "status": {**ANSWER["status"], "finished_at": datetime.now(UTC).isoformat()}}
+    answers = {"/posts": httpx.Response(200, json=fresh)}
 
     def fake_request(method, url, params=None, json=None, headers=None, timeout=None):
         calls.append((url, params) if method == "GET" else (method, url, json))

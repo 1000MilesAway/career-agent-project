@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.sources import employers
 
-from ..models import CompanyName, SourceSetting
+from ..models import CompanyName, FoundChannel, SourceSetting
 from ..models import Posting as Pooled
 
 # Sources with parts the owner can hide: channels and boards.
@@ -53,6 +53,9 @@ class Switches:
 
     hidden: dict[str, set[str]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
+    # Channels the discovery added (`found_channels`), by group. Read with
+    # the list file's own; a hidden one is skipped like any other.
+    found: dict[str, list[str]] = field(default_factory=dict)
 
     def channels(self) -> set[str]:
         return self.hidden.get("telegram", set())
@@ -113,4 +116,10 @@ async def load(session: AsyncSession) -> Switches:
     for source, key in rows:
         hidden.setdefault(source, set()).add(key)
     names = await session.execute(select(CompanyName.name, CompanyName.display_name))
-    return Switches(hidden=hidden, names={name: shown for name, shown in names})
+    found: dict[str, list[str]] = {}
+    rows = await session.execute(
+        select(FoundChannel.group, FoundChannel.name).where(FoundChannel.status == "added")
+    )
+    for group, name in rows:
+        found.setdefault(group, []).append(name)
+    return Switches(hidden=hidden, names={name: shown for name, shown in names}, found=found)

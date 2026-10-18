@@ -309,6 +309,7 @@ def fetch_telegram(
     group: str | None,
     pages: int = TELEGRAM_PAGES,
     skip: frozenset[str] = frozenset(),
+    found: tuple[str, ...] = (),
 ) -> Batch:
     """Channel pages through `t.me/s/`: the named channels, or one group's.
 
@@ -317,7 +318,9 @@ def fetch_telegram(
     linked description is NOT read here — that is a request to someone else's
     host, and it is spent on the posts some user's filters keep (`_enrich`).
     """
-    names = channels or tg_channels.channel_names(groups=(group or "core",))
+    # A group's channels are the list file's plus those the discovery added
+    # (services/channel_discovery.py) and the owner turned on.
+    names = channels or [*tg_channels.channel_names(groups=(group or "core",)), *found]
     # Channels the owner hid are not asked at all (services/sources.py).
     names = [n for n in names if n not in skip]
     posts, problems = telegram.search_many(names, pages=pages)
@@ -522,7 +525,8 @@ def plan(source: str, profile: SearchProfile, options: Options) -> Plan:
             Listing(
                 pool.listing_key(group=g, pages=pages),
                 lambda g=g: fetch_telegram(
-                    None, g, pages, skip=frozenset(options.switches.channels())
+                    None, g, pages, skip=frozenset(options.switches.channels()),
+                    found=tuple(options.switches.found.get(g, ())),
                 ),
             )
             for g in options.telegram_groups

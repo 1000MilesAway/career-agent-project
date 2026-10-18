@@ -649,15 +649,7 @@ def _channel_is_silent(posts: list[Post], max_days: int) -> bool:
     return datetime.now(UTC) - newest > timedelta(days=max_days)
 
 
-def fetch_channel(
-    channel: str,
-    before: str | int | None = None,
-    client: httpx.Client | None = None,
-) -> list[Post]:
-    """One page (~20 posts) of a public channel, newest last.
-
-    Raises NoPreview when the name is a group or does not exist.
-    """
+def _get_page(channel: str, before: str | int | None, client: httpx.Client | None) -> str:
     url = f"{BASE}/s/{channel}"
     if before:
         url = f"{url}?before={before}"
@@ -670,12 +662,13 @@ def fetch_channel(
         if r.status_code in (301, 302, 303, 307, 308):
             raise NoPreview(f"@{channel}: нет веб-превью (группа или канала не существует)")
         r.raise_for_status()
-        html = r.text
+        return r.text
     finally:
         if own:
             client.close()
 
-    tree = HTMLParser(html)
+
+def _parse_page(tree: HTMLParser, channel: str) -> list[Post]:
     wraps = tree.css(".tgme_widget_message_wrap")
     posts = []
     for node in wraps:
@@ -695,6 +688,61 @@ def fetch_channel(
             "изменилась вёрстка t.me"
         )
     return posts
+
+
+def fetch_channel(
+    channel: str,
+    before: str | int | None = None,
+    client: httpx.Client | None = None,
+) -> list[Post]:
+    """One page (~20 posts) of a public channel, newest last.
+
+    Raises NoPreview when the name is a group or does not exist.
+    """
+    return _parse_page(HTMLParser(_get_page(channel, before, client)), channel)
+
+
+@dataclass
+class Preview:
+    """A channel's newest page with its header: what it is and who reads it."""
+
+    posts: list[Post]
+    title: str = ""
+    subscribers: int | None = None
+
+
+def _count(text: str) -> int | None:
+    """"9.24K" -> 9240, "1.2M" -> 1200000, "852" -> 852."""
+    m = re.fullmatch(r"([\d.,\s]+)\s*([KM]?)", text.strip(), re.IGNORECASE)
+    if not m:
+        return None
+    number = float(m.group(1).replace(" ", "").replace(",", "."))
+    return int(number * {"": 1, "k": 1_000, "m": 1_000_000}[m.group(2).lower()])
+
+
+def parse_preview(html: str, channel: str) -> Preview:
+    tree = HTMLParser(html)
+    title = tree.css_first(".tgme_channel_info_header_title")
+    subscribers = None
+    for counter in tree.css(".tgme_channel_info_counter"):
+        kind = counter.css_first(".counter_type")
+        value = counter.css_first(".counter_value")
+        if kind and value and kind.text(strip=True) in ("subscribers", "подписчиков"):
+            subscribers = _count(value.text(strip=True))
+    return Preview(
+        posts=_parse_page(tree, channel),
+        title=title.text(strip=True) if title else "",
+        subscribers=subscribers,
+    )
+
+
+def fetch_preview(channel: str, client: httpx.Client | None = None) -> Preview:
+    """The newest page of a channel with its title and subscriber count.
+
+    Used to judge a channel nobody has vetted yet (core/sources/tg_discovery.py).
+    Raises NoPreview when the name is a group, a person or does not exist.
+    """
+    return parse_preview(_get_page(channel, None, client), channel)
 
 
 def _all_dropped_legitimately(wraps, channel: str) -> bool:

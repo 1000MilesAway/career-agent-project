@@ -273,6 +273,16 @@ async def _calibrate(source: str, email: str | None) -> int:
     return _print_result(result)
 
 
+async def _discover_channels(limit: int) -> int:
+    from .services import channel_discovery
+
+    async with SessionLocal() as session:
+        result = await channel_discovery.run(session, limit=limit)
+        await session.commit()
+    print(", ".join(f"{k}: {v}" for k, v in result.items()))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Администрирование career-agent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -307,6 +317,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     cal.add_argument("--email", help="только оценки этого пользователя (для --source stored)")
 
+    disc = sub.add_parser(
+        "discover-channels", help="найти новые Telegram-каналы с вакансиями (добавляются скрытыми)"
+    )
+    disc.add_argument("--limit", type=int, default=60, help="сколько превью прочитать")
+
     args = parser.parse_args(argv)
 
     if args.command == "user-add":
@@ -321,6 +336,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_user_toggle(args.email, active=True))
     if args.command == "user-plan":
         return asyncio.run(_user_plan(args.email, None if args.free else args.days))
+    if args.command == "discover-channels":
+        return asyncio.run(_discover_channels(args.limit))
     if args.command == "calibrate":
         # The golden set is files only, so it must stay runnable with no
         # database at all — that is what makes it usable in CI.

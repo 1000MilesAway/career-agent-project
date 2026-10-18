@@ -111,6 +111,17 @@ def set_chat(name: str, enabled: bool) -> dict[str, Any]:
     return _call("PUT", f"/chats/{quote(name.strip(), safe='')}", json={"enabled": enabled})
 
 
+def candidates() -> dict[str, Any]:
+    """The provider's last channel discovery (weekly cron, `tg-discover`):
+    `{"finished_at", "candidates": [{"channel", "via": [...]}], "errors"}`."""
+    return _get("/candidates")
+
+
+def put_seeds(channels: list[str]) -> dict[str, Any]:
+    """The channels the next discovery asks Telegram for similar ones of."""
+    return _call("PUT", "/discover/seeds", json={"channels": channels})
+
+
 def as_post(record: dict[str, Any]) -> telegram.Post | None:
     """One provider record as a channel Post, or None when it cannot be one.
 

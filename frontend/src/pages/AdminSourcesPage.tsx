@@ -18,13 +18,14 @@ import type {
   AdminChannel,
   AdminChat,
   AdminCompanyName,
+  AdminFoundChannel,
   AdminSources,
   ChannelGroup,
   SourceStats,
 } from '../api/types'
 import { useToast } from '../components/toast'
 import { Empty, ErrorNote, PageHead, Skeleton } from '../components/ui'
-import { formatCount, formatDateTime } from './adminFormat'
+import { formatCount, formatDate, formatDateTime } from './adminFormat'
 import './admin.css'
 
 type Tab = 'aggregators' | 'boards' | 'channels' | 'chats'
@@ -251,9 +252,19 @@ function Channels({ channels }: { channels: AdminChannel[] }) {
           <tbody key={channel.key} className={channel.hidden ? 'sources__off' : undefined}>
             <tr>
               <td>
-                <a href={`https://t.me/s/${channel.key}`} target="_blank" rel="noreferrer">
-                  {channel.name}
-                </a>
+                <div className="who">
+                  <a
+                    className="who__main"
+                    href={`https://t.me/s/${channel.key}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {channel.name}
+                  </a>
+                  {channel.found ? (
+                    <span className="who__sub">{foundLine(channel.found)}</span>
+                  ) : null}
+                </div>
               </td>
               <td className="muted">
                 {channel.group ? CHANNEL_GROUPS[channel.group] : 'вне списка'}
@@ -373,6 +384,19 @@ function AddChat() {
       </button>
     </form>
   )
+}
+
+function foundLine(found: AdminFoundChannel) {
+  return [
+    `найден ${formatDate(found.found_at)}`,
+    found.via.length > 3
+      ? `${found.via.slice(0, 3).join(', ')} и ещё ${found.via.length - 3}`
+      : found.via.join(', '),
+    found.reason,
+    found.subscribers == null ? null : `подписчиков: ${formatCount(found.subscribers)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 /** Employers a channel's or chat's posts name, each renameable. */

@@ -44,8 +44,23 @@ const data: AdminSources = {
       name: '@pydevjob',
       group: 'core',
       hidden: false,
+      found: null,
       ...stats,
       names: [{ name: 'Evenbeter', display_name: null, ...stats }],
+    },
+    {
+      key: 'pypijob',
+      name: '@pypijob',
+      group: 'core',
+      hidden: true,
+      ...stats,
+      found: {
+        via: ['похож на @pydevjob', 'ссылка в @godevjob'],
+        reason: 'вакансий 14 из 20',
+        subscribers: 9240,
+        found_at: '2026-10-18T07:00:00+00:00',
+      },
+      names: [],
     },
   ],
   chats: [
@@ -138,7 +153,7 @@ describe('AdminSourcesPage', () => {
 
   it('a channel is switched by its name without "@"', () => {
     at('/admin/sources?tab=channels')
-    expect(screen.getByText('основные')).toBeTruthy()
+    expect(screen.getAllByText('основные')).toHaveLength(2)
     fireEvent.click(screen.getByLabelText('Показывать пользователям: @pydevjob'))
     expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telegram', 'pydevjob', true)
   })
@@ -147,6 +162,15 @@ describe('AdminSourcesPage', () => {
     at('/admin/sources?tab=chats&q=cvat')
     expect(screen.getByLabelText('Название для пользователей: CVAT.ai')).toBeTruthy()
     expect(screen.queryByText('@myjobit')).toBeNull()
+  })
+
+  it('a found channel says how it was found and is switched on by hand', () => {
+    at('/admin/sources?tab=channels')
+    expect(
+      screen.getByText(/похож на @pydevjob, ссылка в @godevjob · вакансий 14 из 20/),
+    ).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Показывать пользователям: @pypijob'))
+    expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telegram', 'pypijob', false)
   })
 
   it('Telegram channels are now "Tg public", chats have their own tab', () => {

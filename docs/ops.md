@@ -83,6 +83,12 @@ origin. API напрямую — порт 8000, `/api/health` там остаё�
   для `82.25.161.103`; на боевом сервере в `~/career-agent/.env` —
   `TG_PROVIDER_URL=http://185.153.180.173:8091` и тот же токен. Без них
   источник `telethon` выключен, и скан всего его пропускает.
+  Поиск новых каналов (решение 10-18): cron `tg-discover` по понедельникам в
+  **07:30 UTC** пишет кандидатов в `data/candidates.json` (ошибки —
+  `data/discover.log`), сиды присылает career-agent. На боевом воркер раз в
+  сутки (`worker.discovery_loop`) забирает их, проверяет превью и добавляет
+  подходящие каналы **скрытыми** (`found_channels` + `source_settings`);
+  вручную — `docker compose exec worker python -m app.cli discover-channels`.
 
 ## CI и деплой
 

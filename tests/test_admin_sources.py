@@ -168,7 +168,7 @@ async def test_hidden_parts_are_neither_read_nor_matched(session, monkeypatch):
 
     asked: dict[str, frozenset] = {}
 
-    def telegram(channels, group, pages, skip=frozenset()):
+    def telegram(channels, group, pages, skip=frozenset(), found=()):
         asked["telegram"] = skip
         return scan.Batch("telegram", [
             Sighting(Posting(id=f"{c}/1", url="u", title="Python", company=""), "Python")

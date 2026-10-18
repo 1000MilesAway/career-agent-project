@@ -32,6 +32,7 @@ from ..models import (
     Artifact,
     CompanyName,
     Evaluation,
+    FoundChannel,
     Job,
     LlmCall,
     Posting,
@@ -505,9 +506,20 @@ class CompanyAlias(SourceStats):
     display_name: str | None = None
 
 
+class FoundInfo(BaseModel):
+    """How the channel discovery came across a channel and what its preview held."""
+
+    via: list[str]
+    reason: str
+    subscribers: int | None = None
+    found_at: datetime
+
+
 class ChannelItem(SourceStats):
     key: str
     name: str
+    # Set for a channel the discovery added (services/channel_discovery.py).
+    found: FoundInfo | None = None
     # The list-file group, or null for a channel only a named scan read.
     group: str | None
     hidden: bool
@@ -628,6 +640,14 @@ async def sources(session: SessionDep, _: AdminDep) -> Sources:
             channels.setdefault(name, ChannelItem(
                 key=name, name=f"@{name}", group=group, hidden=False,
             ))
+    found = await session.execute(select(FoundChannel).where(FoundChannel.status == "added"))
+    for row in found.scalars():
+        item = channels.setdefault(
+            row.name, ChannelItem(key=row.name, name=f"@{row.name}", group=row.group, hidden=True)
+        )
+        item.found = FoundInfo(
+            via=row.via, reason=row.reason, subscribers=row.subscribers, found_at=row.created_at
+        )
     for row in await _by_channel(session, "telegram"):
         item = channels.setdefault(
             row.channel, ChannelItem(key=row.channel, name=f"@{row.channel}", group=None,

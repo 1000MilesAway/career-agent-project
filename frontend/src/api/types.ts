@@ -568,9 +568,20 @@ export interface AdminCompanyName extends SourceStats {
 
 export type ChannelGroup = 'core' | 'adjacent' | 'special'
 
+/** How the channel discovery came across a channel. */
+export interface AdminFoundChannel {
+  via: string[]
+  /** What its preview held, e.g. «вакансий 14 из 20». */
+  reason: string
+  subscribers: number | null
+  found_at: string
+}
+
 export interface AdminChannel extends SourceStats {
   key: string
   name: string
+  /** Added by the discovery; null — from the list file or a named scan. */
+  found: AdminFoundChannel | null
   /** null — only in the pool, read by a scan that named it. */
   group: ChannelGroup | null
   hidden: boolean
