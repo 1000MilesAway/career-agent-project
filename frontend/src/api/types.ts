@@ -585,8 +585,6 @@ export interface AdminChannel extends SourceStats {
   /** null — only in the pool, read by a scan that named it. */
   group: ChannelGroup | null
   hidden: boolean
-  /** Employers its posts name. */
-  names: AdminCompanyName[]
 }
 
 export interface AdminBoard extends SourceStats {
@@ -607,8 +605,6 @@ export interface AdminChat extends SourceStats {
   /** From the provider's last scan. */
   emitted: number | null
   error: string | null
-  /** Employers its messages name. */
-  names: AdminCompanyName[]
 }
 
 export interface AdminSources {

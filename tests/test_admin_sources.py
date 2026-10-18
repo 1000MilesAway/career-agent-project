@@ -149,8 +149,8 @@ async def test_listing_groups_boards_and_names(client, session, user, admin_head
     # Only in the pool, from a named scan: listed so it can be switched.
     lonely = next(c for c in data["channels"] if c["key"] == "lonely")
     assert (lonely["group"], lonely["hidden"], lonely["postings"]) == (None, True, 2)
-    # The channel is the id's prefix; the company is the employer a post named.
-    assert [(n["name"], n["postings"]) for n in lonely["names"]] == [("Evenbeter", 1)]
+    # Counted per channel (the id's prefix), not split by the employers posts name.
+    assert "names" not in lonely
     habr = next(a for a in data["aggregators"] if a["source"] == "habr")
     assert habr["postings"] == habr["active"] == 1
 
@@ -239,7 +239,7 @@ async def test_chats_are_listed_added_and_switched(
     assert [(c["key"], c["hidden"], c["emitted"], c["postings"]) for c in data["chats"]] == [
         ("hr_chat", False, 12, 1)
     ]
-    assert [n["name"] for n in data["chats"][0]["names"]] == ["CVAT.ai"]
+    assert "names" not in data["chats"][0]
     # Telethon has its own tab, not a row among the aggregators.
     assert "telethon" not in {a["source"] for a in data["aggregators"]}
 

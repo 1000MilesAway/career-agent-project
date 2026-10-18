@@ -523,9 +523,6 @@ class ChannelItem(SourceStats):
     # The list-file group, or null for a channel only a named scan read.
     group: str | None
     hidden: bool
-    # The employers its posts name (core/sources/telegram.py `_company_of`);
-    # posts naming none are counted on the channel only.
-    names: list[CompanyAlias] = []
 
 
 class ChatItem(SourceStats):
@@ -539,7 +536,6 @@ class ChatItem(SourceStats):
     # From the provider's last scan: messages it handed over, or its error.
     emitted: int | None = None
     error: str | None = None
-    names: list[CompanyAlias] = []
 
 
 class BoardItem(SourceStats):
@@ -583,24 +579,18 @@ def _add(into: SourceStats, row) -> None:
 
 
 async def _by_channel(session, source: str) -> list:
-    """Pool numbers of a Telegram source per channel (the id's prefix) and
-    the employer its posts name."""
+    """Pool numbers of a Telegram source per channel (the id's prefix).
+
+    The employers the posts name are not listed under it: rows without a
+    switch read as channels added wrong (docs/decisions.md, 2026-10-18).
+    """
     channel = func.split_part(Posting.external_id, "/", 1)
     rows = await session.execute(
-        select(channel.label("channel"), Posting.company, *_stats())
+        select(channel.label("channel"), *_stats())
         .where(Posting.source == source)
-        .group_by(channel, Posting.company)
-        .order_by(func.count().desc())
+        .group_by(channel)
     )
     return [row for row in rows if row.channel]
-
-
-def _add_names(item: ChannelItem | ChatItem, row, state: switches.Switches) -> None:
-    _add(item, row)
-    if row.company:
-        alias = CompanyAlias(name=row.company, display_name=state.names.get(row.company))
-        _add(alias, row)
-        item.names.append(alias)
 
 
 @router.get("/sources", response_model=Sources)
@@ -653,7 +643,7 @@ async def sources(session: SessionDep, _: AdminDep) -> Sources:
             row.channel, ChannelItem(key=row.channel, name=f"@{row.channel}", group=None,
                                      hidden=False)
         )
-        _add_names(item, row, state)
+        _add(item, row)
     for item in channels.values():
         item.hidden = item.key in state.channels()
 
@@ -735,7 +725,7 @@ async def _chats(
         item = items.setdefault(key.casefold(), ChatItem(
             key=key, name=f"@{key}", hidden=key in state.chats(),
         ))
-        _add_names(item, row, state)
+        _add(item, row)
     return list(items.values()), error, scanned_at
 
 

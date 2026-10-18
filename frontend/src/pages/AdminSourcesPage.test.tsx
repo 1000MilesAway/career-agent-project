@@ -46,7 +46,6 @@ const data: AdminSources = {
       hidden: false,
       found: null,
       ...stats,
-      names: [{ name: 'Evenbeter', display_name: null, ...stats }],
     },
     {
       key: 'pypijob',
@@ -60,7 +59,6 @@ const data: AdminSources = {
         subscribers: 9240,
         found_at: '2026-10-18T07:00:00+00:00',
       },
-      names: [],
     },
   ],
   chats: [
@@ -72,7 +70,6 @@ const data: AdminSources = {
       emitted: 12,
       error: null,
       ...stats,
-      names: [{ name: 'CVAT.ai', display_name: null, ...stats }],
     },
     {
       key: 'myjobit',
@@ -82,7 +79,6 @@ const data: AdminSources = {
       emitted: null,
       error: 'ChannelPrivateError',
       ...stats,
-      names: [],
     },
   ],
   chats_error: null,
@@ -158,12 +154,6 @@ describe('AdminSourcesPage', () => {
     expect(mocks.setSourceHidden).toHaveBeenLastCalledWith('telegram', 'pydevjob', true)
   })
 
-  it('a chat lists the employers its messages name, renameable', () => {
-    at('/admin/sources?tab=chats&q=cvat')
-    expect(screen.getByLabelText('Название для пользователей: CVAT.ai')).toBeTruthy()
-    expect(screen.queryByText('@myjobit')).toBeNull()
-  })
-
   it('a found channel says how it was found and is switched on by hand', () => {
     at('/admin/sources?tab=channels')
     expect(
@@ -177,6 +167,11 @@ describe('AdminSourcesPage', () => {
     at('/admin/sources')
     expect(screen.getByRole('button', { name: /Tg public/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /Telethon/ })).toBeTruthy()
+  })
+
+  it('a chat tab lists chats only, with a switch each', () => {
+    at('/admin/sources?tab=chats')
+    expect(screen.queryByRole('textbox', { name: /Название для пользователей/ })).toBeNull()
   })
 
   it('a chat is switched off and on, and its scan error is shown', () => {

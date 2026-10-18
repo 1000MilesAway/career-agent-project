@@ -5,7 +5,7 @@
  * chats (Telethon, read by the tg-provider userbot) can be hidden from every
  * user's results; chats are also added here, and a chat switched off is no
  * longer scanned. Any
- * company name a board, channel or chat carries can be shown under another one
+ * company name a board carries can be shown under another one
  * ("ПАО Сбербанк" as "Сбербанк"). The tab and the search live in the URL,
  * like the other dashboard pages.
  */
@@ -115,22 +115,9 @@ export function AdminSourcesPage() {
           )}
         />
       ) : tab === 'chats' ? (
-        <Chats
-          data={data}
-          chats={data.chats.filter(
-            (c) =>
-              matches(needle, c.name) ||
-              c.names.some((n) => matches(needle, n.name, n.display_name)),
-          )}
-        />
+        <Chats data={data} chats={data.chats.filter((c) => matches(needle, c.name))} />
       ) : (
-        <Channels
-          channels={data.channels.filter(
-            (c) =>
-              matches(needle, c.name) ||
-              c.names.some((n) => matches(needle, n.name, n.display_name)),
-          )}
-        />
+        <Channels channels={data.channels.filter((c) => matches(needle, c.name))} />
       )}
     </div>
   )
@@ -278,7 +265,6 @@ function Channels({ channels }: { channels: AdminChannel[] }) {
                 />
               </td>
             </tr>
-            <Names names={channel.names} />
           </tbody>
         ))}
       </table>
@@ -339,7 +325,6 @@ function Chats({ data, chats }: { data: AdminSources; chats: AdminChat[] }) {
                     />
                   </td>
                 </tr>
-                <Names names={chat.names} />
               </tbody>
             ))}
           </table>
@@ -397,20 +382,6 @@ function foundLine(found: AdminFoundChannel) {
   ]
     .filter(Boolean)
     .join(' · ')
-}
-
-/** Employers a channel's or chat's posts name, each renameable. */
-function Names({ names }: { names: AdminCompanyName[] }) {
-  return names.map((name) => (
-    <tr key={name.name} className="sources__name">
-      <td>
-        <NameField item={name} />
-      </td>
-      <td />
-      <Numbers stats={name} />
-      <td />
-    </tr>
-  ))
 }
 
 function Shown({
