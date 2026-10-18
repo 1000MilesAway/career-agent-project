@@ -127,6 +127,21 @@ PROMO_RE = re.compile(
 _HAS_WORD_RE = re.compile(r"[^\W_]", re.UNICODE)
 
 GRADE_RE = re.compile(r"^\s*(?:грейд|grade|уровень)\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+# The grade lands in a varchar(32) column, and a filter compares it to a level
+# word. "Middle+ / Senior — нужен самостоятельный специалист…" (hr_itwork) is a
+# level and a sentence: the level is kept, a line with no short level is none.
+GRADE_MAX = 32
+_GRADE_TAIL_RE = re.compile(r"\s+[—–-]\s+|[,;(.]")
+
+
+def _grade_of(text: str) -> str:
+    m = GRADE_RE.search(text)
+    if not m:
+        return ""
+    grade = _GRADE_TAIL_RE.split(m.group(1), maxsplit=1)[0].strip()
+    return grade if len(grade) <= GRADE_MAX else ""
+
+
 STACK_RE = re.compile(r"^\s*(?:стек|stack|технологии)\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 REMOTE_RE = re.compile(r"(удал[её]нк|удал[её]нн|remote|из любой точки|гибрид)", re.IGNORECASE)
 
@@ -498,7 +513,6 @@ def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[s
     # refuses telegra.ph on purpose — so the two are picked independently.
     described_at = description_link.pick(hrefs)
 
-    grade = GRADE_RE.search(text)
     stack = STACK_RE.search(text)
     band = salary_text.parse_salary(text)
     title = _first_title_line(text)
@@ -512,7 +526,7 @@ def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[s
         published=when,
         title=title,
         company=_company_of(text, title),
-        grade=grade.group(1).strip() if grade else "",
+        grade=_grade_of(text),
         stack=[s.strip() for s in stack.group(1).split(",") if s.strip()] if stack else [],
         tags=re.findall(r"#([\wЀ-ӿ]+)", text),
         remote=bool(REMOTE_RE.search(text)),

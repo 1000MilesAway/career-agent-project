@@ -343,6 +343,22 @@ def test_grade_line_variants(name, expected):
     assert m and m.group(1).strip() == expected
 
 
+@pytest.mark.parametrize("line, expected", [
+    ("Уровень: Middle+ / Senior — нужен самостоятельный специалист, способный вести блок",
+     "Middle+ / Senior"),
+    ("Грейд: Senior, опыт от 5 лет", "Senior"),
+    ("Грейд: Middle (3+ года)", "Middle"),
+    ("Уровень: специалист, который сам ведёт задачи и общается с заказчиком", "специалист"),
+    ("Уровень: самостоятельный специалист который сам ведёт задачи и общается с заказчиком",
+     ""),
+])
+def test_grade_is_the_level_not_the_sentence(line, expected):
+    """It is stored in varchar(32): a long one broke the whole pool insert."""
+    from core.sources.telegram import _grade_of
+
+    assert _grade_of(f"Python-разработчик\n{line}") == expected
+
+
 class TestApplyLink:
     """Where the user actually applies. The product never applies for them, so
     losing this link leaves them to re-find the apply path by hand."""
