@@ -90,6 +90,22 @@ HIRING_RE = re.compile(
     r"|vacancy|ищет|hiring|we are looking|грейд:|стек:)",
     re.IGNORECASE,
 )
+# A vacancy card states its fields and nothing else: "Middle Python Developer /
+# Формат: удалённо / Компания: Rocket Science / ЗП: от 140 тыс / Откликнуться:".
+# The talanto channels post only these, with no hiring word anywhere; two field
+# lines are the hiring sign there (docs/decisions.md, 2026-10-18).
+_CARD_FIELD_RE = re.compile(
+    r"^\s*(?:компания|формат|зп|з/п|зарплата|занятость|локация|город|опыт|грейд|уровень"
+    r"|стек|график|company|location|salary|format)\s*:",
+    re.IGNORECASE | re.MULTILINE,
+)
+CARD_MIN_FIELDS = 2
+
+
+def _is_card(text: str) -> bool:
+    return len(_CARD_FIELD_RE.findall(text)) >= CARD_MIN_FIELDS
+
+
 # Some way to reach the employer. A job ad without one is a digest entry or an
 # excerpt, not something the user could act on.
 CONTACT_RE = re.compile(
@@ -533,7 +549,7 @@ def looks_like_vacancy(post: Post) -> tuple[bool, str]:
     # hiring — a real vacancy may well offer "обучение за счёт компании" further down.
     if PROMO_RE.search(post.text) and not HIRING_RE.search(post.text[:200]):
         return False, "реклама курсов или каналов"
-    if not HIRING_RE.search(post.text):
+    if not HIRING_RE.search(post.text) and not _is_card(post.text):
         return False, "нет признаков найма"
     if not CONTACT_RE.search(post.text):
         return False, "нет контакта для отклика"

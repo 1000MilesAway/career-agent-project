@@ -205,6 +205,18 @@ class TestLooksLikeVacancy:
         assert not ok
         assert "резюме" in why
 
+    def test_a_vacancy_card_without_hiring_words_is_a_vacancy(self):
+        """talanto channels post field cards only: no "ищем", no "вакансия"."""
+        card = (
+            "Middle Python Developer\nФормат: гибрид (Москва)\nКомпания: Лига Цифровой Экономики\n"
+            "ЗП: от 140 тыс руб\nПолная занятость\n#hybrid #middle #fulltime\n"
+            "Обязанности: разработка сервисов на FastAPI, PostgreSQL.\n"
+            "Откликнуться:\nhttps://talanto.work/jobs/53eb63bf"
+        )
+        assert looks_like_vacancy(post(card)) == (True, "")
+        one_field = card.replace("ЗП:", "Зарплата от").replace("Формат:", "Формат —")
+        assert looks_like_vacancy(post(one_field))[1] == "нет признаков найма"
+
     def test_a_recommended_candidate_is_not_a_vacancy(self):
         """Job chats carry "хочу порекомендовать <человека>" — a CV by proxy."""
         text = (

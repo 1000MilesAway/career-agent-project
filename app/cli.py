@@ -273,11 +273,11 @@ async def _calibrate(source: str, email: str | None) -> int:
     return _print_result(result)
 
 
-async def _discover_channels(limit: int) -> int:
+async def _discover_channels(limit: int, recheck: bool) -> int:
     from .services import channel_discovery
 
     async with SessionLocal() as session:
-        result = await channel_discovery.run(session, limit=limit)
+        result = await channel_discovery.run(session, limit=limit, recheck=recheck)
         await session.commit()
     print(", ".join(f"{k}: {v}" for k, v in result.items()))
     return 0
@@ -321,6 +321,9 @@ def main(argv: list[str] | None = None) -> int:
         "discover-channels", help="найти новые Telegram-каналы с вакансиями (добавляются скрытыми)"
     )
     disc.add_argument("--limit", type=int, default=60, help="сколько превью прочитать")
+    disc.add_argument(
+        "--recheck", action="store_true", help="заново проверить отклонённые, не ждать 60 дней"
+    )
 
     args = parser.parse_args(argv)
 
@@ -337,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "user-plan":
         return asyncio.run(_user_plan(args.email, None if args.free else args.days))
     if args.command == "discover-channels":
-        return asyncio.run(_discover_channels(args.limit))
+        return asyncio.run(_discover_channels(args.limit, args.recheck))
     if args.command == "calibrate":
         # The golden set is files only, so it must stay runnable with no
         # database at all — that is what makes it usable in CI.

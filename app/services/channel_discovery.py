@@ -46,12 +46,12 @@ def _file_names(groups: tuple[str, ...]) -> list[str]:
     return tg_channels.channel_names(groups=groups)
 
 
-async def _known(session: AsyncSession, now: datetime) -> set[str]:
+async def _known(session: AsyncSession, now: datetime, recheck: bool = False) -> set[str]:
     known = {n.casefold() for n in _file_names(FILE_KNOWN)}
     rows = await session.execute(select(FoundChannel.name, FoundChannel.status,
                                         FoundChannel.checked_at))
     for name, status, checked_at in rows:
-        if status == "added" or now - checked_at < RECHECK_AFTER:
+        if status == "added" or (not recheck and now - checked_at < RECHECK_AFTER):
             known.add(name.casefold())
     return known
 
@@ -107,10 +107,15 @@ async def due(session: AsyncSession, now: datetime | None = None) -> bool:
     return last is None or (now or datetime.now(UTC)) - last >= EVERY
 
 
-async def run(session: AsyncSession, limit: int = tg_discovery.MAX_CHECKS) -> dict[str, Any]:
-    """One discovery pass. Free: a provider read and up to `limit` previews."""
+async def run(
+    session: AsyncSession, limit: int = tg_discovery.MAX_CHECKS, recheck: bool = False
+) -> dict[str, Any]:
+    """One discovery pass. Free: a provider read and up to `limit` previews.
+
+    `recheck` judges rejected leads again at once, after the judge changed.
+    """
     now = datetime.now(UTC)
-    known = await _known(session, now)
+    known = await _known(session, now, recheck)
     leads, provider_error = await run_in_threadpool(_leads_from_provider, await _seeds(session))
     for key, lead in (await _leads_from_pool(session, now)).items():
         merged = leads.setdefault(key, tg_discovery.Lead(lead.name))

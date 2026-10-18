@@ -165,6 +165,9 @@ class TestRun:
         # Seeds now include the channel the discovery added.
         assert "pypijob" in provider[-1]
 
+        await channel_discovery.run(session, recheck=True)
+        assert previews == ["pyproglib"]
+
     async def test_a_switched_on_channel_is_read_with_its_group(self, session, monkeypatch):
         from app.models import User
 
