@@ -156,6 +156,15 @@ SALARY_RE = re.compile(
 )
 
 
+# What full_text() puts between the post and the description it read.
+DESCRIPTION_MARK = "\n\n--- Полное описание со страницы "
+
+
+def own_text(full_text: str) -> str:
+    """The post's own text out of a stored full_text(), without the description."""
+    return full_text.split(DESCRIPTION_MARK, 1)[0]
+
+
 @dataclass
 class Post:
     """One channel post, shaped as close to habr_api.Posting as the text allows."""
@@ -228,8 +237,7 @@ class Post:
         if not self.description_text:
             return self.text
         return (
-            f"{self.text}\n\n"
-            f"--- Полное описание со страницы {self.description_url} ---\n"
+            f"{self.text}{DESCRIPTION_MARK}{self.description_url} ---\n"
             f"{self.description_text}"
         )
 
@@ -503,6 +511,13 @@ _NOT_A_NAME_RE = re.compile(
     r"|не\s+указан\w*|конфиденциальн\w*|скрыт\w*)\b",
     re.IGNORECASE,
 )
+# A role where the name should be: a digest lists "Retention Product Manager —
+# <компания>, …" line after line.
+_ROLE_WORD_RE = re.compile(
+    r"\b(?:manager|engineer|developer|designer|analyst|specialist|разработчик\w*|аналитик\w*"
+    r"|менеджер\w*|инженер\w*|дизайнер\w*|специалист\w*)\b",
+    re.IGNORECASE,
+)
 # A whole "name" that is a field or a placeholder: "Вакансии в IT", "Company: NDA".
 _NOT_A_NAME_WORDS = {"it", "ит", "ai", "ml", "nda"}
 # A hyphenated Russian word is a description, not a name: "для
@@ -529,6 +544,7 @@ def _as_company(raw: str) -> str:
         or len(name.split()) > COMPANY_MAX_WORDS
         or _NOT_A_NAME_RE.match(name)
         or name.casefold() in _NOT_A_NAME_WORDS
+        or _ROLE_WORD_RE.search(name)
         or _DESCRIPTIVE_RE.search(name)
     ):
         return ""
@@ -767,6 +783,31 @@ def _description_client() -> httpx.Client:
         timeout=20.0,
         follow_redirects=True,
     )
+
+
+def fetch_post(url: str, client: httpx.Client | None = None) -> tuple[str, list[str]] | None:
+    """One post's text and links from its widget page; None when unreadable.
+
+    For a post already pooled (app/services/tg_renormalize.py): the preview
+    shows only the latest ~20 posts of a channel. The widget is the page
+    core/liveness.py reads, and it carries the same `.tgme_widget_message_text`.
+    """
+    own = client is None
+    client = client or _client()
+    try:
+        r = client.get(url.split("?", 1)[0].split("#", 1)[0] + "?embed=1&mode=tme")
+        if r.status_code != 200:
+            return None
+        body = HTMLParser(r.text).css_first(".tgme_widget_message_text")
+        if body is None:
+            return None
+        hrefs = [a.attributes.get("href") or "" for a in body.css("a[href]")]
+        return _message_text(body), [h for h in hrefs if h]
+    except httpx.HTTPError:
+        return None
+    finally:
+        if own:
+            client.close()
 
 
 def fetch_description(url: str, client: httpx.Client | None = None) -> str:

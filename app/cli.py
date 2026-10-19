@@ -283,6 +283,20 @@ async def _discover_channels(limit: int, recheck: bool) -> int:
     return 0
 
 
+async def _tg_renormalize(refetch: bool, apply: bool, show: int) -> int:
+    from .services import tg_renormalize
+
+    async with SessionLocal() as session:
+        counts, changes = await tg_renormalize.run(session, refetch=refetch, apply=apply)
+        if apply:
+            await session.commit()
+    for c in changes[:show]:
+        print(f"{c.external_id}: {c.old_title!r} [{c.old_company}] -> {c.new_title!r} [{c.new_company}]")
+    print(", ".join(f"{k}: {v}" for k, v in counts.items()))
+    print("записано" if apply else "пробный прогон, ничего не записано (--apply — записать)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Администрирование career-agent")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -325,6 +339,15 @@ def main(argv: list[str] | None = None) -> int:
         "--recheck", action="store_true", help="заново проверить отклонённые, не ждать 60 дней"
     )
 
+    tgr = sub.add_parser(
+        "tg-renormalize", help="пересчитать заголовок и компанию Telegram-постов пула"
+    )
+    tgr.add_argument(
+        "--refetch", action="store_true", help="перечитать посты каналов с t.me (~1 с на пост)"
+    )
+    tgr.add_argument("--apply", action="store_true", help="записать (без него — пробный прогон)")
+    tgr.add_argument("--show", type=int, default=30, help="сколько изменений напечатать")
+
     args = parser.parse_args(argv)
 
     if args.command == "user-add":
@@ -339,6 +362,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_user_toggle(args.email, active=True))
     if args.command == "user-plan":
         return asyncio.run(_user_plan(args.email, None if args.free else args.days))
+    if args.command == "tg-renormalize":
+        return asyncio.run(_tg_renormalize(args.refetch, args.apply, args.show))
     if args.command == "discover-channels":
         return asyncio.run(_discover_channels(args.limit, args.recheck))
     if args.command == "calibrate":
