@@ -1,4 +1,4 @@
-"""The rules from CLAUDE.md, checked against the database implementation.
+"""The pipeline rules (.claude/rules/pipeline.md), checked against the database implementation.
 
 These are the expensive lessons from the demo. A rewrite onto Postgres is
 exactly where they get quietly dropped, so each one has a test that fails
@@ -59,7 +59,7 @@ async def _user_with_resume(session) -> tuple[User, Resume]:
 
 @requires_db
 class TestRejectionIsNeverSilent:
-    """CLAUDE.md: «Отсев никогда не молчит»."""
+    """pipeline.md: «Отсев никогда не молчит»."""
 
     async def test_a_dropped_posting_keeps_its_reason(self, session):
         """No row per user for a drop — the reason is recomputed from the pool."""
@@ -97,7 +97,7 @@ class TestRejectionIsNeverSilent:
 
 @requires_db
 class TestAScanNeedsAnAcceptedProfile:
-    """CLAUDE.md: «Ни один платный вызов не делается до бесплатных ступеней».
+    """pipeline.md: «Ни один платный вызов не делается до бесплатных ступеней».
 
     An empty profile states no stop-word and no keyword, so PreScreen keeps
     everything: a real run on 2026-09-19 stored 125 rows — SMM, legal, product

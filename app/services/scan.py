@@ -1,6 +1,6 @@
 """Collect postings into the shared pool, then match the pool to a user.
 
-The pipeline invariant from CLAUDE.md, unchanged by the move to a pool:
+The pipeline invariant (.claude/rules/pipeline.md), unchanged by the move to a pool:
 
     collect (free) -> free filters (free) -> already-seen (free)
       -> triage (one cheap call per batch) -> full evaluation (paid)
