@@ -274,7 +274,10 @@ class MarkupChanged(Exception):
 _FIELD_LINE_RE = re.compile(
     r"^(?:компания|company|employer|работодатель|уровень|грейд|grade|level|формат|format"
     r"|локация|location|город|city|зарплата|зп|з/п|вилка|salary|оклад|стек|stack|график"
-    r"|занятость|schedule|опыт|experience|контакты?|contacts?)\b",
+    r"|занятость|schedule|опыт|experience|контакты?|contacts?)\b"
+    # The label, maybe a word more ("Формат работы:"), then a value or nothing.
+    # "Employer Brand Manager at Salmon" starts with a label word and is a title.
+    r"(?:[^:\n]{0,20}:|\s*[\-–—]|\s*$)",
     re.IGNORECASE,
 )
 # Greetings that open a chat message: "Привет!", "Всем привет, коллеги",
@@ -299,9 +302,30 @@ _HIRING_RE = re.compile(
     r"(?:(?:a|an|two|three|опытного|опытную)\s+)?",
     re.IGNORECASE,
 )
-# A Russian ad opening with its hiring verb reads as a title already
-# ("Ищем C++ Developer (Middle)"); only a phrase further in is cut to.
-_RU_OPENING_RE = re.compile(r"^(?:ищем|ищу|требуется|требуются|нужен|нужна)\b", re.IGNORECASE)
+# "Ищем"/"Ищу" opening the ad takes the role in the accusative ("Ищем
+# Главного SRE-инженера"): cut, it would read as "Главного SRE-инженера", so
+# the verb stays — unless the role is in English and does not decline ("Ищем
+# Growth Marketing Lead"). "Требуется"/"Нужен" take the nominative and are
+# always cut ("Требуется Менеджер по работе с клиентами").
+_RU_OPENING_RE = re.compile(r"^(?:ищем|ищу)\b", re.IGNORECASE)
+_CYRILLIC_RE = re.compile(r"[а-яё]", re.IGNORECASE)
+# A line that is the label or the verb alone; the role is on the next line.
+_LABEL_ONLY_RE = re.compile(
+    r"^(?:вакансия|позиция|должность|роль|position|vacancy|role|job|коротко\s+о\s+компании"
+    r"|о\s+компании|about\s+(?:us|the\s+company)|(?:мы\s+)?(?:ищем|ищу|в\s+поиске)"
+    r"|требуется|требуются|нужен|нужна|we[’']re\s+hiring"
+    r"|(?:we\s+are\s+)?looking\s+for(?:\s+an?)?)$",
+    re.IGNORECASE,
+)
+# "Ищем в команду Scala разработчика": the filler below would eat the role too.
+_VERB_FILLER_RE = re.compile(
+    r"^((?:мы\s+)?(?:ищем|ищу|в\s+поиске))\s+в\s+(?:нашу\s+)?команду\s+", re.IGNORECASE
+)
+_URL_RE = re.compile(r"https?://\S+")
+# A link's caption on the title line: "Junior Python Developer | Смотреть вакансию".
+_LINK_TEXT_RE = re.compile(
+    r"\s*[|•·—–-]\s*(?:смотреть|подробнее|откликнуться|читать)\b.*$", re.IGNORECASE
+)
 # Trailing filler after the role: "in our company", "для участия в проекте".
 _FILLER_RE = re.compile(
     r"\s+(?:(?:in|into|to)\s+our\s+(?:company|team)|to\s+join|for\s+(?:a|our)\s+project"
@@ -317,13 +341,16 @@ TITLE_MAX = 90
 
 
 def _clean_line(raw: str) -> str:
-    """One line without tags, emoji and decoration, in plain letters.
+    """One line without tags, emoji, links and decoration, in plain letters.
 
     NFKC turns the "bold" mathematical letters some posters use (𝐒𝐞𝐧𝐢𝐨𝐫)
     into plain ones; symbols (emoji, ✦, ║) and joiners are dropped, so the
-    same vacancy titled with and without 🚀 compares equal in dedup.
+    same vacancy titled with and without 🚀 compares equal in dedup. Markdown
+    bold ("**NAS Technologies**") survives into some posts as literal stars.
     """
     line = unicodedata.normalize("NFKC", raw)
+    line = _URL_RE.sub("", line)
+    line = re.sub(r"\*{2,}|_{2,}", "", line)
     line = re.sub(r"&?amp;", "&", line)
     line = re.sub(r"#[\wЀ-ӿ.+]+", "", line)
     line = "".join(
@@ -345,17 +372,28 @@ def _shorten(title: str) -> str:
     return title[:TITLE_MAX].rsplit(" ", 1)[0] + "…"
 
 
+def _declines(role: str) -> bool:
+    """Would the role read wrong without "Ищем"? Its first words are Russian."""
+    return any(_CYRILLIC_RE.search(word) for word in role.split()[:2])
+
+
 def _title_from_line(line: str) -> str:
     line = _GREETING_RE.sub("", line, count=1)
     line = _LABEL_RE.sub("", line, count=1)
+    line = _VERB_FILLER_RE.sub(r"\1 ", line, count=1)
     m = _HIRING_RE.search(line)
-    cut = bool(m) and not _RU_OPENING_RE.match(line)
+    cut = bool(m) and not (_RU_OPENING_RE.match(line) and _declines(line[m.end():]))
     if cut:
         line = line[m.end():]
-    # The first sentence: "Senior Python Developer для CVAT.ai! Удалённо…"
-    line = re.split(r"[!?]|\.\s", line, maxsplit=1)[0]
+    # The first sentence: "Senior Python Developer для CVAT.ai! Удалённо…".
+    # "г. Лесозаводск" is an abbreviation, not a sentence end.
+    line = re.split(r"[!?]|(?<!\bг)(?<!\bул)\.\s", line, maxsplit=1)[0]
     line = _FILLER_RE.sub("", line)
+    line = _LINK_TEXT_RE.sub("", line)
     line = line.strip(" -–—:|,·•*")
+    # "ищет Инженера данных)❕" leaves the closing half of a smiley.
+    if line.endswith(")") and line.count(")") > line.count("("):
+        line = line[:-1].rstrip()
     # "ищу специалиста…" cut to "специалиста…" starts lower-case; a title as
     # written ("iOS Developer") keeps its own case.
     if cut and line[:1].islower():
@@ -379,10 +417,11 @@ def _first_title_line(text: str) -> str:
             not _HAS_WORD_RE.search(line)
             or _FIELD_LINE_RE.match(line)
             or _GRADE_ONLY_RE.match(line)
+            or _LABEL_ONLY_RE.match(_GREETING_RE.sub("", line, count=1))
         ):
             continue
         title = _title_from_line(line)
-        if _HAS_WORD_RE.search(title):
+        if _HAS_WORD_RE.search(title) and not _LABEL_ONLY_RE.match(title):
             return title
     return ""
 
@@ -391,48 +430,106 @@ def _first_title_line(text: str) -> str:
 _COMPANY_FIELD_RE = re.compile(
     r"^(?:компания|company|employer|работодатель|наниматель)\s*[:\-–—]\s*(.+)$", re.IGNORECASE
 )
-# "Andersen Lab is hiring", "Traffic Jam ищет": the name is what precedes the verb.
+# The label alone: "<b>Компания:</b><br>SL Soft" puts the name on the next line.
+_COMPANY_LABEL_RE = re.compile(
+    r"^(?:компания|company|employer|работодатель|наниматель)$", re.IGNORECASE
+)
+_ANY_FIELD_RE = re.compile(r"^[^\W\d][\w/ ]{0,20}:")
+# "Andersen Lab is hiring", "Traffic Jam ищет", "Мы в 2ГИС ищем": the name is
+# what precedes the verb. "Ищем" counts only after "Мы в": "Сейчас ищем",
+# "Срочно ищем" open with an adverb, not a name.
 _COMPANY_HIRING_RE = re.compile(
-    r"^(.{2,60}?)\s+(?:is\s+hiring|are\s+hiring|is\s+looking\s+for|are\s+looking\s+for"
-    r"|ищет|ищут|в\s+поиске|расширяет\s+команду|открывает\s+вакансию)\b",
+    r"^(?:мы\s+в\s+(.{2,40}?)\s+(?:ищем|в\s+поиске)"
+    r"|(.{2,60}?)\s+(?:is\s+hiring|are\s+hiring|is\s+looking\s+for"
+    r"|are\s+looking\s+for|ищет|ищут|в\s+поиске|в\s+поисках|расширяет\s+команду"
+    r"|открывает\s+вакансию|развивает|строит))\b",
     re.IGNORECASE,
 )
-# "CPO at AskCraft", "Senior Python Developer для CVAT.ai": a capitalised
-# name closing the title. Lower case ("для финтех-проекта") is not a name.
+# A name the title closes with: "CPO at AskCraft", "Senior Python Developer
+# для CVAT.ai", "Golang-разработчик в SimbirSoft". After "в" only a Latin name
+# counts: "в Маркетплейс", "в LLM-проекты Яндекса" are a team, not a company.
+_NAME = r"[A-ZА-ЯЁ0-9][\w.&+'’-]*(?:\s+[A-ZА-ЯЁ0-9][\w.&+'’-]*){0,3}"
+_LATIN_NAME = r"[A-Z0-9][A-Za-z0-9.&+'’-]*(?:\s+[A-Z0-9][A-Za-z0-9.&+'’-]*){0,3}"
 _COMPANY_TAIL_RE = re.compile(
-    r"\s(?:at|@|для|в\s+компанию|в\s+компании)\s+"
-    r"([A-ZА-ЯЁ0-9][\w.&+'’-]*(?:\s+[A-ZА-ЯЁ0-9][\w.&+'’-]*){0,3})(?:\s[—–|]\s.*)?$"
+    rf"\s(?:(?:at|@|для|в\s+компанию|в\s+компании)\s+({_NAME})"
+    rf"|(?:в|компании)\s+({_LATIN_NAME}))(?:\s[—–|]\s.*)?$"
 )
+# "Backend Engineer на Go — Listee", "HR Business Partner / Naran". The same
+# shape closes "Technical Lead — Legacy Financial System" and "Android / Kotlin
+# Multiplatform", so the name must also open a line of the body ("Listee
+# строит…", "Naran — международная компания").
+_COMPANY_DASH_TAIL_RE = re.compile(rf"\s[—–/|]\s+({_NAME})$")
+# "Аккредитованная ИТ-компания «Системы и Алгоритмы»", "ООО «7 Красных Линий»".
+_COMPANY_QUOTED_RE = re.compile(
+    r"(?:компани[яиюей]|банк|ООО|АО|ПАО|ЗАО|ГК|группа\s+компаний)\s+[«\"“]([^»\"”]{2,40})[»\"”]",
+    re.IGNORECASE,
+)
+# A line introducing the employer: "Сбер Банк — крупнейший российский
+# финансовый конгломерат", "Х5 — ведущая розничная компания", "Naran is an
+# international company". The description must say it is an organisation:
+# "Требования — опыт от 3 лет" has the shape too.
+_COMPANY_INTRO_RE = re.compile(
+    r"^(?:в\s+)?(.{2,50}?)\s+(?:[—–-]\s+(?:это\s+)?|is\s+(?:a|an|the)\s+)(.+)$", re.IGNORECASE
+)
+_ORG_WORD_RE = re.compile(
+    r"компани|банк|конгломерат|оператор|агентств|платформ|сервис|производител|интегратор"
+    r"|холдинг|групп|стартап|маркетплейс|ритейл|\bсеть\b|организаци|вендор|экосистем"
+    r"|студи|лидер|провайдер|команда\s+из|сайт|импортер|дистрибьютор"
+    r"|разработчик\s+(?:по|програм)"
+    r"|company|bank|platform|startup|provider|agency|vendor|marketplace|studio|leader"
+    r"|team\s+of|firm|fintech|operator|developer\s+of",
+    re.IGNORECASE,
+)
+# "Мы — RecFaces: международная IT-компания".
+_COMPANY_WE_ARE_RE = re.compile(r"^мы\s*[—–-]\s*(.+)$", re.IGNORECASE)
 # A recruiter is not the employer: "Selecty (КА)", "кадровое агентство X".
 # Their vacancy has no company rather than the agency's name, which would
 # also merge different clients' openings with one title in dedup.
 _AGENCY_RE = re.compile(
     r"\(\s*ка\s*\)|\bкадров\w*\s+агентств|\bрекрутингов\w*\s+агентств"
-    r"|\brecruit(?:ing|ment)\s+agency\b|\bhr[- ]агентств",
+    r"|\brecruit(?:ing|ment)\s+agency\b|\bhr[- ]агентств|\bhr\s+agency\b",
     re.IGNORECASE,
 )
 # Words that stand where a name should but describe instead: "Мы ищем",
-# "Международная IT-команда в поиске", "The largest online marketplace…".
+# "Международная IT-команда в поиске", "The largest online marketplace…",
+# and section heads that share the "X — …" shape ("Требования — …").
 _NOT_A_NAME_RE = re.compile(
     r"^(?:мы|я|we|i|our|наш\w*|команда|компания|стартап|проект|team|company|startup|the|a|an"
     r"|международн\w*|крупн\w*|российск\w*|продуктов\w*|молод\w*|быстрорастущ\w*"
-    r"|hr|рекрутер|recruiter|коллеги|друзья|всем)\b",
+    r"|hr|рекрутер|recruiter|коллеги|друзья|всем|о|об|about|это|требовани\w*|задачи"
+    r"|условия|обязанности|опыт|зарплата|формат|сервис|клиент\w*|сейчас|сегодня|срочно"
+    r"|также|в|во|на|для|по|из|с|к|у"
+    # Said where the name would be, to say there is none.
+    r"|не\s+указан\w*|конфиденциальн\w*|скрыт\w*)\b",
     re.IGNORECASE,
 )
+# A whole "name" that is a field or a placeholder: "Вакансии в IT", "Company: NDA".
+_NOT_A_NAME_WORDS = {"it", "ит", "ai", "ml", "nda"}
+# A hyphenated Russian word is a description, not a name: "для
+# VPN-приложения", "для CEX-арбитража".
+_DESCRIPTIVE_RE = re.compile(r"-[а-яё]")
 COMPANY_MAX_WORDS = 4
+# How deep into the post an opening ("X ищет", "X — компания") is looked for.
+COMPANY_HEAD_LINES = 8
 
 
 def _as_company(raw: str) -> str:
     """A name as written, or "" when the words are a description or an agency."""
     if _AGENCY_RE.search(raw):
         return ""
-    name = re.split(r"\s[—–|]\s|[.!?;,(]\s|[!?;(]", raw, maxsplit=1)[0]
+    if m := _COMPANY_QUOTED_RE.search(raw):
+        return m.group(1).strip()
+    name = re.split(r"\s[—–|-]\s|[.!?;,(:]\s|[!?;(]", raw, maxsplit=1)[0]
     name = name.strip(" -–—:|,·•*\"«»'")
+    if name.count("«") != name.count("»"):
+        name = name.replace("«", "").replace("»", "")
     if (
         not name
         or not name[:1].isupper() and not name[:1].isdigit()
         or len(name.split()) > COMPANY_MAX_WORDS
         or _NOT_A_NAME_RE.match(name)
+        or name.casefold() in _NOT_A_NAME_WORDS
+        or _DESCRIPTIVE_RE.search(name)
     ):
         return ""
     return name
@@ -441,24 +538,98 @@ def _as_company(raw: str) -> str:
 def _company_of(text: str, title: str) -> str:
     """The employer, where the post names it; "" otherwise.
 
-    Three shapes only, the ones a measurement on the chats found named
-    cleanly (docs/decisions.md, 2026-10-16): a field line, a "X is hiring"
-    opening, a "… at X" closing the title. Anything looser guessed
-    descriptions ("Международная IT-команда") as names; an empty company is
-    shown as "компания не указана", a wrong one misleads.
+    Only shapes that name a company outright (docs/decisions.md, 2026-10-16
+    and 2026-10-19): a field line, a "X is hiring" opening, a name closing the
+    title, a quoted legal name, a line introducing the company ("X — ведущая
+    розничная компания"). Anything looser guessed descriptions ("Международная
+    IT-команда") as names; an empty company is shown as "компания не
+    указана", a wrong one misleads.
     """
     lines = [_GREETING_RE.sub("", _clean_line(raw), count=1) for raw in text.split("\n")]
     lines = [line for line in lines if _HAS_WORD_RE.search(line)]
-    for line in lines:
+    for i, line in enumerate(lines):
         if m := _COMPANY_FIELD_RE.match(line):
             return _as_company(m.group(1))
-    for line in lines[:3]:
+        if _COMPANY_LABEL_RE.match(line) and i + 1 < len(lines):
+            # "Company: <link>" leaves the label alone too; the next line is
+            # then the next field ("Workplace: Remote"), not the name.
+            nxt = lines[i + 1]
+            return "" if _ANY_FIELD_RE.match(nxt) else _as_company(nxt)
+    head = lines[:COMPANY_HEAD_LINES]
+    for line in head:
         if m := _COMPANY_HIRING_RE.match(line):
+            if name := _as_company(m.group(1) or m.group(2)):
+                return name
+    if name := _dash_tail_company(lines, title):
+        return name
+    if m := _COMPANY_TAIL_RE.search(title):
+        if name := _as_company(m.group(1) or m.group(2)):
+            return name
+    for line in head:
+        if m := _COMPANY_QUOTED_RE.search(line):
+            return m.group(1).strip()
+    for line in head:
+        if title and title in line:
+            continue
+        if m := _COMPANY_WE_ARE_RE.match(line):
             if name := _as_company(m.group(1)):
                 return name
-    if m := _COMPANY_TAIL_RE.search(title):
-        return _as_company(m.group(1))
+        m = _COMPANY_INTRO_RE.match(line)
+        if m and _ORG_WORD_RE.search(m.group(2)[:80]):
+            # An agency introducing itself means the employer is not named.
+            if _AGENCY_RE.search(line):
+                return ""
+            if name := _as_company(m.group(1)):
+                return name
     return ""
+
+
+def _dash_tail_company(lines: list[str], title: str) -> str:
+    """"Go-разработчик в TATLIN.UNIFIED — YADRO": the name after the dash, when
+    a line of the body starts with it."""
+    if m := _COMPANY_DASH_TAIL_RE.search(title):
+        name = _as_company(m.group(1))
+        if name and any(line.startswith(name) and title not in line for line in lines):
+            return name
+    return ""
+
+
+# The words that attach a company to the end of a title: "в SimbirSoft",
+# "at AskCraft", "для международной IT-компании RecFaces", "— YADRO".
+_TAIL_LEAD_RE = r"\s+(?:(?:at|@|для|в)\s+(?:\S+\s+){0,3}?|[—–/|]\s+)"
+
+
+def _without_company(title: str, company: str) -> str:
+    """The title with the company it ends with moved out to the company field.
+
+    "Golang-разработчик в SimbirSoft" is the role plus the employer, and the
+    list already shows the employer next to the title.
+    """
+    if not company:
+        return title
+    m = re.search(rf"{_TAIL_LEAD_RE}{re.escape(company)}$", title)
+    if not m or m.start() == 0:
+        return title
+    return title[: m.start()].rstrip(" -–—:|,")
+
+
+# Where the post itself breaks a line. Everything else in the markup is inline.
+_BREAK_RE = re.compile(r"(?i)<br\s*/?>|</(?:p|div|blockquote|pre|li)>")
+
+
+def _message_text(body) -> str:
+    """The post's text with the poster's own line breaks and no others.
+
+    Only <br> (and the rare block) ends a line. `.text(separator="\n")` put a
+    break between EVERY pair of nodes, so "<b>Компания:</b> YADRO", "в <a>Cyprus
+    Constructions</a>" and an emoji's <i> became separate lines: titles came
+    out as "Ищем", "Позиция", "Middle PHP Developer в" and the company field
+    was never matched (docs/decisions.md, 2026-10-19).
+    """
+    html = re.sub(r"\s+", " ", body.html or "")
+    text = HTMLParser(f"<div>{_BREAK_RE.sub(chr(10), html)}</div>").text(separator="")
+    lines = [re.sub(r"[ \t\xa0]+", " ", line).strip() for line in text.split("\n")]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
 def _parse_post(node, channel: str) -> Post | None:
@@ -466,9 +637,7 @@ def _parse_post(node, channel: str) -> Post | None:
     body = node.css_first(".tgme_widget_message_text")
     if body is None:
         return None
-    # `.text(separator=...)` keeps <br> line breaks, which carry the post's layout:
-    # without them "Грейд: Senior" and the next field would run together.
-    text = body.text(separator="\n", strip=True)
+    text = _message_text(body)
     if not text:
         return None
 
@@ -516,6 +685,8 @@ def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[s
     stack = STACK_RE.search(text)
     band = salary_text.parse_salary(text)
     title = _first_title_line(text)
+    company = _company_of(text, title)
+    title = _without_company(title, company)
     return Post(
         id=post_path,
         url=f"{BASE}/{post_path}" if post_path else f"{BASE}/{channel}",
@@ -525,7 +696,7 @@ def build_post(channel: str, post_path: str, text: str, when: str, hrefs: list[s
         text=text,
         published=when,
         title=title,
-        company=_company_of(text, title),
+        company=company,
         grade=_grade_of(text),
         stack=[s.strip() for s in stack.group(1).split(",") if s.strip()] if stack else [],
         tags=re.findall(r"#([\wЀ-ӿ]+)", text),

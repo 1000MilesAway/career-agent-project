@@ -56,6 +56,21 @@ class TestParsing:
         assert all(p.id.startswith("jobchannel/") for p in parse_fixture())
         assert not any("Системный аналитик" in p.text for p in parse_fixture())
 
+    def test_inline_markup_does_not_break_a_line(self):
+        """Only <br> ends a line: a bold label, a link and an emoji stay inline.
+
+        Breaking on every node titled posts "Ищем" and "Middle PHP Developer в",
+        and left "<b>Компания:</b> YADRO" as two lines no field rule matched.
+        """
+        node = HTMLParser(
+            '<div class="tgme_widget_message_text"><i class="emoji"><b>🛰</b></i> '
+            "<b>QA Engineer</b> в <a href=\"https://x.io\">Cyprus Constructions</a><br/><br/>"
+            "<b>Компания:</b> YADRO<br/>ЗП:&nbsp;от 100 000 ₽</div>"
+        ).css_first("div")
+        assert telegram._message_text(node) == (
+            "🛰 QA Engineer в Cyprus Constructions\n\nКомпания: YADRO\nЗП: от 100 000 ₽"
+        )
+
     def test_keeps_line_breaks(self):
         """<br> carries the layout: without it "Грейд: Middle+" merges into the next field."""
         first = parse_fixture()[0]
@@ -128,7 +143,23 @@ class TestTitleLine:
          "Senior Backend Engineer Go — Custody Platform (The Vault)"),
         ("Position: Machine Learning Engineer", "Machine Learning Engineer"),
         ("iOS Developer (Senior) | VPN-приложение", "iOS Developer (Senior) | VPN-приложение"),
-        ("🚀 Ищем C++ Developer (Middle)", "Ищем C++ Developer (Middle)"),
+        # An English role does not decline, so "Ищем" goes; a Russian one
+        # would read in the accusative without it, so it stays.
+        ("🚀 Ищем C++ Developer (Middle)", "C++ Developer (Middle)"),
+        ("Ищем Главного SRE/DevOps-инженера (Senior)", "Ищем Главного SRE/DevOps-инженера (Senior)"),
+        ("Ищем в команду Scala разработчика.", "Ищем Scala разработчика"),
+        ("Требуется Менеджер по работе с клиентами", "Менеджер по работе с клиентами"),
+        # The label or the verb alone: the role is on the next line.
+        ("Вакансия\nData Engineer DWH", "Data Engineer DWH"),
+        ("Позиция:\nBackend-разработчик", "Backend-разработчик"),
+        ("Ищем\nLLM / ML Engineer\nс опытом", "LLM / ML Engineer"),
+        ("#вакансия\nhttps://avantstay.com/\nПривет! Ищем Backend Engineer.", "Backend Engineer"),
+        ("Торговый представитель, г. Лесозаводск", "Торговый представитель, г. Лесозаводск"),
+        ("❕ИТ-компания ищет Инженера данных)❕", "Инженера данных"),
+        # "Employer" opens the title, it is not the "Employer:" field.
+        ("Employer Brand Manager at Salmon", "Employer Brand Manager at Salmon"),
+        # A link's caption sharing the title line.
+        ("Junior Python Developer | Смотреть вакансию", "Junior Python Developer"),
         ("Hi! Now I'm looking for Senior DevOps Engineer in our company 🚀",
          "Senior DevOps Engineer"),
         ("Andersen Lab ☀️ is hiring a 𝐅𝐮𝐥𝐥 𝐒𝐭𝐚𝐜𝐤 𝐐𝐀 𝐄𝐧𝐠𝐢𝐧𝐞𝐞𝐫 for a project developing a platform",
@@ -175,6 +206,60 @@ class TestCompany:
     ])
     def test_no_name_means_no_company_not_the_channel(self, text):
         assert _company_of(text, _first_title_line(text)) == ""
+
+    @pytest.mark.parametrize("text, company", [
+        # The bold label and its value are split by <br> in some channels.
+        ("Middle Python Developer\nКомпания:\nSL Soft\nПолная занятость", "SL Soft"),
+        ("Компания: Simple Group - ведущий импортер оборудования\nИнженер", "Simple Group"),
+        ("Компания: NAS Technologies** (nastechnologies.ru)\nИнженер", "NAS Technologies"),
+        # A line introducing the employer.
+        ("Junior backend-разработчик\nОфис (Москва)\nХ5 — ведущая розничная компания.", "Х5"),
+        ("Java-разработчик\nСтек: Java\nСбер Банк — крупнейший российский финансовый "
+         "конгломерат", "Сбер Банк"),
+        ("Лидер команды\nв VK AdBlogger — внутренний стартап, который помогает", "VK AdBlogger"),
+        ("Technical Lead\nKake is a technology company building web apps.", "Kake"),
+        ("Python-разработчик\nБанк «Русский Стандарт» — крупный коммерческий банк", "Русский Стандарт"),
+        # Quoted legal names and openings.
+        ('Аккредитованная ИТ-компания "Системы и Алгоритмы" ищет Инженера данных', "Системы и Алгоритмы"),
+        ("Мы в 2ГИС ищем Scala-разработчика в команду Рекламы.", "2ГИС"),
+        ("Golang Developer\n250 000 ₽\nВФМ Технолоджи развивает сервис «Jam Работа».", "ВФМ Технолоджи"),
+        # A name closing the title.
+        ("Golang-разработчик в SimbirSoft\nУдалённо", "SimbirSoft"),
+        ("Go-разработчик в TATLIN.UNIFIED — YADRO\nYADRO разрабатывает СХД.", "YADRO"),
+        ("Backend Engineer на Go — Listee\nListee строит платформу.", "Listee"),
+    ])
+    def test_more_shapes_name_the_employer(self, text, company):
+        assert _company_of(text, _first_title_line(text)) == company
+
+    @pytest.mark.parametrize("text", [
+        "Team Lead ML Engineer\nМы - уникальный продукт\nСейчас ищем активных ребят",
+        "Senior iOS-разработчик\nУдалёнка\nRedhr — рекрутинговое агентство.",
+        "Golang Developer\nСтек: Go\nTribe is a full-cycle HR agency offering recruitment",
+        "В международную платежную компанию ищем\nSales Manager",
+        "Требования — опыт работы от 3 лет в компании",
+        # A team or a product after "в"/"для", not a company.
+        "Senior Go-разработчик в LLM-проекты Яндекса",
+        "IOS-разработчик в Маркетплейс",
+        "Kotlin-разработчик для VPN-приложения",
+        # A dash closing the title with no line of the body to back it.
+        "Technical Lead — Legacy Financial System\nWe build software.",
+        "Android-разработчик / Kotlin Multiplatform\nОпыт с Kotlin Multiplatform",
+        # The value was a link, so the next line is the next field.
+        "Middle Kotlin Developer\nCompany: http://blackrocksouth.com/\nWorkplace: Remote",
+        # Placeholders where the name would be.
+        "Middle Fullstack Developer\nCompany: NDA",
+        "Вакансии и резюме в IT",
+    ])
+    def test_lookalikes_are_not_a_company(self, text):
+        assert _company_of(text, _first_title_line(text)) == ""
+
+    def test_the_company_moves_out_of_the_title(self):
+        built = telegram.build_post("c", "c/1", "Golang-разработчик в SimbirSoft\nУдалённо", "", [])
+        assert (built.title, built.company) == ("Golang-разработчик", "SimbirSoft")
+
+    def test_a_title_only_naming_the_company_keeps_it(self):
+        built = telegram.build_post("c", "c/1", "Компания: Aston\nAston", "", [])
+        assert built.title == "Aston"
 
     def test_the_post_carries_it(self):
         built = telegram.build_post(
