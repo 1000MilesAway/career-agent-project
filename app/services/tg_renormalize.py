@@ -73,17 +73,19 @@ async def run(
         post = reparse(row, fetched)
         # `title` is NOT NULL, and an old title beats none.
         post.title = post.title or row.title
-        company = post.company or None
-        counts["company_before"] += bool(row.company)
-        counts["company_after"] += bool(company)
-        if (post.title, company) == (row.title, row.company):
+        # No company is "" — what a scan stores (pool.listing_fields) — and a
+        # NULL left by older rows is the same thing, not a change.
+        old_company = row.company or ""
+        counts["company_before"] += bool(old_company)
+        counts["company_after"] += bool(post.company)
+        if (post.title, post.company) == (row.title, old_company):
             continue
         counts["changed"] += 1
         changes.append(
-            Change(row.external_id, row.title, post.title, row.company or "", company or "")
+            Change(row.external_id, row.title, post.title, old_company, post.company)
         )
         if apply:
             row.title = post.title
-            row.company = company
+            row.company = post.company
             row.dedup_key = dedup.posting_key(as_posting(post)) or None
     return dict(counts), changes

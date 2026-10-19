@@ -506,7 +506,8 @@ _NOT_A_NAME_RE = re.compile(
     r"|международн\w*|крупн\w*|российск\w*|продуктов\w*|молод\w*|быстрорастущ\w*"
     r"|hr|рекрутер|recruiter|коллеги|друзья|всем|о|об|about|это|требовани\w*|задачи"
     r"|условия|обязанности|опыт|зарплата|формат|сервис|клиент\w*|сейчас|сегодня|срочно"
-    r"|также|в|во|на|для|по|из|с|к|у"
+    r"|также|в|во|на|для|по|из|с|к|у|кого|кто|что|ребят\w*|внутри|среди|будет|основн\w*"
+    r"|сегодняшн\w*|небольш\w*|прекрасн\w*|продукт|портал|контакт"
     # Said where the name would be, to say there is none.
     r"|не\s+указан\w*|конфиденциальн\w*|скрыт\w*)\b",
     re.IGNORECASE,
@@ -514,12 +515,19 @@ _NOT_A_NAME_RE = re.compile(
 # A role where the name should be: a digest lists "Retention Product Manager —
 # <компания>, …" line after line.
 _ROLE_WORD_RE = re.compile(
-    r"\b(?:manager|engineer|developer|designer|analyst|specialist|разработчик\w*|аналитик\w*"
+    r"\b(?:manager|engineer|developer|designer|analyst|specialist|head|director"
+    r"|разработчик\w*|аналитик\w*"
     r"|менеджер\w*|инженер\w*|дизайнер\w*|специалист\w*)\b",
     re.IGNORECASE,
 )
 # A whole "name" that is a field or a placeholder: "Вакансии в IT", "Company: NDA".
-_NOT_A_NAME_WORDS = {"it", "ит", "ai", "ml", "nda"}
+_NOT_A_NAME_WORDS = {
+    "it", "ит", "ai", "ml", "nda", "fintech", "edtech", "igaming", "web3", "crypto", "saas",
+    "b2b", "b2c", "gamedev",
+}
+# Inside a name guessed from prose, a lower-case Russian word is prose: "Ребята
+# активно ищут", "Прекрасный Recraft.ai снова ищет", "Основной фокус — …".
+_LOWER_RU_WORD_RE = re.compile(r"(?:^|\s)[а-яё]")
 # A hyphenated Russian word is a description, not a name: "для
 # VPN-приложения", "для CEX-арбитража".
 _DESCRIPTIVE_RE = re.compile(r"-[а-яё]")
@@ -528,14 +536,18 @@ COMPANY_MAX_WORDS = 4
 COMPANY_HEAD_LINES = 8
 
 
-def _as_company(raw: str) -> str:
-    """A name as written, or "" when the words are a description or an agency."""
+def _as_company(raw: str, *, guessed: bool = True) -> str:
+    """A name as written, or "" when the words are a description or an agency.
+
+    `guessed` is every shape but the "Компания:" field: there the poster said
+    it is a name ("Метр квадратный"), elsewhere it is read out of prose.
+    """
     if _AGENCY_RE.search(raw):
         return ""
     if m := _COMPANY_QUOTED_RE.search(raw):
         return m.group(1).strip()
     name = re.split(r"\s[—–|-]\s|[.!?;,(:]\s|[!?;(]", raw, maxsplit=1)[0]
-    name = name.strip(" -–—:|,·•*\"«»'")
+    name = name.strip(" -–—:|,·•*\"«»'>")
     if name.count("«") != name.count("»"):
         name = name.replace("«", "").replace("»", "")
     if (
@@ -546,6 +558,8 @@ def _as_company(raw: str) -> str:
         or name.casefold() in _NOT_A_NAME_WORDS
         or _ROLE_WORD_RE.search(name)
         or _DESCRIPTIVE_RE.search(name)
+        or name.isdigit()
+        or guessed and _LOWER_RU_WORD_RE.search(name)
     ):
         return ""
     return name
@@ -565,12 +579,12 @@ def _company_of(text: str, title: str) -> str:
     lines = [line for line in lines if _HAS_WORD_RE.search(line)]
     for i, line in enumerate(lines):
         if m := _COMPANY_FIELD_RE.match(line):
-            return _as_company(m.group(1))
+            return _as_company(m.group(1), guessed=False)
         if _COMPANY_LABEL_RE.match(line) and i + 1 < len(lines):
             # "Company: <link>" leaves the label alone too; the next line is
             # then the next field ("Workplace: Remote"), not the name.
             nxt = lines[i + 1]
-            return "" if _ANY_FIELD_RE.match(nxt) else _as_company(nxt)
+            return "" if _ANY_FIELD_RE.match(nxt) else _as_company(nxt, guessed=False)
     head = lines[:COMPANY_HEAD_LINES]
     for line in head:
         if m := _COMPANY_HIRING_RE.match(line):
@@ -591,7 +605,9 @@ def _company_of(text: str, title: str) -> str:
             if name := _as_company(m.group(1)):
                 return name
         m = _COMPANY_INTRO_RE.match(line)
-        if m and _ORG_WORD_RE.search(m.group(2)[:80]):
+        # The organisation word defines the name ("— ведущая розничная
+        # компания"), not some later clause ("Будет плюсом — опыт с платформой").
+        if m and _ORG_WORD_RE.search(" ".join(m.group(2).split()[:4])):
             # An agency introducing itself means the employer is not named.
             if _AGENCY_RE.search(line):
                 return ""

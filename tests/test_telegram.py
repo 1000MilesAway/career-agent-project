@@ -212,6 +212,8 @@ class TestCompany:
         ("Middle Python Developer\nКомпания:\nSL Soft\nПолная занятость", "SL Soft"),
         ("Компания: Simple Group - ведущий импортер оборудования\nИнженер", "Simple Group"),
         ("Компания: NAS Technologies** (nastechnologies.ru)\nИнженер", "NAS Technologies"),
+        # The field states a name, so lower-case words in it are part of it.
+        ("Компания: Метр квадратный\nМенеджер", "Метр квадратный"),
         # A line introducing the employer.
         ("Junior backend-разработчик\nОфис (Москва)\nХ5 — ведущая розничная компания.", "Х5"),
         ("Java-разработчик\nСтек: Java\nСбер Банк — крупнейший российский финансовый "
@@ -249,6 +251,14 @@ class TestCompany:
         # Placeholders where the name would be.
         "Middle Fullstack Developer\nCompany: NDA",
         "Вакансии и резюме в IT",
+        # Prose read as a name, seen on the production pool 2026-10-19.
+        "Go Developer\nБудет плюсом — опыт работы с платформой Kubernetes",
+        "Go Developer\nОсновной фокус — развитие платформы",
+        "Go Developer\nРебята активно ищут разработчика",
+        "Go Developer\nПрекрасный Recraft.ai снова ищет разработчика",
+        "Go Developer в Fintech",
+        "Digest\nRetention Product Manager — Acme, удалённо, компания мечты",
+        "Go Developer\nHead of Performance Marketing — компания Acme",
     ])
     def test_lookalikes_are_not_a_company(self, text):
         assert _company_of(text, _first_title_line(text)) == ""

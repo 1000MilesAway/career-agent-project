@@ -71,6 +71,14 @@ async def test_dry_run_writes_nothing(session):
 
 
 @requires_db
+async def test_no_company_as_null_or_empty_is_no_change(session):
+    session.add(_row("telethon", "chat/2", "Go Developer\nУдалённо", "Go Developer"))
+    await session.commit()
+    counts, _ = await tg_renormalize.run(session)
+    assert counts.get("changed", 0) == 0
+
+
+@requires_db
 async def test_apply_refetches_channel_posts_and_keeps_the_text(session):
     session.add(_row("telegram", "evacuatejobs/6667", SPLIT, "Expert Illustrator в"))
     session.add(_row("telegram", "evacuatejobs/1", "Go Developer\nКомпания: Acme", "Go"))
