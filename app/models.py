@@ -243,7 +243,8 @@ class Posting(Base, TimestampMixin):
     # The one write after creation is `needs_text` below being served.
     raw_text: Mapped[str | None] = mapped_column(Text)
     # The text still lacks the description the posting links to: a Telegram
-    # teaser whose page was not read yet, a board that lists no descriptions.
+    # teaser whose page was not read yet, a board that lists no descriptions,
+    # an hh card whose text is only the search snippet (`pool.is_snippet`).
     # Fetched once a user's free filters keep the posting — someone else's
     # bandwidth is spent on survivors only — and then for everyone.
     needs_text: Mapped[bool] = mapped_column(

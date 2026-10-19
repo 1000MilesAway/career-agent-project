@@ -31,7 +31,7 @@ from core.pipeline import cover_letter, evaluate, interview_prep, tailor_resume
 
 from .core.db import SessionLocal
 from .models import Artifact, Evaluation, Job, Resume, User, Vacancy
-from .services import channel_discovery, liveness, scan, triage
+from .services import channel_discovery, liveness, pool, scan, triage
 from .services.spend import charge, exhausted_reason, ledger_totals
 
 log = logging.getLogger("worker")
@@ -123,7 +123,9 @@ async def _run_evaluate(session: AsyncSession, job: Job, user: User, resume: Res
         # Already bought. Re-running would charge for the same judgement.
         return {"evaluation_id": str(stored.id), "cached": True}
 
-    if not vacancy.raw_text:
+    # The queue does not fetch pages; an hh snippet is not the vacancy, and
+    # evaluating it would charge for a report on two lines of requirements.
+    if not vacancy.raw_text or pool.is_snippet(vacancy.posting):
         raise ValueError("у вакансии нет текста")
 
     ledger = Ledger()

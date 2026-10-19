@@ -7,10 +7,11 @@ HTML is served, so the provider reads hh's pages there and hands back JSON.
 Its code lives in its own repository (github.com/1000MilesAway/hh-scrapper).
 
 What a search returns per card: title, company, area, monthly band, work
-formats, experience, and hh's snippet (requirements, duties, key skills). No
-description: that is one more page per vacancy, read only when a user asks
-for an evaluation (`fetch_vacancy`), not during the scan — the free filters
-are about to drop most of the cards.
+formats, experience, and hh's snippet (requirements, duties, key skills). The
+snippet is kept as the posting's text (`card_text`), but it is a few lines,
+not the description: that is one more page per vacancy, read only when a user
+asks for an evaluation (`fetch_vacancy`), not during the scan — the free
+filters are about to drop most of the cards.
 
 The provider reports trouble as statuses, never as an empty list: 503 is hh
 showing a captcha, 502 an hh outage or a parser out of date. All of them
@@ -161,6 +162,14 @@ def as_posting(v: dict[str, Any]) -> Posting:
 
 def search(query: str, remote: bool = False, pages: int = PAGES) -> tuple[list[Posting], bool]:
     """One query's cards, and whether hh had more than were read."""
+    cards, truncated = search_cards(query, remote=remote, pages=pages)
+    return [as_posting(v) for v in cards], truncated
+
+
+def search_cards(
+    query: str, remote: bool = False, pages: int = PAGES
+) -> tuple[list[dict[str, Any]], bool]:
+    """The provider's cards as they came, for a caller that keeps the snippet."""
     params: list[tuple[str, Any]] = [
         ("text", query),
         ("area", AREA_RUSSIA),
@@ -171,7 +180,7 @@ def search(query: str, remote: bool = False, pages: int = PAGES) -> tuple[list[P
     if remote:
         params.append(("work_format", "REMOTE"))
     data = _get("/search", params)
-    return [as_posting(v) for v in data.get("vacancies") or []], bool(data.get("truncated"))
+    return list(data.get("vacancies") or []), bool(data.get("truncated"))
 
 
 def as_text(v: dict[str, Any]) -> str:
@@ -194,6 +203,27 @@ def as_text(v: dict[str, Any]) -> str:
     if v.get("description"):
         lines += ["", v["description"]]
     return "\n".join(lines)
+
+
+SNIPPET = (
+    ("requirement", "Требования"),
+    ("responsibility", "Обязанности"),
+    ("conditions", "Условия"),
+)
+
+
+def card_text(v: dict[str, Any]) -> str:
+    """A search card as text: the fields and hh's snippet; "" without a snippet.
+
+    Labelled as a fragment, because whoever reads it — the chat, a person —
+    must not take two lines of requirements for the whole vacancy.
+    """
+    snippet = v.get("snippet") or {}
+    lines = [f"{label}: {snippet[key]}" for key, label in SNIPPET if snippet.get(key)]
+    if not lines:
+        return ""
+    head = "Фрагмент карточки из поиска hh.ru, полное описание не загружено."
+    return as_text({**v, "description": "\n".join([head, *lines])})
 
 
 def fetch_card(url: str) -> dict[str, Any]:

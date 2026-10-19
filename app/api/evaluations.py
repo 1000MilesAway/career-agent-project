@@ -48,8 +48,10 @@ async def _vacancy_text(vacancy: Vacancy) -> str:
     Telegram rows carry their text in the row, because t.me has no page to
     fetch: `load_vacancy` on a t.me URL fails. Habr rows can be fetched on
     demand and then keep the text, so a re-evaluation costs no second request.
+    An hh card's snippet counts as no text: the report is paid for, and two
+    lines of requirements would buy it on a guess.
     """
-    if vacancy.raw_text:
+    if vacancy.raw_text and not pool.is_snippet(vacancy.posting):
         return vacancy.raw_text
 
     if not vacancy.url:
@@ -68,6 +70,7 @@ async def _vacancy_text(vacancy: Vacancy) -> str:
 
     # On the shared posting: the next user to evaluate it reads it from here.
     vacancy.posting.raw_text = text
+    vacancy.posting.needs_text = False
     pool.mark_fraud(vacancy.posting)
     return text
 

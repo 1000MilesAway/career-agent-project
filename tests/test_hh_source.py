@@ -136,6 +136,56 @@ def test_evaluation_text_comes_from_the_vacancy_page(provider):
     assert meta["title"] == "Аналитик данных"
 
 
+SNIPPET = {"requirement": "Опыт работы с SQL от года.", "responsibility": "Строить отчёты.",
+           "conditions": ""}
+
+
+def test_card_text_keeps_the_snippet_labelled_as_a_fragment():
+    text = hh.card_text({**CARD, "snippet": SNIPPET})
+    assert text.startswith("Аналитик данных\nКомпания: МЕДИА ХИЛС")
+    assert "полное описание не загружено" in text
+    assert "Требования: Опыт работы с SQL от года." in text
+    assert "Обязанности: Строить отчёты." in text
+    # An empty part of the snippet is not printed as an empty label.
+    assert "Условия" not in text
+
+
+def test_a_card_without_a_snippet_has_no_text():
+    assert hh.card_text({**CARD, "snippet": None}) == ""
+
+
+def _pooled(**kw):
+    posting = PooledPosting(source="hh", external_id="137961395", title="Аналитик данных",
+                            url="https://hh.ru/vacancy/137961395", **kw)
+    return Vacancy(posting=posting)
+
+
+def test_only_an_unread_hh_card_is_a_snippet():
+    assert pool.is_snippet(_pooled(raw_text="x", needs_text=True).posting)
+    assert not pool.is_snippet(_pooled(raw_text="x", needs_text=False).posting)
+    # A Telegram teaser waiting for its page is the post itself, not a snippet.
+    teaser = PooledPosting(source="telegram", external_id="c/1", title="t", needs_text=True)
+    assert not pool.is_snippet(teaser)
+
+
+async def test_evaluation_replaces_the_snippet_with_the_description(provider):
+    from app.api.evaluations import _vacancy_text
+
+    calls, answers = provider
+    full = {**CARD, "description": "Ищем аналитика.\n- SQL", "archived": False}
+    answers["/vacancy/137961395"] = httpx.Response(200, json={"status": "ok", "vacancy": full})
+    vacancy = _pooled(raw_text=hh.card_text({**CARD, "snippet": SNIPPET}), needs_text=True)
+
+    text = await _vacancy_text(vacancy)
+
+    assert text.endswith("Ищем аналитика.\n- SQL")
+    assert vacancy.posting.raw_text == text
+    assert vacancy.posting.needs_text is False
+    # Read once: the next evaluation takes the stored description.
+    assert await _vacancy_text(vacancy) == text
+    assert len(calls) == 1
+
+
 def test_evaluation_of_a_deleted_vacancy_says_so(provider):
     _, answers = provider
     answers["/vacancy/1234567"] = httpx.Response(200, json={"status": "not_found",
@@ -177,7 +227,8 @@ async def _user(session):
 class TestScanHh:
     async def test_second_scan_within_a_day_does_not_ask_hh(self, session, monkeypatch, provider):
         calls, answers = provider
-        answers["/search"] = httpx.Response(200, json={"vacancies": [CARD], "truncated": False})
+        card = {**CARD, "snippet": SNIPPET}
+        answers["/search"] = httpx.Response(200, json={"vacancies": [card], "truncated": False})
         profile = {"queries": ["аналитик"], "positive": ["аналитик"]}
 
         first = await scan.collect(session, (await _user(session)).id, profile, ("hh",))
@@ -192,8 +243,31 @@ class TestScanHh:
             select(PooledPosting).where(PooledPosting.source == "hh")
         )).scalars().all()
         assert [p.external_id for p in pooled] == ["137961395"]
-        # The description is read on evaluation, not stored from the card.
-        assert pooled[0].raw_text is None
+        # The snippet is kept; the description is read on evaluation.
+        assert "Требования: Опыт работы с SQL от года." in pooled[0].raw_text
+        assert pool.is_snippet(pooled[0])
+        # One employer's cards for several cities share a snippet: no
+        # fingerprint, or they would fold into one vacancy.
+        assert pooled[0].text_fp is None
+
+    async def test_a_card_pooled_without_text_gains_the_snippet(
+        self, session, monkeypatch, provider
+    ):
+        from core.sources.habr_api import Posting
+
+        _, answers = provider
+        answers["/search"] = httpx.Response(
+            200, json={"vacancies": [{**CARD, "snippet": SNIPPET}], "truncated": False}
+        )
+        await pool.upsert(session, "hh", [pool.Sighting(Posting(
+            id="137961395", url=CARD["url"], title=CARD["title"], company=CARD["company"],
+        ))])
+        await pool.upsert(session, "hh", scan.fetch_hh("аналитик").sightings)
+        row = (await session.execute(
+            select(PooledPosting).where(PooledPosting.source == "hh")
+        )).scalar_one()
+        assert "Обязанности: Строить отчёты." in row.raw_text
+        assert pool.is_snippet(row)
 
     async def test_provider_failure_is_reported_by_name(self, session, monkeypatch, provider):
         _, answers = provider

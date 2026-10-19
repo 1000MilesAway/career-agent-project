@@ -117,6 +117,18 @@ class Sighting:
     description_url: str | None = None
 
 
+# Sources whose listing text is the board's card snippet, not the posting.
+# Such a text is never fingerprinted — one employer's cards for five cities
+# read alike and would fold into one — and an evaluation replaces it with the
+# description instead of reading two lines of requirements.
+SNIPPET_SOURCES = frozenset({"hh"})
+
+
+def is_snippet(row: Pooled) -> bool:
+    """The stored text is still only the card snippet."""
+    return row.needs_text and row.source in SNIPPET_SOURCES
+
+
 def parse_published(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -283,6 +295,9 @@ async def upsert(
                 row.segment = sighting.segment
             if row.raw_text is None and sighting.text:
                 row.raw_text = sighting.text
+                # A card pooled before snippets were kept gains one, and with
+                # it the mark that the description is still to be read.
+                row.needs_text = sighting.needs_text
                 mark_fraud(row)
             row.last_seen_at = now
             _seen_again(row)
@@ -300,7 +315,7 @@ async def upsert(
             needs_text=sighting.needs_text,
             description_url=sighting.description_url,
             dedup_key=dedup.posting_key(posting) or None,
-            text_fp=dedup.fingerprint(text) or None,
+            text_fp=None if source in SNIPPET_SOURCES else dedup.fingerprint(text) or None,
             last_seen_at=now,
             created_at=now,
             **listing_fields(posting),

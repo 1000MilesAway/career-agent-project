@@ -295,13 +295,18 @@ def fetch_habr(
 def fetch_hh(query: str, remote: bool = False) -> Batch:
     """One query on hh.ru, through the hh-scrapper provider (core/sources/hh.py).
 
-    No text is stored: a card carries a snippet, not the description, and the
-    description is read when a user asks for an evaluation — one request to
-    hh for a vacancy someone wants, not one per card the filters drop.
+    The card's snippet is stored as the text, marked as still needing the
+    description. That is read when a user asks for an evaluation — one request
+    to hh for a vacancy someone wants, not one per card the filters drop — and
+    replaces the snippet (`pool.is_snippet`).
     """
-    postings, truncated = hh.search(query, remote=remote)
+    cards, truncated = hh.search_cards(query, remote=remote)
     extra = {"truncated": [query]} if truncated else {}
-    return Batch("hh", [Sighting(p) for p in postings], extra=extra)
+    sightings = [
+        Sighting(hh.as_posting(v), text=hh.card_text(v) or None, needs_text=True)
+        for v in cards
+    ]
+    return Batch("hh", sightings, extra=extra)
 
 
 def fetch_telegram(
@@ -601,7 +606,12 @@ async def _enrich(session: AsyncSession, source: str, kept: list[Pooled]) -> int
     that the costly stage runs on the short list covers someone else's
     bandwidth as much as it covers paid calls. One attempt per posting —
     a page that failed is fetched again on evaluation, not on every scan.
+
+    hh is left to the evaluation: its pages go through the provider's one
+    address, where a burst would ban hh for every user at once.
     """
+    if source in pool.SNIPPET_SOURCES:
+        return 0
     todo = [p for p in kept if p.needs_text][:MAX_ENRICHED]
     if not todo:
         return 0
