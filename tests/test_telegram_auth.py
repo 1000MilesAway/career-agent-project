@@ -160,6 +160,15 @@ class TestTelegramEndpoints:
         count = await session.scalar(select(func.count()).select_from(User))
         assert count == 1
 
+    async def test_a_newcomer_keeps_the_source_it_came_from(self, client, bot, session):
+        from sqlalchemy import select
+
+        from app.models import User
+
+        r = await client.post("/api/auth/telegram", json={**body(), "ref": "tg_hr"})
+        assert r.status_code == 200
+        assert await session.scalar(select(User.ref)) == "tg_hr"
+
     async def test_a_newcomer_without_consent_gets_no_account(self, client, bot, session):
         from sqlalchemy import func, select
 

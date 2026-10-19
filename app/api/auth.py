@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
@@ -31,6 +32,30 @@ from ..services.spend import plan_of
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# What a source label may look like: what people type into `?ref=` by hand,
+# and what ad cabinets put into `utm_source`.
+_REF = re.compile(r"[a-z0-9_.-]{1,32}")
+
+
+def clean_ref(value: object) -> str | None:
+    """The source label of a signup, or None for anything that does not look
+    like one. Never an error: a mangled link must not cost a signup."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    return value if _REF.fullmatch(value) else None
+
+
+class RefField(BaseModel):
+    # Where the person came from (frontend/src/ref.ts). Read only when the
+    # request creates the account.
+    ref: str | None = None
+
+    @field_validator("ref", mode="before")
+    @classmethod
+    def _clean_ref(cls, value: object) -> str | None:
+        return clean_ref(value)
 
 
 class LoginRequest(BaseModel):
@@ -109,7 +134,7 @@ class SignupConfig(BaseModel):
     enabled: bool
 
 
-class SignupRequest(BaseModel):
+class SignupRequest(RefField):
     email: EmailStr
     # bcrypt reads only the first 72 bytes; a longer password would be
     # accepted and silently cut.
@@ -179,7 +204,7 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
 
     password_hash = hash_password(body.password)
     if user is None:
-        user = User(email=email, password_hash=password_hash, consent_at=now)
+        user = User(email=email, password_hash=password_hash, consent_at=now, ref=body.ref)
         session.add(user)
         try:
             await session.flush()
@@ -192,6 +217,8 @@ async def signup(body: SignupRequest, session: SessionDep) -> SignupResponse:
         user.password_hash = password_hash
         if user.consent_at is None:
             user.consent_at = now
+        if user.ref is None:
+            user.ref = body.ref
 
     link = f"{get_settings().public_url.rstrip('/')}/verify?token=" + create_email_token(
         user.id, email, password_hash
@@ -398,7 +425,7 @@ class TelegramConfig(BaseModel):
     nonce: str | None
 
 
-class TelegramToken(BaseModel):
+class TelegramToken(RefField):
     id_token: str
     # Read only when the login would create an account; see telegram_login_endpoint.
     consent: bool = False
@@ -462,6 +489,7 @@ async def telegram_login_endpoint(body: TelegramToken, session: SessionDep) -> T
             telegram_id=identity.id,
             telegram_name=identity.name,
             consent_at=datetime.now(UTC),
+            ref=body.ref,
         )
         session.add(user)
         try:

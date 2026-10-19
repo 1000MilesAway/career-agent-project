@@ -92,7 +92,7 @@ describe('LoginPage', () => {
     expect(screen.getByText('new@example.com')).toBeTruthy()
     expect(mocks.api).toHaveBeenCalledWith('/api/auth/signup', {
       method: 'POST',
-      json: { email: 'New@Example.com', password: 'long enough', consent: true },
+      json: { email: 'New@Example.com', password: 'long enough', consent: true, ref: null },
     })
   })
 

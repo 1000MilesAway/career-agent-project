@@ -544,6 +544,14 @@ export interface AdminFunnel {
   counts: number[]
   extras: Record<FunnelExtra, number>
   cohorts: FunnelCohort[]
+  /** The same chained counts per `?ref=`, the biggest source first. */
+  by_ref: FunnelRef[]
+}
+
+export interface FunnelRef {
+  /** Null for accounts that came without a label. */
+  ref: string | null
+  stages: number[]
 }
 
 /** Pool numbers of a source or a part of one. `active` — open and recent

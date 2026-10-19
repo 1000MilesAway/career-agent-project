@@ -187,6 +187,19 @@ async def test_funnel_chains_stages_and_skips_admins(client, session, admin_head
     assert sum(c["stages"][0] for c in body["cohorts"]) == 4
 
 
+async def test_funnel_by_source(client, session, admin_headers):
+    for i, ref in enumerate(["vc", "vc", "habr", None]):
+        u = await _walk(session, email=f"r{i}@example.com", upto="can_log_in" if i else "signed_up")
+        u.ref = ref
+    await session.commit()
+
+    body = (await client.get("/api/admin/funnel?days=0", headers=admin_headers)).json()
+    # The biggest source first, the unlabelled after the labelled of its size.
+    assert [(r["ref"], r["stages"][:2]) for r in body["by_ref"]] == [
+        ("vc", [2, 1]), ("habr", [1, 1]), (None, [1, 1]),
+    ]
+
+
 async def test_funnel_by_channel_and_period(client, session, admin_headers):
     await _walk(session, email="e@example.com", upto="can_log_in")
     await _walk(session, email=None, telegram_id=7, upto="can_log_in")

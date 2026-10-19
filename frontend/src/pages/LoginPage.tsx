@@ -19,6 +19,7 @@ import { useAuth } from '../auth'
 import { BrandMark } from '../components/icons'
 import { TelegramButton, useTelegramConfig } from '../components/TelegramLogin'
 import { ErrorNote } from '../components/ui'
+import { storedRef } from '../ref'
 import './login.css'
 
 type Mode = 'login' | 'signup' | 'sent' | 'forgot' | 'forgot-sent' | 'telegram-consent'
@@ -68,7 +69,7 @@ export function LoginPage() {
   async function signup() {
     const data = await api<{ email: string }>('/api/auth/signup', {
       method: 'POST',
-      json: { email: email.trim(), password, consent },
+      json: { email: email.trim(), password, consent, ref: storedRef() },
     })
     setSentTo(data.email)
     setMode('sent')

@@ -185,6 +185,7 @@ describe('AdminFunnelPage', () => {
         { week: '2026-09-28', stages: [10, 8, 5, 5, 2, 0] },
         { week: '2026-09-21', stages: [30, 22, 15, 15, 6, 2] },
       ],
+      by_ref: [{ ref: null, stages: [40, 30, 20, 20, 8, 2] }],
     }
   })
 
@@ -206,6 +207,23 @@ describe('AdminFunnelPage', () => {
   it('shows weekly cohorts as shares of each week', () => {
     at('/admin/funnel', <AdminFunnelPage />)
     expect(screen.getByTitle('6 из 30').textContent).toBe('20%')
+  })
+
+  it('shows sources once any account came with a label', () => {
+    at('/admin/funnel', <AdminFunnelPage />)
+    expect(screen.queryByText('По источникам')).toBeNull()
+
+    mocks.funnel = {
+      ...mocks.funnel!,
+      by_ref: [
+        { ref: 'vc', stages: [25, 20, 10, 10, 4, 1] },
+        { ref: null, stages: [15, 10, 10, 10, 4, 1] },
+      ],
+    }
+    at('/admin/funnel', <AdminFunnelPage />)
+    expect(screen.getByText('По источникам')).toBeTruthy()
+    expect(screen.getByText('без метки')).toBeTruthy()
+    expect(screen.getByTitle('4 из 25').textContent).toBe('16%')
   })
 
   it('an empty cohort says so', () => {

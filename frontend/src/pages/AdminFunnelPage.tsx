@@ -125,6 +125,7 @@ export function AdminFunnelPage() {
             <FunnelBars data={data} />
           </Card>
           <Extras data={data} />
+          <Sources data={data} />
           <Cohorts data={data} />
         </div>
       ) : null}
@@ -185,56 +186,96 @@ function Extras({ data }: { data: AdminFunnel }) {
   )
 }
 
-/** Weeks of sign-ups as rows, the share of each week that reached a stage as
- *  cells. The tint deepens with the share, the number stays in ink. */
+/** Weeks of sign-ups as rows. */
 function Cohorts({ data }: { data: AdminFunnel }) {
   if (data.cohorts.length < 2) return null
   return (
     <Card title="По неделям регистрации">
-      <div className="table-wrap">
-        <table className="table table--compact">
-          <thead>
-            <tr>
-              <th scope="col">Неделя</th>
-              {data.stages.map((stage) => (
-                <th key={stage} scope="col" className="table__num">
-                  {STAGES[stage].title}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.cohorts.map((cohort) => {
-              const start = cohort.stages[0]
-              return (
-                <tr key={cohort.week}>
-                  <td className="table__date">
-                    с {formatDay(cohort.week, { day: 'numeric', month: 'short' })}
-                  </td>
-                  {cohort.stages.map((count, i) =>
-                    i === 0 ? (
-                      <td key={i} className="table__num">
-                        {formatCount(count)}
-                      </td>
-                    ) : (
-                      <td
-                        key={i}
-                        className="table__num cohort-cell"
-                        title={`${formatCount(count)} из ${formatCount(start)}`}
-                        style={{
-                          ['--share' as string]: `${start > 0 ? Math.round((count / start) * 100) : 0}%`,
-                        }}
-                      >
-                        {formatPct(count, start)}
-                      </td>
-                    ),
-                  )}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <ShareTable
+        data={data}
+        head="Неделя"
+        rows={data.cohorts.map((cohort) => ({
+          key: cohort.week,
+          label: `с ${formatDay(cohort.week, { day: 'numeric', month: 'short' })}`,
+          stages: cohort.stages,
+        }))}
+      />
     </Card>
+  )
+}
+
+/** One row per `?ref=` the accounts signed up with. Shown from the first
+ *  labelled account: a single unlabelled row says nothing. */
+function Sources({ data }: { data: AdminFunnel }) {
+  if (!data.by_ref.some((row) => row.ref !== null)) return null
+  return (
+    <Card title="По источникам">
+      <ShareTable
+        data={data}
+        head="Источник"
+        rows={data.by_ref.map((row) => ({
+          key: row.ref ?? '',
+          label: row.ref ?? 'без метки',
+          stages: row.stages,
+        }))}
+      />
+    </Card>
+  )
+}
+
+/** Groups of sign-ups as rows, the share of each group that reached a stage
+ *  as cells. The tint deepens with the share, the number stays in ink. */
+function ShareTable({
+  data,
+  head,
+  rows,
+}: {
+  data: AdminFunnel
+  head: string
+  rows: { key: string; label: string; stages: number[] }[]
+}) {
+  return (
+    <div className="table-wrap">
+      <table className="table table--compact">
+        <thead>
+          <tr>
+            <th scope="col">{head}</th>
+            {data.stages.map((stage) => (
+              <th key={stage} scope="col" className="table__num">
+                {STAGES[stage].title}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const start = row.stages[0]
+            return (
+              <tr key={row.key}>
+                <td className="table__date">{row.label}</td>
+                {row.stages.map((count, i) =>
+                  i === 0 ? (
+                    <td key={i} className="table__num">
+                      {formatCount(count)}
+                    </td>
+                  ) : (
+                    <td
+                      key={i}
+                      className="table__num cohort-cell"
+                      title={`${formatCount(count)} из ${formatCount(start)}`}
+                      style={{
+                        ['--share' as string]: `${start > 0 ? Math.round((count / start) * 100) : 0}%`,
+                      }}
+                    >
+                      {formatPct(count, start)}
+                    </td>
+                  ),
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }

@@ -92,6 +92,11 @@ class User(Base, TimestampMixin):
     # account agreed, and when.
     consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Where the account came from: the `?ref=` (or `utm_source`) of the first
+    # visit, kept by the browser until signup (frontend/src/ref.ts). Set once,
+    # when the account is created; null for accounts that came without one.
+    ref: Mapped[str | None] = mapped_column(String(32))
+
     # What this account has cost the owner, in roubles at the real (peak
     # included) price. The owner's accounting only: users never see roubles,
     # they see a share of their quota below.

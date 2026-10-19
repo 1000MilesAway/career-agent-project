@@ -374,6 +374,12 @@ class FunnelCohort(BaseModel):
     stages: list[int]
 
 
+class FunnelRef(BaseModel):
+    # The `?ref=` the accounts signed up with; null for those without one.
+    ref: str | None
+    stages: list[int]
+
+
 class Funnel(BaseModel):
     days: int  # 0: every account ever
     since: datetime | None
@@ -381,6 +387,9 @@ class Funnel(BaseModel):
     counts: list[int]
     extras: dict[str, int]
     cohorts: list[FunnelCohort]
+    # The same chained counts per source, the biggest first: which channel
+    # brings people who get somewhere, not just sign-ups.
+    by_ref: list[FunnelRef]
 
 
 def _reached() -> dict[str, ColumnElement[bool]]:
@@ -452,6 +461,7 @@ async def funnel(
         cast(
             func.date_trunc("week", func.timezone("Europe/Moscow", User.created_at)), Date
         ).label("week"),
+        User.ref,
         *(cond.label(name) for name, cond in reached.items()),
     ).where(*filters).subquery()
 
@@ -464,6 +474,11 @@ async def funnel(
     by_week = await session.execute(
         select(flags.c.week, *chained).group_by(flags.c.week).order_by(flags.c.week.desc())
     )
+    by_ref = await session.execute(
+        select(flags.c.ref, *chained)
+        .group_by(flags.c.ref)
+        .order_by(chained[0].desc(), flags.c.ref.nulls_last())
+    )
 
     return Funnel(
         days=days,
@@ -472,6 +487,7 @@ async def funnel(
         counts=list(total[: len(FUNNEL)]),
         extras=dict(zip(EXTRAS, total[len(FUNNEL):], strict=True)),
         cohorts=[FunnelCohort(week=row[0], stages=list(row[1:])) for row in by_week],
+        by_ref=[FunnelRef(ref=row[0], stages=list(row[1:])) for row in by_ref],
     )
 
 

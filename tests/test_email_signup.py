@@ -237,3 +237,40 @@ class TestSignup:
         await session.commit()
         r = await client.post("/api/auth/verify", json={"token": link_token(outbox[0])})
         assert r.status_code == 401
+
+
+class TestRef:
+    def test_a_label_is_kept_lowercased(self):
+        from app.api.auth import clean_ref
+
+        assert clean_ref(" VC ") == "vc"
+        assert clean_ref("tg_hr-chat.2") == "tg_hr-chat.2"
+
+    def test_anything_else_is_dropped_not_refused(self):
+        from app.api.auth import clean_ref
+
+        for junk in ("", "a" * 33, "<script>", "с кириллицей", 5, None):
+            assert clean_ref(junk) is None
+
+
+@requires_db
+async def test_signup_keeps_the_first_source(client, session, outbox):
+    from sqlalchemy import select
+
+    from app.models import User
+
+    assert (await client.post("/api/auth/signup", json={**SIGNUP, "ref": "VC"})).status_code == 202
+    await session.execute(
+        User.__table__.update().values(verification_sent_at=datetime.now(UTC) - timedelta(hours=1))
+    )
+    await session.commit()
+    # Signing up again for the unconfirmed address does not move the account
+    # to the second link's source; a junk label does not fail the signup.
+    again = await client.post("/api/auth/signup", json={**SIGNUP, "ref": "habr"})
+    assert again.status_code == 202
+    assert (await client.post(
+        "/api/auth/signup", json={**SIGNUP, "email": "b@example.com", "ref": "<x>"}
+    )).status_code == 202
+
+    refs = dict((await session.execute(select(User.email, User.ref))).all())
+    assert refs == {"new@example.com": "vc", "b@example.com": None}

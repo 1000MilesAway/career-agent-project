@@ -7,8 +7,12 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './components/toast'
 import { AuthProvider } from './auth'
 import { fetcher } from './api/client'
+import { captureRef } from './ref'
 import './styles/index.css'
 import './styles/ui.css'
+
+// Before the router reads the address: it takes ?ref= out of it.
+captureRef()
 
 // Path routing: both servers in front of the cabinet answer an unknown path
 // with index.html — nginx by try_files, the Vite dev server by default. Old

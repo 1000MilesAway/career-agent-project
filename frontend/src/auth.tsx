@@ -7,6 +7,7 @@
 
 import { createContext, use, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api, getToken, onTokenChange, setToken } from './api/client'
+import { storedRef } from './ref'
 
 interface AuthValue {
   token: string | null
@@ -38,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginTelegram = useCallback(async (idToken: string, consent = false) => {
     const response = await api<{ access_token: string }>('/api/auth/telegram', {
       method: 'POST',
-      json: { id_token: idToken, consent },
+      json: { id_token: idToken, consent, ref: storedRef() },
     })
     setToken(response.access_token)
   }, [])
