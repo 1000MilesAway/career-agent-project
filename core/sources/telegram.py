@@ -325,6 +325,9 @@ _LABEL_ONLY_RE = re.compile(
     r"|(?:we\s+are\s+)?looking\s+for(?:\s+an?)?)$",
     re.IGNORECASE,
 )
+# "Вакансия Senior Android Developer": the label with no colon, then the role.
+# "Вакансия открыта до…" goes on in lower case and is a sentence, not a label.
+_LABEL_WORD_RE = re.compile(r"^(?:[Вв]акансия|[Пп]озиция|[Vv]acancy|[Pp]osition)\s+(?=[A-ZА-ЯЁ0-9])")
 # "Ищем в команду Scala разработчика": the filler below would eat the role too.
 _VERB_FILLER_RE = re.compile(
     r"^((?:мы\s+)?(?:ищем|ищу|в\s+поиске))\s+в\s+(?:нашу\s+)?команду\s+", re.IGNORECASE
@@ -388,6 +391,7 @@ def _declines(role: str) -> bool:
 def _title_from_line(line: str) -> str:
     line = _GREETING_RE.sub("", line, count=1)
     line = _LABEL_RE.sub("", line, count=1)
+    line = _LABEL_WORD_RE.sub("", line, count=1)
     line = _VERB_FILLER_RE.sub(r"\1 ", line, count=1)
     m = _HIRING_RE.search(line)
     cut = bool(m) and not (_RU_OPENING_RE.match(line) and _declines(line[m.end():]))

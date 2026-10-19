@@ -142,6 +142,8 @@ class TestTitleLine:
         ("📍Вакансия: Senior Backend Engineer Go — Custody Platform (The Vault)",
          "Senior Backend Engineer Go — Custody Platform (The Vault)"),
         ("Position: Machine Learning Engineer", "Machine Learning Engineer"),
+        ("Вакансия Senior Android Developer", "Senior Android Developer"),
+        ("Вакансия 1С-разработчик (КА 2, интеграции)", "1С-разработчик (КА 2, интеграции)"),
         ("iOS Developer (Senior) | VPN-приложение", "iOS Developer (Senior) | VPN-приложение"),
         # An English role does not decline, so "Ищем" goes; a Russian one
         # would read in the accusative without it, so it stays.
