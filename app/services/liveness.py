@@ -60,7 +60,7 @@ MAX_PER_SWEEP = 40
 # sweep fetch whatever address the site now redirects to. "company" is safe
 # the same way: only the searchable boards' own URLs pass `core.liveness`
 # (rabota.sber.ru, yandex.ru/jobs, team.vk.company), while feed postings —
-# huntflow, greenhouse, lever, ashby — live on other hosts and keep closing
+# mts, huntflow, greenhouse, lever, ashby — live on other hosts and keep closing
 # by their absence from the feed (`sweep_feeds`), not by their page.
 CHECKABLE_SOURCES = ("habr", "geekjob", "telegram", "company")
 # A posting older than this, from a source that cannot be asked, is shown as

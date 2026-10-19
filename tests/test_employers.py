@@ -32,6 +32,7 @@ BOARDS = [
     Board("sber", "Сбер"),
     Board("yandex", "Яндекс"),
     Board("vk", "VK"),
+    Board("mts", "МТС"),
     Board("huntflow", "Lime", "limehr"),
     Board("greenhouse", "Wrike", "wrike", group="global"),
     Board("lever", "Xsolla", "xsolla", group="global"),
@@ -56,6 +57,10 @@ def router(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={**js("vk_list.json"), "next": None})
     if host == "team.vk.company" and path.startswith("/vacancy/"):
         return httpx.Response(200, text=raw("vk_vacancy.html"))
+    if host == "job.mts.ru" and path == "/api/v2/vacancies":
+        return httpx.Response(200, json=js("mts_list.json"))
+    if host == "job.mts.ru" and path.startswith("/vacancy/"):
+        return httpx.Response(200, text=raw("mts_vacancy.html"))
     if host == "limehr.huntflow.io" and path == "/api/vacancy":
         return httpx.Response(200, json={**js("huntflow_list.json"), "total": 1})
     if host == "limehr.huntflow.io":
@@ -79,13 +84,13 @@ class TestCollect:
     def test_every_board_contributes(self, client):
         out = employers.collect(["python"], ("ru", "global"), BOARDS, client)
         kinds = {p.id.split("/", 1)[0] for p in out.postings}
-        assert kinds == {"sber", "yandex", "vk", "huntflow", "greenhouse", "lever", "ashby"}
+        assert kinds == {"sber", "yandex", "vk", "mts", "huntflow", "greenhouse", "lever", "ashby"}
         assert out.problems == []
 
     def test_groups_choose_the_boards(self, client):
         out = employers.collect(["python"], ("ru",), BOARDS, client)
         kinds = {p.id.split("/", 1)[0] for p in out.postings}
-        assert kinds == {"sber", "yandex", "vk", "huntflow"}
+        assert kinds == {"sber", "yandex", "vk", "mts", "huntflow"}
 
     def test_boards_that_list_their_text_keep_it(self, client):
         out = employers.collect(["python"], ("ru", "global"), BOARDS, client)
@@ -123,7 +128,7 @@ class TestCompleteFeeds:
     def test_feeds_are_complete_searchable_boards_are_not(self, client):
         out = employers.collect(["python"], ("ru", "global"), BOARDS, client)
         assert sorted(out.complete) == [
-            "ashby/gismart", "greenhouse/wrike", "huntflow/limehr", "lever/xsolla",
+            "ashby/gismart", "greenhouse/wrike", "huntflow/limehr", "lever/xsolla", "mts/mts",
         ]
 
     def test_a_failed_feed_is_not_complete(self, monkeypatch):
@@ -210,6 +215,49 @@ class TestAdapters:
         assert "Похожие вакансии" not in text
         assert "Откликнуться" not in text
 
+    def test_mts_id_is_the_string_not_the_rounded_float(self):
+        posting = employers.mts_posting(Board("mts", "МТС"), js("mts_list.json")["data"][0])
+        assert posting.id == "mts/mts/718832748017484069"
+        assert posting.url == "https://job.mts.ru/vacancy/718832748017484069"
+        assert posting.company == "МТС"
+        assert posting.location == "Москва"
+
+    def test_mts_company_and_salary(self):
+        posting = employers.mts_posting(
+            Board("mts", "МТС"),
+            {
+                "mtsId": "1",
+                "title": "Кассир",
+                "organization": {"title": "ПАО МТС-Банк"},
+                "salaryFrom": 70000,
+                "salaryTo": None,
+                "currency": {"title": "RUB"},
+            },
+        )
+        assert posting.company == "МТС-Банк"
+        assert (posting.salary_from, posting.salary_to, posting.currency) == (70000, None, "RUB")
+        assert posting.remote is None  # no work format stated
+
+    def test_mts_work_formats(self):
+        def remote(*titles):
+            return employers._mts_remote({"workFormats": [{"title": t} for t in titles]})
+
+        assert remote("Удаленная работа") is True
+        assert remote("Гибридный") is False
+        assert remote("В офисе", "Удаленная работа") is True
+        assert remote("Вахта") is None
+
+    def test_mts_page_text_is_the_description_only(self):
+        text = employers.mts_page_text(raw("mts_vacancy.html"))
+        assert text.startswith("Чем предстоит заниматься")
+        assert "Что мы ожидаем" in text and "Что мы предлагаем" in text
+        assert "Ещё варианты" not in text and "Откликнуться" not in text
+        assert text.count("3-6 лет") == 1
+
+    def test_mts_describe_takes_digits_only(self):
+        with pytest.raises(ValueError):
+            employers.describe_mts("../admin", httpx.Client())
+
     def test_greenhouse_content_is_unescaped_prose(self):
         posting, text = employers.greenhouse_posting(
             Board("greenhouse", "Wrike", "wrike"), js("greenhouse_list.json")["jobs"][0]
@@ -244,7 +292,7 @@ class TestDescribe:
         out = employers.collect(["python"], ("ru", "global"), BOARDS, client)
         described = employers.describe(out.postings, BOARDS, client)
         kinds = {pid.split("/", 1)[0] for pid in described}
-        assert kinds == {"yandex", "vk", "huntflow"}
+        assert kinds == {"yandex", "vk", "mts", "huntflow"}
         assert all(text for text in described.values())
 
     def test_the_cap_holds(self, client):

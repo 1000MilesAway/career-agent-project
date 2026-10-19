@@ -1,0 +1,192 @@
+{
+ "data": [
+  {
+   "id": 718832748017484000,
+   "documentId": "legacy-718832748017484069",
+   "title": "Эксперт сети радиодоступа",
+   "slug": "718832748017484069",
+   "isActive": true,
+   "createdAt": "2026-10-19T00:00:00.000Z",
+   "updatedAt": "2026-10-19T00:00:00.000Z",
+   "publishedAt": "2026-10-19T00:00:00.000Z",
+   "salaryFrom": null,
+   "salaryTo": null,
+   "description": null,
+   "mtsId": "718832748017484069",
+   "image": null,
+   "categories": [
+    {
+     "id": null,
+     "documentId": "category-Технический блок",
+     "title": "Технический блок",
+     "slug": "технический-блок",
+     "createdAt": "2026-10-19T14:28:14.515Z",
+     "updatedAt": "2026-10-19T14:28:14.515Z",
+     "publishedAt": "2026-10-19T14:28:14.515Z",
+     "icon": null,
+     "image": null,
+     "subCategories": [],
+     "parentCategory": null
+    }
+   ],
+   "currency": {
+    "id": 1,
+    "documentId": "ja2zb8jti7wg1pqd7jrk8t1f",
+    "title": "RUB",
+    "createdAt": "2026-10-19T14:28:14.515Z",
+    "updatedAt": "2026-10-19T14:28:14.515Z",
+    "publishedAt": "2026-10-19T14:28:14.515Z"
+   },
+   "region": {
+    "id": null,
+    "documentId": "region-Москва",
+    "title": "Москва",
+    "createdAt": "2026-10-19T14:28:14.515Z",
+    "updatedAt": "2026-10-19T14:28:14.515Z",
+    "publishedAt": "2026-10-19T14:28:14.515Z",
+    "addresses": []
+   },
+   "address": null,
+   "experience": {
+    "id": 22,
+    "documentId": "02d88bc9ca993232",
+    "title": "3-6 лет",
+    "createdAt": "2026-10-19T14:28:14.515Z",
+    "updatedAt": "2026-10-19T14:28:14.515Z",
+    "publishedAt": "2026-10-19T14:28:14.515Z"
+   },
+   "FeedSettings": null,
+   "organization": {
+    "id": null,
+    "documentId": "org-ПАО МТС",
+    "title": "ПАО МТС",
+    "createdAt": "2026-10-19T14:28:14.515Z",
+    "updatedAt": "2026-10-19T14:28:14.515Z",
+    "publishedAt": "2026-10-19T14:28:14.515Z"
+   },
+   "workFormats": [
+    {
+     "id": 1,
+     "documentId": "worktype-1",
+     "title": "В офисе",
+     "createdAt": "2026-10-19T14:28:14.515Z",
+     "updatedAt": "2026-10-19T14:28:14.515Z",
+     "publishedAt": "2026-10-19T14:28:14.515Z"
+    }
+   ],
+   "workTypes": [],
+   "workSchedules": [
+    {
+     "id": 0,
+     "documentId": "schedule-0",
+     "title": "Полный день",
+     "createdAt": "2026-10-19T14:28:14.516Z",
+     "updatedAt": "2026-10-19T14:28:14.516Z",
+     "publishedAt": "2026-10-19T14:28:14.516Z"
+    }
+   ],
+   "tasks": [],
+   "offers": [],
+   "requirements": [],
+   "tags": []
+  },
+  {
+   "id": 715141214629790000,
+   "documentId": "legacy-715141214629789958",
+   "title": "Инженер автоматизированного тестирования (Junior)",
+   "slug": "715141214629789958",
+   "isActive": true,
+   "createdAt": "2026-10-09T00:00:00.000Z",
+   "updatedAt": "2026-10-09T00:00:00.000Z",
+   "publishedAt": "2026-10-09T00:00:00.000Z",
+   "salaryFrom": null,
+   "salaryTo": null,
+   "description": null,
+   "mtsId": "715141214629789958",
+   "image": null,
+   "categories": [
+    {
+     "id": null,
+     "documentId": "category-Работа в IT",
+     "title": "Работа в IT",
+     "slug": "работа-в-it",
+     "createdAt": "2026-10-19T14:28:39.726Z",
+     "updatedAt": "2026-10-19T14:28:39.726Z",
+     "publishedAt": "2026-10-19T14:28:39.726Z",
+     "icon": null,
+     "image": null,
+     "subCategories": [],
+     "parentCategory": null
+    }
+   ],
+   "currency": {
+    "id": 1,
+    "documentId": "ja2zb8jti7wg1pqd7jrk8t1f",
+    "title": "RUB",
+    "createdAt": "2026-10-19T14:28:39.726Z",
+    "updatedAt": "2026-10-19T14:28:39.726Z",
+    "publishedAt": "2026-10-19T14:28:39.726Z"
+   },
+   "region": {
+    "id": null,
+    "documentId": "region-Москва",
+    "title": "Москва",
+    "createdAt": "2026-10-19T14:28:39.726Z",
+    "updatedAt": "2026-10-19T14:28:39.726Z",
+    "publishedAt": "2026-10-19T14:28:39.726Z",
+    "addresses": []
+   },
+   "address": null,
+   "experience": {
+    "id": 20,
+    "documentId": "7c10845b3bcabd9f",
+    "title": "1-3 года",
+    "createdAt": "2026-10-19T14:28:39.726Z",
+    "updatedAt": "2026-10-19T14:28:39.726Z",
+    "publishedAt": "2026-10-19T14:28:39.726Z"
+   },
+   "FeedSettings": null,
+   "organization": {
+    "id": null,
+    "documentId": "org-ПАО МТС",
+    "title": "ПАО МТС",
+    "createdAt": "2026-10-19T14:28:39.726Z",
+    "updatedAt": "2026-10-19T14:28:39.726Z",
+    "publishedAt": "2026-10-19T14:28:39.726Z"
+   },
+   "workFormats": [
+    {
+     "id": 0,
+     "documentId": "worktype-0",
+     "title": "Удаленная работа",
+     "createdAt": "2026-10-19T14:28:39.726Z",
+     "updatedAt": "2026-10-19T14:28:39.726Z",
+     "publishedAt": "2026-10-19T14:28:39.726Z"
+    }
+   ],
+   "workTypes": [],
+   "workSchedules": [
+    {
+     "id": 0,
+     "documentId": "schedule-0",
+     "title": "Полный день",
+     "createdAt": "2026-10-19T14:28:39.726Z",
+     "updatedAt": "2026-10-19T14:28:39.726Z",
+     "publishedAt": "2026-10-19T14:28:39.726Z"
+    }
+   ],
+   "tasks": [],
+   "offers": [],
+   "requirements": [],
+   "tags": []
+  }
+ ],
+ "meta": {
+  "pagination": {
+   "page": 1,
+   "pageSize": 100,
+   "pageCount": 1,
+   "total": 2
+  }
+ }
+}

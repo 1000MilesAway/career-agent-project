@@ -13,11 +13,12 @@ boards go stale on their own schedule, like Telegram channels.
 
 Two kinds of board:
   - searchable (Sber, Yandex, VK): asked once per profile query;
-  - small feeds (Huntflow, Greenhouse, Lever, Ashby): read whole — a company
+  - feeds (Huntflow, Greenhouse, Lever, Ashby): read whole — a company
     has tens of openings, not thousands — and PreScreen does the filtering.
+    MTS is a feed too, of thousands: its robots.txt closes the search.
 
 Descriptions: Sber and the international ATS put the full text in the list,
-so it is kept at collect time. Yandex, VK and Huntflow need a second request
+so it is kept at collect time. Yandex, VK, MTS and Huntflow need a second request
 per vacancy; `describe()` makes it, and the caller runs it only over what the
 free filters kept — the same "expensive last" rule, applied to someone else's
 bandwidth.
@@ -94,7 +95,7 @@ class Collected:
 # Boards whose fetch returns the company's whole list, not the answer to a
 # query. Only for these does "not in the feed" mean "taken down": a
 # searchable board (Sber, Yandex, VK) leaves out whatever the query missed.
-FEED_KINDS = frozenset({"huntflow", "greenhouse", "lever", "ashby"})
+FEED_KINDS = frozenset({"mts", "huntflow", "greenhouse", "lever", "ashby"})
 
 
 def board_key(posting_id: str) -> str:
@@ -336,6 +337,89 @@ def describe_vk(native: str, client: httpx.Client) -> str:
     return vk_page_text(r.text)
 
 
+# --- MTS --------------------------------------------------------------------
+
+MTS_API = "https://job.mts.ru/api/v2/vacancies"
+MTS_PAGE_SIZE = 100
+# ~2 600 vacancies on 2026-10-19, 26 pages. The cap leaves room to grow; a feed
+# cut by it is truncated, not complete.
+MTS_MAX_PAGES = 40
+# Hybrid is not remote, as Yandex's "mixed".
+MTS_WORK_FORMATS = {"Удаленная работа": True, "Гибридный": False, "В офисе": False}
+LEGAL_FORM_RE = re.compile(r"^(?:ПАО|АО|ООО|ЗАО)\s+")
+
+
+def _mts_remote(raw: dict) -> bool | None:
+    known = [
+        MTS_WORK_FORMATS[f.get("title")]
+        for f in raw.get("workFormats") or []
+        if f.get("title") in MTS_WORK_FORMATS
+    ]
+    return any(known) if known else None
+
+
+def mts_posting(board: Board, raw: dict) -> Posting:
+    # `id` arrives as a float and loses its last digits; `mtsId` is the string.
+    native = raw.get("mtsId") or raw.get("slug")
+    org = (raw.get("organization") or {}).get("title") or ""
+    org = LEGAL_FORM_RE.sub("", org).strip(" \"«»")
+    currency = (raw.get("currency") or {}).get("title") or ""
+    return Posting(
+        id=_pid(board, native),
+        url=f"https://job.mts.ru/vacancy/{native}",
+        title=(raw.get("title") or "").strip(),
+        # The ecosystem's companies apart (RTK, MTS Bank, MGTS), the rest is "МТС".
+        company=org or board.name,
+        location=(raw.get("region") or {}).get("title") or "",
+        remote=_mts_remote(raw),
+        salary_from=raw.get("salaryFrom"),
+        salary_to=raw.get("salaryTo"),
+        currency=currency,
+    )
+
+
+def fetch_mts(board: Board, queries: list[str], client: httpx.Client, out: Collected) -> None:
+    """The whole feed. robots.txt closes `filters=` and `search=`, i.e. the
+    site's own search, but not plain pagination."""
+    for page in range(1, MTS_MAX_PAGES + 1):
+        r = client.get(
+            MTS_API,
+            params={"pagination[page]": page, "pagination[pageSize]": MTS_PAGE_SIZE},
+        )
+        r.raise_for_status()
+        data = r.json()
+        out.postings += [mts_posting(board, raw) for raw in data.get("data") or []]
+        pages = ((data.get("meta") or {}).get("pagination") or {}).get("pageCount") or 1
+        if page >= int(pages):
+            return
+        time.sleep(DELAY_SECONDS)
+    out.truncated.append(board.key)
+
+
+def mts_page_text(html: str) -> str:
+    """The description from a vacancy page.
+
+    Not the detail API: its `owner` carries the recruiter's name, e-mail and
+    mobile number (checked 2026-10-19), and others' personal data is not
+    collected even in transit — the Wildberries rule. The page has none.
+    """
+    node = HTMLParser(html).css_first("section.vacancy__content")
+    if node is None:
+        return ""
+    lines = [line.strip() for line in node.text(separator="\n").splitlines()]
+    # The schedule and experience badges are rendered twice (desktop, mobile).
+    kept = dict.fromkeys(line for line in lines if line and line != "Описание вакансии")
+    return "\n".join(kept)[:MAX_TEXT_CHARS]
+
+
+def describe_mts(native: str, client: httpx.Client) -> str:
+    if not native.isdigit():
+        raise ValueError(f"некорректный id МТС: {native!r}")
+    r = client.get(f"https://job.mts.ru/vacancy/{native}", headers={"Accept": "text/html"})
+    r.raise_for_status()
+    return mts_page_text(r.text)
+
+
 # --- Huntflow career sites --------------------------------------------------
 
 HUNTFLOW_COUNT = 50  # 100 answers 404
@@ -531,6 +615,7 @@ FETCHERS: dict[str, Callable[[Board, list[str], httpx.Client, Collected], None]]
     "sber": fetch_sber,
     "yandex": fetch_yandex,
     "vk": fetch_vk,
+    "mts": fetch_mts,
     "huntflow": fetch_huntflow,
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
@@ -590,7 +675,7 @@ def collect(
 
 
 def needs_description(posting_id: str) -> bool:
-    return posting_id.split("/", 1)[0] in ("yandex", "vk", "huntflow")
+    return posting_id.split("/", 1)[0] in ("yandex", "vk", "mts", "huntflow")
 
 
 def describe(
@@ -619,6 +704,8 @@ def describe(
                     text = describe_yandex(native, client)
                 elif kind == "vk":
                     text = describe_vk(native, client)
+                elif kind == "mts":
+                    text = describe_mts(native, client)
                 else:
                     board = by_slug.get((kind, slug))
                     if board is None:

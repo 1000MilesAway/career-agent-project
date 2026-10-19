@@ -1,9 +1,10 @@
 {
-  "_about": "Сайты работодателей и их ATS. Каждая запись проверена живьём 2026-09-23 вместе с robots.txt. Группа ru — российские работодатели, читаются по умолчанию; global — компании с русскоязычными командами на международных ATS, включаются отдельно. Что проверено и отвергнуто — docs/decisions.md, 2026-09-23. Поле accredited: true — у компании на Хабре есть значок ИТ-аккредитации Минцифры (сверено 2026-10-01); false не ставится никогда — отсутствие значка не доказывает отсутствия аккредитации.",
+  "_about": "Сайты работодателей и их ATS. Каждая запись проверена живьём вместе с robots.txt (2026-09-23; МТС и вторая партия Huntflow — 2026-10-19). Группа ru — российские работодатели, читаются по умолчанию; global — компании с русскоязычными командами на международных ATS, включаются отдельно. Что проверено и отвергнуто — docs/decisions.md, 2026-09-23 и 2026-10-19. Поле accredited: true — у компании на Хабре есть значок ИТ-аккредитации Минцифры (сверено 2026-10-01); false не ставится никогда — отсутствие значка не доказывает отсутствия аккредитации.",
   "boards": [
     {"kind": "sber", "name": "Сбер", "group": "ru"},
     {"kind": "yandex", "name": "Яндекс", "group": "ru"},
     {"kind": "vk", "name": "VK", "group": "ru", "accredited": true},
+    {"kind": "mts", "name": "МТС", "group": "ru"},
     {"kind": "huntflow", "name": "Flowwow", "slug": "flowwow", "group": "ru"},
     {"kind": "huntflow", "name": "iiko", "slug": "iiko", "group": "ru"},
     {"kind": "huntflow", "name": "Emex", "slug": "emex", "group": "ru"},
@@ -13,6 +14,25 @@
     {"kind": "huntflow", "name": "ЭкоНива", "slug": "ekonivahr", "group": "ru"},
     {"kind": "huntflow", "name": "Октябрьское", "slug": "oktyabrskoeteam", "group": "ru"},
     {"kind": "huntflow", "name": "Lime", "slug": "limehr", "group": "ru"},
+    {"kind": "huntflow", "name": "Сбер2В", "slug": "sber2b", "group": "ru"},
+    {"kind": "huntflow", "name": "Holyweb", "slug": "holyweb", "group": "ru"},
+    {"kind": "huntflow", "name": "MobileUp", "slug": "mobileup", "group": "ru"},
+    {"kind": "huntflow", "name": "Шамса-Холдинг", "slug": "shamsa-kholding", "group": "ru"},
+    {"kind": "huntflow", "name": "MST", "slug": "mst", "group": "ru"},
+    {"kind": "huntflow", "name": "Современные горные технологии", "slug": "sgt", "group": "ru"},
+    {"kind": "huntflow", "name": "Tripster", "slug": "tripster", "group": "ru"},
+    {"kind": "huntflow", "name": "Ideco", "slug": "ideco", "group": "ru"},
+    {"kind": "huntflow", "name": "Айтулабс", "slug": "itoolabs", "group": "ru"},
+    {"kind": "huntflow", "name": "Литрес", "slug": "litres", "group": "ru"},
+    {"kind": "huntflow", "name": "Createx", "slug": "createx", "group": "ru"},
+    {"kind": "huntflow", "name": "Дабл Ап", "slug": "2up", "group": "ru"},
+    {"kind": "huntflow", "name": "Digital Spirit", "slug": "digitalspirit", "group": "ru"},
+    {"kind": "huntflow", "name": "KTS", "slug": "ktshiring", "group": "ru"},
+    {"kind": "huntflow", "name": "Napoleon IT", "slug": "napoleonit", "group": "ru"},
+    {"kind": "huntflow", "name": "Достависта", "slug": "dvcareer", "group": "ru"},
+    {"kind": "huntflow", "name": "EQWILE", "slug": "eqwile", "group": "ru"},
+    {"kind": "huntflow", "name": "Циан", "slug": "cian", "group": "ru"},
+    {"kind": "huntflow", "name": "TravelLine", "slug": "travelline", "group": "ru"},
     {"kind": "greenhouse", "name": "Nebius", "slug": "nebius", "group": "global"},
     {"kind": "greenhouse", "name": "JetBrains", "slug": "jetbrains", "group": "global"},
     {"kind": "greenhouse", "name": "Wrike", "slug": "wrike", "group": "global"},
@@ -26,9 +46,10 @@
     {"kind": "lever", "name": "Xsolla", "slug": "xsolla", "group": "global"}
   ],
   "rejected": {
-    "antibot": ["Ozon", "Альфа-Банк", "Т-Банк", "Exness", "Revolut"],
-    "robots_closes_api": ["Магнит", "Lamoda", "Kaspersky", "2ГИС (любой URL с параметрами)"],
-    "personal_data_in_api": ["Wildberries/RWB — деталь вакансии отдаёт ФИО, почту и телефон рекрутера"],
-    "no_json": ["Positive Technologies", "Ростелеком", "Avito (JSON несёт HTML-фрагмент)"]
+    "antibot": ["Ozon", "Альфа-Банк", "Т-Банк", "Exness", "Revolut", "Билайн (job.beeline.ru: 403 даже на robots.txt)"],
+    "robots_closes_api": ["Магнит", "Lamoda", "Kaspersky", "2ГИС (любой URL с параметрами)", "Работа.ру (api.rabota.ru: Disallow: /)"],
+    "personal_data_in_api": ["Wildberries/RWB — деталь вакансии отдаёт ФИО, почту и телефон рекрутера", "МТС — деталь API (owner) отдаёт ФИО, почту и мобильный рекрутера; описание читается со страницы"],
+    "no_json": ["Positive Technologies", "Ростелеком", "Avito (JSON несёт HTML-фрагмент; на странице списка 47 из 104, остальное — через закрытый PAGEN)"],
+    "no_feed": ["СберПодбор — CRM рекрутера, публичной ленты по компании нет", "Huntflow со «_» в slug (outlines_tech): сертификат *.huntflow.io не подходит к имени"]
   }
 }
