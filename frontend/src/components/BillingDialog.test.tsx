@@ -61,8 +61,22 @@ describe('BillingDialog', () => {
     expect(screen.getByText('Ваш тариф')).toBeTruthy()
   })
 
-  it('кнопка ведёт на страницу оплаты', async () => {
+  it('оплата открывается в новой вкладке', async () => {
+    const tab = { opener: window as unknown, location: { href: '' }, close: vi.fn() }
+    const open = vi.fn(() => tab)
+    vi.stubGlobal('open', open)
+    dialog()
+    fireEvent.click(screen.getByRole('button', { name: 'Оплатить 400 ₽', hidden: true }))
+    // В самом клике, до запроса: после await браузер блокирует её как попап.
+    expect(open).toHaveBeenCalledWith('', '_blank')
+    await waitFor(() => expect(tab.location.href).toBe('https://pay.platega.io/?id=1'))
+    expect(tab.opener).toBeNull()
+    vi.unstubAllGlobals()
+  })
+
+  it('вкладку заблокировали — оплата в этой же', async () => {
     const assign = vi.fn()
+    vi.stubGlobal('open', vi.fn(() => null))
     vi.stubGlobal('location', { ...window.location, assign })
     dialog()
     fireEvent.click(screen.getByRole('button', { name: 'Оплатить 400 ₽', hidden: true }))

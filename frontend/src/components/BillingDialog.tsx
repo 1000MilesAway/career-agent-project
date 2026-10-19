@@ -2,13 +2,14 @@
  *
  * A dialog from the user menu rather than a page: it is opened to pay or to
  * see until when Pro runs, and neither is worth a place among the sections
- * people work in. Paying happens on Platega's page; the browser comes back to
- * /search?payment=…, and `usePaymentReturn` reopens this dialog there.
+ * people work in. Paying happens on Platega's page in a new tab, so the cabinet
+ * stays where it was; that tab comes back to /search?payment=…, and
+ * `usePaymentReturn` reopens this dialog there.
  *
  * <dialog> with the account dialog's frame (`account.css`).
  */
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useTransition } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useSWRConfig } from 'swr'
 import {
@@ -111,7 +112,6 @@ function Plans({ billing }: { billing: Billing }) {
 
 function PayButton({ billing }: { billing: Billing }) {
   const [isPending, startTransition] = useTransition()
-  const [leaving, setLeaving] = useState(false)
   const toast = useToast()
 
   if (!billing.enabled) {
@@ -128,27 +128,27 @@ function PayButton({ billing }: { billing: Billing }) {
       : `Оплатить ${billing.price_rub} ₽`
 
   function onPay() {
+    // Opened in the click itself, before the checkout request: a window.open
+    // after an await has lost the user gesture and is blocked as a popup. The
+    // tab gets Platega's address once it arrives; a blocked tab falls back to
+    // paying in this one.
+    const tab = window.open('', '_blank')
+    if (tab) tab.opener = null
     startTransition(async () => {
       try {
         const { url } = await startCheckout()
-        // Kept disabled through the navigation: a second click would only
-        // reopen the same page, but it reads as "did it work?".
-        setLeaving(true)
-        window.location.assign(url)
+        if (tab) tab.location.href = url
+        else window.location.assign(url)
       } catch (e) {
+        tab?.close()
         toast.error(e)
       }
     })
   }
 
   return (
-    <button
-      type="button"
-      className="btn billing__pay"
-      onClick={onPay}
-      disabled={isPending || leaving}
-    >
-      {isPending || leaving ? 'Открываю оплату…' : label}
+    <button type="button" className="btn billing__pay" onClick={onPay} disabled={isPending}>
+      {isPending ? 'Открываю оплату…' : label}
     </button>
   )
 }
