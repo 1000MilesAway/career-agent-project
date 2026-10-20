@@ -72,7 +72,7 @@ def test_only_vacancies_are_kept_once_each(provider):
         "private_group/7",
     ]
     qa = posts[1]
-    assert qa.title == "QA Engineer (Middle), удалённо"
+    assert qa.title == "QA Engineer (Middle)"
     assert qa.remote is True
     assert (qa.salary_from, qa.salary_to, qa.salary_currency) == (150_000, 200_000, "RUB")
     assert qa.url == "https://t.me/hr_breakfast_emergency/104410"

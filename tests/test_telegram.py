@@ -171,6 +171,11 @@ class TestTitleLine:
          "CPO (Chief Product Officer) at AskCraft"),
         ("✦ IT / SOLUTION ARCHITECT (CRYPTO) ✦ ║ ║ Infrastructure amp; Platform",
          "IT / SOLUTION ARCHITECT (CRYPTO) Infrastructure & Platform"),
+        # A summary label and the offer tail on the headline line.
+        ("tl;dr: founding full-stack engineer (early hire), $100k–130k + equity, remote",
+         "Founding full-stack engineer (early hire)"),
+        ("TL;DR — Senior Go Developer, remote, 300k", "Senior Go Developer"),
+        ("Backend-разработчик, 250 000 ₽, удалённо", "Backend-разработчик"),
     ])
     def test_chat_prose_gives_the_role(self, text, title):
         """Chat messages (source "telethon") are prose, not channel layout."""

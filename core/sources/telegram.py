@@ -348,6 +348,16 @@ _FILLER_RE = re.compile(
 _GRADE_ONLY_RE = re.compile(
     r"^(?:intern|junior|middle|senior|lead|стажер|стажёр|джун|мидл|сеньор)\+?$", re.IGNORECASE
 )
+# A summary label before the headline: "tl;dr: founding engineer, $100k…".
+_SUMMARY_RE = re.compile(r"^(?:tl\s*;?\s*dr|кратко)\s*[:\-–—]\s*", re.IGNORECASE)
+# The offer after the role on one line: ", $100k–130k + equity, remote". A
+# comma then money or a work format; "Торговый представитель, г. Лесозаводск"
+# keeps its town.
+_OFFER_TAIL_RE = re.compile(
+    r",\s*(?:[$€£₽]\s*\d|\d[\d\s.,]*\s*(?:k|к|тыс|[$€£₽])"
+    r"|(?:remote|удал[её]нн?о|hybrid|гибрид|full[\s-]time|part[\s-]time|on[\s-]?site)\b).*$",
+    re.IGNORECASE,
+)
 TITLE_MAX = 90
 
 
@@ -390,6 +400,8 @@ def _declines(role: str) -> bool:
 
 def _title_from_line(line: str) -> str:
     line = _GREETING_RE.sub("", line, count=1)
+    summarized = bool(_SUMMARY_RE.match(line))
+    line = _SUMMARY_RE.sub("", line, count=1)
     line = _LABEL_RE.sub("", line, count=1)
     line = _LABEL_WORD_RE.sub("", line, count=1)
     line = _VERB_FILLER_RE.sub(r"\1 ", line, count=1)
@@ -400,6 +412,7 @@ def _title_from_line(line: str) -> str:
     # The first sentence: "Senior Python Developer для CVAT.ai! Удалённо…".
     # "г. Лесозаводск" is an abbreviation, not a sentence end.
     line = re.split(r"[!?]|(?<!\bг)(?<!\bул)\.\s", line, maxsplit=1)[0]
+    line = _OFFER_TAIL_RE.sub("", line)
     line = _FILLER_RE.sub("", line)
     line = _LINK_TEXT_RE.sub("", line)
     line = line.strip(" -–—:|,·•*")
@@ -408,7 +421,7 @@ def _title_from_line(line: str) -> str:
         line = line[:-1].rstrip()
     # "ищу специалиста…" cut to "специалиста…" starts lower-case; a title as
     # written ("iOS Developer") keeps its own case.
-    if cut and line[:1].islower():
+    if (cut or summarized) and line[:1].islower():
         line = line[0].upper() + line[1:]
     return _shorten(line)
 
