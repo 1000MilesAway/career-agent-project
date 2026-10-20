@@ -22,6 +22,7 @@ import { Drawer } from './drawer'
 import {
   CoverLetterView,
   InterviewPrepView,
+  type LetterDelivery,
   ReportView,
   TailoredResumeView,
 } from './report'
@@ -41,7 +42,13 @@ interface PanelState {
   title: string
   /** null while the paid call is in flight. */
   content: PanelContent | null
+  /** A vacancy from a Telegram post is answered in a chat more often than on
+   *  a board, so its letter opens on the message. */
+  prefer?: LetterDelivery
 }
+
+const preferFor = (vacancy: FoundVacancy): LetterDelivery =>
+  vacancy.source === 'telegram' || vacancy.source === 'telethon' ? 'message' : 'letter'
 
 export function useDocumentPanel() {
   const { mutate } = useSWRConfig()
@@ -99,6 +106,7 @@ export function useDocumentPanel() {
         setPanel({
           title: `${STEP_TITLES[step]} — ${vacancy.title}`,
           content: { type: step, content: stored },
+          prefer: preferFor(vacancy),
         })
         return
       }
@@ -114,6 +122,7 @@ export function useDocumentPanel() {
         setPanel({
           title: `${STEP_TITLES[step]} — ${vacancy.title}`,
           content: { type: step, content: data.content },
+          prefer: preferFor(vacancy),
         })
         if (!data.cached) await mutate(STATE_KEY)
       } catch (e) {
@@ -152,7 +161,7 @@ function PanelBody({ panel }: { panel: PanelState }) {
     <>
       {content.type === 'report' ? <ReportView report={content.report} /> : null}
       {content.type === 'letter' ? (
-        <CoverLetterView value={content.content as CoverLetter} />
+        <CoverLetterView value={content.content as CoverLetter} prefer={panel.prefer} />
       ) : null}
       {content.type === 'tailor' ? (
         <TailoredResumeView value={content.content as TailoredResume} />

@@ -159,17 +159,36 @@ export function ReportView({ report }: { report: Report }) {
   )
 }
 
+export type LetterDelivery = 'letter' | 'message'
+
+const DELIVERIES: { key: LetterDelivery; label: string }[] = [
+  { key: 'letter', label: 'Отклик на сайте' },
+  { key: 'message', label: 'Сообщение рекрутеру' },
+]
+
 /** The letter is set as a letter — prose on a page, not monospace in a box —
  *  because what the user checks is how it reads. It leaves the cabinet by
- *  copy and paste into a job board, so copying is one click. */
-export function CoverLetterView({ value }: { value: CoverLetter }) {
+ *  copy and paste, so copying is one click. Two versions: on a board the
+ *  vacancy sits next to the letter, in a messenger the text must name it;
+ *  `prefer` opens the one the vacancy's source makes likelier. */
+export function CoverLetterView({
+  value,
+  prefer = 'letter',
+}: {
+  value: CoverLetter
+  prefer?: LetterDelivery
+}) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [picked, setPicked] = useState<LetterDelivery>(prefer)
   const letterRef = useRef<HTMLDivElement>(null)
+  // A letter bought before the message existed has only one version.
+  const delivery = value.message ? picked : 'letter'
+  const text = delivery === 'message' ? (value.message ?? value.letter) : value.letter
 
   async function copy() {
     let ok: boolean
     try {
-      await navigator.clipboard.writeText(value.letter)
+      await navigator.clipboard.writeText(text)
       ok = true
     } catch {
       // The async API rejects without document focus, on plain http and in
@@ -186,6 +205,21 @@ export function CoverLetterView({ value }: { value: CoverLetter }) {
 
   return (
     <div className="report">
+      {value.message ? (
+        <div className="seg" role="group" aria-label="Куда отправить">
+          {DELIVERIES.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className="seg__item"
+              aria-pressed={delivery === option.key}
+              onClick={() => setPicked(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="row" style={{ justifyContent: 'space-between' }}>
         {value.angles?.length ? (
           <div className="chips">
@@ -207,7 +241,7 @@ export function CoverLetterView({ value }: { value: CoverLetter }) {
         </button>
       </div>
       <div className="letter" ref={letterRef}>
-        {value.letter}
+        {text}
       </div>
     </div>
   )

@@ -48,7 +48,11 @@ export interface Report {
 }
 
 export interface CoverLetter {
+  /** Attached to an application on a board, where the vacancy is on screen. */
   letter: string
+  /** First message to a recruiter in a messenger: names the vacancy itself.
+   *  Absent on letters bought before 2026-10-20. */
+  message?: string
   angles?: string[]
 }
 

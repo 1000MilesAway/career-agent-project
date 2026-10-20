@@ -61,3 +61,33 @@ describe('CoverLetterView copy', () => {
     expect(window.getSelection()?.toString()).toBe('Второе письмо')
   })
 })
+
+describe('CoverLetterView deliveries', () => {
+  const both = { letter: 'Письмо к отклику', message: 'Пишу по вакансии', angles: [] }
+
+  it('opens the preferred version and copies what is on screen', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    stubClipboard(writeText)
+    render(<CoverLetterView value={both} prefer="message" />)
+
+    expect(screen.getByText('Пишу по вакансии')).toBeTruthy()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Скопировать' })))
+    expect(writeText).toHaveBeenCalledWith('Пишу по вакансии')
+  })
+
+  it('switches to the board version', () => {
+    render(<CoverLetterView value={both} prefer="message" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отклик на сайте' }))
+
+    expect(screen.getByText('Письмо к отклику')).toBeTruthy()
+    expect(screen.queryByText('Пишу по вакансии')).toBeNull()
+  })
+
+  it('shows no switch on a letter bought before messages existed', () => {
+    render(<CoverLetterView value={{ letter: 'Старое письмо', angles: [] }} prefer="message" />)
+
+    expect(screen.getByText('Старое письмо')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Сообщение рекрутеру' })).toBeNull()
+  })
+})

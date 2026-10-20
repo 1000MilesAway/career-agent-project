@@ -153,10 +153,23 @@ class TestCoverLetter:
 
     def test_letter_avoids_the_banned_cliches(self):
         """The prompt names these outright."""
-        letter = load("cover_letter")["letter"].lower()
-        for cliche in ("с большим интересом", "динамично развивающ",
-                       "командный игрок", "хотел бы выразить"):
-            assert cliche not in letter, cliche
+        c = load("cover_letter")
+        for text in (c["letter"].lower(), c["message"].lower()):
+            for cliche in ("с большим интересом", "динамично развивающ",
+                           "командный игрок", "хотел бы выразить"):
+                assert cliche not in text, cliche
+
+    def test_message_fits_a_chat(self):
+        assert len(load("cover_letter")["message"]) <= 700
+
+    def test_message_opens_with_the_vacancy(self):
+        """No vacancy next to a message: its first sentence has to name it."""
+        first = load("cover_letter")["message"].split("\n")[0].lower()
+        assert "ваканси" in first
+
+    def test_prompt_asks_for_both_deliveries(self):
+        for key in ('"letter"', '"message"'):
+            assert key in prompts.COVER_LETTER, key
 
 
 class TestInterviewPrep:
