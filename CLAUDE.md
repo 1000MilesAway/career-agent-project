@@ -64,7 +64,8 @@ open-source [career-ops](https://github.com/career-ops-hq/career-ops) (дале�
   лишь проценты лимитов и время сброса.
 - Списки каналов, стоп-слов, запросов, работодателей — **данные**
   (`data/sources/`), а не код.
-- LLM — DeepSeek через OpenAI-совместимый API, модель задаётся конфигом.
+- LLM — DeepSeek через OpenAI-совместимый API, модель задаётся конфигом;
+  отдельные шаги (сейчас письма → Haiku) идут через OpenRouter по `LLM_STEP_MODELS`.
 
 ## Команды
 

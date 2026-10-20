@@ -23,6 +23,37 @@ load_dotenv(ROOT / ".env")
 
 BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+
+def _step_models(spec: str) -> dict[str, str]:
+    """`step=model,step=model` → mapping. An empty spec routes nothing."""
+    pairs = (item.split("=", 1) for item in spec.split(",") if "=" in item)
+    return {step.strip(): model.strip() for step, model in pairs if model.strip()}
+
+
+# Steps served by a model other than MODEL, through OpenRouter. An OpenRouter id
+# always names its vendor ("anthropic/…") and a DeepSeek name never does, so the
+# slash is what picks the provider. Cover letters went to Haiku on 2026-10-20: a
+# bake-off on real postings put it at DeepSeek's price once the peak surcharge
+# is counted, and the letter is the one text a recruiter reads verbatim.
+STEP_MODELS = _step_models(os.getenv("LLM_STEP_MODELS", "cover_letter=anthropic/claude-haiku-5.5"))
+
+
+def _is_openrouter(model: str) -> bool:
+    return "/" in model
+
+
+def _parse_json(text: str) -> Any:
+    """JSON mode is not enforced for every vendor behind OpenRouter: Haiku
+    fenced 8 answers of 10 in ```json, which is valid JSON one strip away."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        return json.loads(text[start : end + 1])
 
 # Price per 1M tokens, USD. Off-peak; peak is x2 (01:00-04:00, 06:00-10:00 UTC, Mon-Fri).
 # Cache hits on input are ~50x cheaper, which is why the system prompt goes first.
@@ -117,6 +148,24 @@ def _price(model: str, u: Usage) -> float:
     return raw * u.peak
 
 
+def _cost(u: Usage, usage: Any) -> None:
+    """Fill tokens and money from a reply's usage block, for either provider."""
+    u.output = usage.completion_tokens or 0
+    details = getattr(usage, "completion_tokens_details", None)
+    u.reasoning = (getattr(details, "reasoning_tokens", 0) or 0) if details else 0
+    if _is_openrouter(u.model):
+        # OpenRouter reports cached input the OpenAI way and the price itself,
+        # which beats keeping a price table for every vendor behind it.
+        prompt = getattr(usage, "prompt_tokens_details", None)
+        u.cache_hit = (getattr(prompt, "cached_tokens", 0) or 0) if prompt else 0
+        u.cache_miss = (usage.prompt_tokens or 0) - u.cache_hit
+        u.usd = float(getattr(usage, "cost", 0) or 0)
+        return
+    u.cache_hit = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
+    u.cache_miss = getattr(usage, "prompt_cache_miss_tokens", 0) or usage.prompt_tokens
+    u.usd = _price(u.model, u)
+
+
 class LLM:
     """Wrapper kept deliberately thin: swapping the model is a config change."""
 
@@ -127,6 +176,25 @@ class LLM:
         self.model = model or MODEL
         self.client = OpenAI(api_key=key, base_url=BASE_URL, timeout=300.0)
         self.ledger = ledger if ledger is not None else Ledger()
+        # A model named by the caller means "this model for everything", and
+        # without the OpenRouter key every step stays on DeepSeek rather than
+        # failing: the key reaching the server must not be a deploy step.
+        or_key = os.getenv("OPENROUTER_API_KEY")
+        self.step_models = dict(STEP_MODELS) if or_key and model is None else {}
+        self.openrouter = (
+            OpenAI(api_key=or_key, base_url=OPENROUTER_BASE_URL, timeout=300.0)
+            if self.step_models
+            else None
+        )
+
+    def _route(self, step: str) -> tuple[Any, str]:
+        """The client and model that serve this step."""
+        model = self.step_models.get(step, self.model)
+        if not _is_openrouter(model):
+            return self.client, model
+        if self.openrouter is None:
+            return self.client, self.model
+        return self.openrouter, model
 
     def complete_json(
         self,
@@ -154,18 +222,30 @@ class LLM:
             {"role": "user", "content": content},
         ]
 
+        client, model = self._route(step)
+        if _is_openrouter(model):
+            # `usage.include` makes OpenRouter return what the call cost.
+            extra: dict = {"usage": {"include": True}}
+            if not thinking:
+                extra["reasoning"] = {"enabled": False}
+            kwargs: dict = {"extra_body": extra}
+        else:
+            kwargs = {} if thinking else {"extra_body": {"thinking": {"type": "disabled"}}}
+
         last_err: Exception | None = None
         for attempt in range(retries + 1):
-            u = Usage(step=step, model=self.model, peak=_peak_multiplier())
+            # Only DeepSeek has a peak surcharge; OpenRouter bills one price.
+            peak = 1.0 if _is_openrouter(model) else _peak_multiplier()
+            u = Usage(step=step, model=model, peak=peak)
             started = time.monotonic()
             try:
-                r = self.client.chat.completions.create(
-                    model=self.model,
+                r = client.chat.completions.create(
+                    model=model,
                     messages=messages,
                     response_format={"type": "json_object"},
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    **({} if thinking else {"extra_body": {"thinking": {"type": "disabled"}}}),
+                    **kwargs,
                 )
             except Exception as e:  # network, rate limit, auth
                 u.seconds = time.monotonic() - started
@@ -178,17 +258,11 @@ class LLM:
                 raise
 
             u.seconds = time.monotonic() - started
-            usage = r.usage
-            u.cache_hit = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
-            u.cache_miss = getattr(usage, "prompt_cache_miss_tokens", 0) or usage.prompt_tokens
-            u.output = usage.completion_tokens or 0
-            details = getattr(usage, "completion_tokens_details", None)
-            u.reasoning = (getattr(details, "reasoning_tokens", 0) or 0) if details else 0
-            u.usd = _price(self.model, u)
+            _cost(u, r.usage)
 
             text = r.choices[0].message.content or ""
             try:
-                parsed = json.loads(text)
+                parsed = _parse_json(text)
                 self.ledger.add(u)
                 return parsed
             except json.JSONDecodeError as e:
@@ -207,13 +281,7 @@ class LLM:
 
     def _record(self, u: Usage, response: Any) -> None:
         """Cost one reply. Same accounting as complete_json, one copy."""
-        usage = response.usage
-        u.cache_hit = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
-        u.cache_miss = getattr(usage, "prompt_cache_miss_tokens", 0) or usage.prompt_tokens
-        u.output = usage.completion_tokens or 0
-        details = getattr(usage, "completion_tokens_details", None)
-        u.reasoning = (getattr(details, "reasoning_tokens", 0) or 0) if details else 0
-        u.usd = _price(self.model, u)
+        _cost(u, response.usage)
         self.ledger.add(u)
 
     def complete_with_tools(

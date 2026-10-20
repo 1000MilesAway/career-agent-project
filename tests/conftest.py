@@ -32,6 +32,10 @@ from datetime import UTC, datetime
 # by every API test buries the ones worth reading.
 os.environ.setdefault("SECRET_KEY", "test-only-not-a-real-key-0123456789abcdef")
 os.environ.setdefault("DEEPSEEK_API_KEY", "test-only-no-calls-are-made")
+# The opposite on purpose: with a developer's OpenRouter key in .env, letters
+# would route to a real client the fakes do not replace. An empty value also
+# keeps load_dotenv from filling it in. Routing tests set the key themselves.
+os.environ["OPENROUTER_API_KEY"] = ""
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
