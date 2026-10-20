@@ -349,7 +349,10 @@ _GRADE_ONLY_RE = re.compile(
     r"^(?:intern|junior|middle|senior|lead|стажер|стажёр|джун|мидл|сеньор)\+?$", re.IGNORECASE
 )
 # A summary label before the headline: "tl;dr: founding engineer, $100k…".
-_SUMMARY_RE = re.compile(r"^(?:tl\s*;?\s*dr|кратко)\s*[:\-–—]\s*", re.IGNORECASE)
+# "tl;dr computer vision engineer" goes without a colon too; "Кратко о компании" would not.
+_SUMMARY_RE = re.compile(
+    r"^(?:tl\s*;?\s*dr(?:\s*[:\-–—]\s*|\s+)|кратко\s*[:\-–—]\s*)", re.IGNORECASE
+)
 # The offer after the role on one line: ", $100k–130k + equity, remote". A
 # comma then money or a work format; "Торговый представитель, г. Лесозаводск"
 # keeps its town.

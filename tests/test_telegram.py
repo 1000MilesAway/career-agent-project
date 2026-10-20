@@ -175,6 +175,8 @@ class TestTitleLine:
         ("tl;dr: founding full-stack engineer (early hire), $100k–130k + equity, remote",
          "Founding full-stack engineer (early hire)"),
         ("TL;DR — Senior Go Developer, remote, 300k", "Senior Go Developer"),
+        ("tl;dr computer vision engineer, full-time, $3-6k per month, remote or Moscow",
+         "Computer vision engineer"),
         ("Backend-разработчик, 250 000 ₽, удалённо", "Backend-разработчик"),
     ])
     def test_chat_prose_gives_the_role(self, text, title):
