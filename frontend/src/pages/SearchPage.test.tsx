@@ -346,6 +346,74 @@ describe('SearchPage', () => {
     mocks.found = []
   })
 
+  it('снятый источник не читается: выбор уходит в запрос поиска', async () => {
+    localStorage.clear()
+    mocks.scanJob = null
+    mocks.startScan.mockResolvedValue(job('queued'))
+    render(<SearchPage />)
+
+    // Telegram — один выбор на два читателя: каналы и чаты.
+    fireEvent.click(screen.getByLabelText('Telegram'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Найти вакансии' }))
+    })
+    expect(mocks.startScan.mock.calls[0][0].sources).toEqual([
+      'hh',
+      'habr',
+      'geekjob',
+      'company',
+    ])
+    localStorage.clear()
+  })
+
+  it('категория целиком: «скрыть все» снимает доски, «выбрать все» возвращает', () => {
+    localStorage.clear()
+    render(<SearchPage />)
+    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement
+
+    fireEvent.click(screen.getByRole('button', { name: 'скрыть все' }))
+    const boards = [box('hh.ru').checked, box('Хабр Карьера').checked, box('geekjob').checked]
+    expect(boards).toEqual([false, false, false])
+    // The other categories are their own business.
+    expect(box('Сайты компаний').checked).toBe(true)
+    expect(box('Telegram').checked).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'выбрать все' }))
+    expect(box('hh.ru').checked).toBe(true)
+    localStorage.clear()
+  })
+
+  it('строки снятого источника выпадают из списка, но их видно и можно вернуть', () => {
+    localStorage.clear()
+    mocks.found = [row('a'), row('tg', { source: 'telegram', title: 'Вакансия из телеги' })]
+    render(<SearchPage />)
+    expect(screen.getByText('Вакансия из телеги')).toBeTruthy()
+
+    fireEvent.click(screen.getByLabelText('Telegram'))
+    expect(screen.queryByText('Вакансия из телеги')).toBeNull()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /показать другие источники \(1\)/ }),
+    )
+    expect(screen.getByText('Вакансия из телеги')).toBeTruthy()
+    mocks.found = []
+    localStorage.clear()
+  })
+
+  it('без единого источника поиск не запускается', () => {
+    localStorage.clear()
+    render(<SearchPage />)
+
+    fireEvent.click(screen.getByLabelText('Telegram'))
+    fireEvent.click(screen.getByLabelText('Сайты компаний'))
+    fireEvent.click(screen.getByRole('button', { name: 'скрыть все' }))
+
+    const button = screen.getByRole('button', { name: 'Найти вакансии' })
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/Искать негде/)).toBeTruthy()
+    localStorage.clear()
+  })
+
   it('упавший поиск назван с причиной, а не выглядит пустым', () => {
     mocks.scanJob = job('failed', { error: 'профиль поиска пуст' })
     render(<SearchPage />)

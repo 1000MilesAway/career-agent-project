@@ -275,3 +275,85 @@ class TestThePoolSavesRequests:
         result = await scan.collect_all(session, user.id, PROFILE, defer_stale=True)
         assert sorted(calls) == ["company", "geekjob", "habr", "telegram"]
         assert result["deferred"] == 0
+
+
+class TestTheFormChoosesSources:
+    """The source picker on the search form: what "all" means now.
+
+    Pure functions: which sources a scan of everything reads, and in what
+    order. The order decides which copy of a duplicated vacancy the user keeps
+    — the richest first (services/scan.py, `collect`).
+    """
+
+    def test_they_are_read_in_the_write_order_not_the_forms(self):
+        body = scan.ScanRequest(source="all", sources=["telegram", "company", "habr"])
+        assert scan.chosen_sources(body) == ("habr", "company", "telegram")
+
+    def test_no_choice_means_every_configured_source(self):
+        """An API caller that predates the picker is not narrowed by it."""
+        assert scan.chosen_sources(scan.ScanRequest(source="all")) is None
+
+    def test_everything_switched_off_is_refused_with_a_sentence(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="ни один источник"):
+            scan.chosen_sources(scan.ScanRequest(source="all", sources=[]))
+
+
+@requires_db
+class TestThePickReachesTheScan:
+    async def test_only_the_chosen_sources_are_read(
+        self, client, auth_headers, session, user, monkeypatch
+    ):
+        session.add(
+            Resume(user_id=user.id, filename="cv.md", raw_text="т", profile={},
+                   search_profile=PROFILE, is_active=True)
+        )
+        await session.commit()
+        calls: list[str] = []
+        fakes(monkeypatch, calls)
+
+        r = await client.post(
+            "/api/vacancies/scan", headers=auth_headers,
+            json={"source": "all", "sources": ["habr"]},
+        )
+        assert r.status_code == 200, r.text
+        assert set(r.json()["sources"]) == {"habr"}
+        assert calls == ["habr"]
+
+    async def test_a_chosen_source_that_is_not_configured_is_named(
+        self, client, auth_headers, session, user, monkeypatch
+    ):
+        """Ticked hh without a provider: one error line, the rest still read."""
+        session.add(
+            Resume(user_id=user.id, filename="cv.md", raw_text="т", profile={},
+                   search_profile=PROFILE, is_active=True)
+        )
+        await session.commit()
+        fakes(monkeypatch)
+
+        r = await client.post(
+            "/api/vacancies/scan", headers=auth_headers,
+            json={"source": "all", "sources": ["habr", "hh"]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()["sources"]
+        assert "провайдер" in body["hh"]["error"]
+        assert body["habr"]["collected"] == 0
+
+    async def test_an_empty_pick_answers_400_not_an_empty_scan(
+        self, client, auth_headers, session, user, monkeypatch
+    ):
+        session.add(
+            Resume(user_id=user.id, filename="cv.md", raw_text="т", profile={},
+                   search_profile=PROFILE, is_active=True)
+        )
+        await session.commit()
+        fakes(monkeypatch)
+
+        r = await client.post(
+            "/api/vacancies/scan", headers=auth_headers,
+            json={"source": "all", "sources": []},
+        )
+        assert r.status_code == 400
+        assert "источник" in r.json()["detail"]

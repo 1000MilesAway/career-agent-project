@@ -2,6 +2,9 @@
 .salary__head {
   display: grid;
   gap: 8px;
+  /* minmax(0, …): the implicit auto track grows to its child's min-content
+     and would take the field past the card's padding. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .salary__label {
@@ -135,13 +138,28 @@
   box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
+/* Equal columns, one per stop: as a flex row with space-between the six
+   labels could not shrink, and their min-content (262px) pushed the field out
+   of the 259px facet it sits in — the input hung over the card's edge. Now a
+   narrow column splits the width between the labels instead. */
 .salary__ticks {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   margin-top: 4px;
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* The ends of the scale belong under the ends of the track. */
+.salary__ticks > :first-child {
+  text-align: left;
+}
+
+.salary__ticks > :last-child {
+  text-align: right;
 }
 
 .salary__any {

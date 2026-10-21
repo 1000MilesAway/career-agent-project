@@ -10,6 +10,7 @@ import { bucketOf } from '../components/VacancyRow'
 import {
   DEFAULT_CONDITIONS,
   DEFAULT_FILTERS,
+  type SearchFilters,
   cityMatches,
   conditionMiss,
   splitCities,
@@ -48,9 +49,12 @@ describe('searchFilters', () => {
         // '' is a choice too — "any city" — and must not come back as null.
         city: '',
         includeGlobal: true,
+        // Two of six: the choice must come back as it was stored, not as
+        // "everything" because a missing key used to mean that.
+        sources: ['hh', 'telegram'],
       },
-    } as const
-    saveFilters({ ...chosen, buckets: [...chosen.buckets] })
+    } satisfies SearchFilters
+    saveFilters(chosen)
     expect(loadFilters()).toEqual(chosen)
   })
 

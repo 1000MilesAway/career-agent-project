@@ -846,12 +846,13 @@ async def collect_all(
     company_groups: tuple[str, ...] = ("ru",),
     telegram_groups: tuple[str, ...] = ("core",),
     defer_stale: bool = False,
+    sources: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Every source in one go. The only error raised is the missing profile,
     which would fail every source identically."""
     _profile(search_profile, "все вакансии")
     return await collect(
-        session, user_id, search_profile, active_sources(),
+        session, user_id, search_profile, sources or active_sources(),
         Options(
             ask_habr_for_salary=ask_habr_for_salary,
             company_groups=company_groups,
@@ -1013,9 +1014,16 @@ async def explain_screened(
 
 
 class ScanRequest(BaseModel):
-    # "all" is what the cabinet sends: one button, every source. The single
-    # sources stay for the API and for debugging one board.
+    # "all" is what the cabinet sends: one button, the sources the form has
+    # ticked. The single sources stay for the API and for debugging one board.
     source: Literal["all", "habr", "hh", "telegram", "geekjob", "company", "telethon"] = "habr"
+    # Which sources "all" means. None — every configured one, which is what
+    # an API caller that predates the form's source picker asked for. Read
+    # only with source="all": a source named outright is a request for that
+    # board, and the form's choice must not quietly narrow it to nothing.
+    sources: list[
+        Literal["habr", "hh", "telegram", "geekjob", "company", "telethon"]
+    ] | None = None
     # Depth override for a single source. None = the source's own default
     # (services/scan.py). Not shown in the cabinet: a "page" meant something
     # different per source and told the user nothing.
@@ -1107,6 +1115,7 @@ async def run_scan(
             company_groups=company_groups,
             telegram_groups=tuple(body.groups),
             defer_stale=defer_stale,
+            sources=chosen_sources(body),
         )
     if body.source == "habr":
         return await collect_habr(
@@ -1131,6 +1140,27 @@ async def run_scan(
         channels=body.channels, pages=body.pages or TELEGRAM_PAGES,
         groups=tuple(body.groups),
     )
+
+
+def chosen_sources(body: ScanRequest) -> tuple[str, ...] | None:
+    """The sources a scan of everything reads, in `ALL_SOURCES` order.
+
+    The order is not cosmetic: `collect` writes in it, and the first copy of a
+    vacancy to land is the one the user keeps — the richest one. The form's
+    own order (three groups, Telegram last) would make a plain aggregator row
+    the original and a Habr row with grade and division its duplicate.
+
+    None keeps the old meaning of "all": every configured source, so an API
+    caller that sends no choice is not narrowed by the cabinet's form. An
+    empty list is a real answer — the form has every source switched off — and
+    is refused here rather than reported as a scan that found nothing.
+    """
+    if body.sources is None:
+        return None
+    chosen = [s for s in ALL_SOURCES if s in set(body.sources)]
+    if not chosen:
+        raise ValueError("не выбран ни один источник: включите хотя бы один")
+    return tuple(chosen)
 
 
 def _error_text(error: BaseException) -> str:

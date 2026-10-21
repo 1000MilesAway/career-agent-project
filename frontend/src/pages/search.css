@@ -1,81 +1,167 @@
-/* The search page: a launch panel on top, the list under it. */
+/* The search page: a facet panel of conditions on the left, the launch and
+   the list beside it. The shape job boards use — hh, Хабр Карьера,
+   LinkedIn — because it reads without a legend: what the user asks in one
+   column, what they got in the other. */
 
-.scan {
+.search__layout {
   display: grid;
-  /* Explicit: the implicit auto track also widens to its content. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  padding: 18px 24px 20px;
+  /* Wide enough for the salary field and its ticks: at 264 the panel grew
+     past its own box, because a grid track takes its min-content. */
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px 24px;
+  align-items: start;
 }
 
-.scan__head {
+/* Sticky: the list runs long, and the panel is where the user goes back to.
+   Two grid rows, so the launch bar and the results share the second column. */
+.facets {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  position: sticky;
+  top: 16px;
+  display: grid;
+  /* minmax(0, …), not the implicit auto track: that one widens to the widest
+     child's min-content and pushed the salary field out of the card. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 16px 18px 18px;
+}
+
+/* The panel's own title and its reset: the reset appears only once something
+   differs from how the panel opens. */
+.facets__head {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 12.5px;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 14px;
 }
 
-.scan__title {
+.facets__title {
   margin: 0;
   font-family: var(--font-serif);
   font-weight: 400;
   font-size: 18px;
 }
 
-/* Two equal columns of label-over-control fields, so every label sits on
-   the same line and every box has the same height: salary on the left,
-   where and which vacancies on the right. */
-.scan__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 40px;
-  align-items: start;
+.facets__reset {
+  font-size: 12px;
+  color: var(--muted);
 }
 
-.scan__side {
+/* One group of conditions: its caption, its controls, and a hairline under
+   the lot. The caption line is the same in every group — «Зарплата от» comes
+   from the field itself — so the groups line up down the panel. */
+.facet {
   display: grid;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  min-width: 0;
 }
 
-.scan__field {
-  display: grid;
-  gap: 8px;
+/* The first facet follows the title: no rule between them, they read as one
+   block. */
+.facets__head + .facet {
+  padding-top: 0;
+  border-top: none;
 }
 
-.scan__label {
+.facet:last-child {
+  padding-bottom: 0;
+}
+
+.facet__label {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0.02em;
 }
 
-.scan__opts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* A pill in a grid track stretches to the column; it should stay its size. */
+.facet__toggle {
+  justify-self: start;
 }
 
-/* The launch, then what the last launch found, on one line under a rule. */
-.scan__go {
+.results {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+}
+
+/* Sources: one column of checkbox rows, grouped by category. Not a cloud of
+   pills — three boards and two platforms wrapped into five rows of varying
+   width and stopped reading as groups. */
+.sources {
+  display: grid;
+  gap: 14px;
+}
+
+.sources__group {
+  display: grid;
+  gap: 7px;
+}
+
+/* The category and its own «все» on one line, the sources under it. */
+.sources__head {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sources__title {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.sources__all {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* A category of one source is its own checkbox: «выбрать все» over a set of
+   one is the same click twice, and the label would otherwise repeat the
+   category name a line below itself. */
+.sources__own {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* Rows of a category are indented under its title: the nesting is the group,
+   so a source is never read as a sibling of the category above it. */
+.sources__item {
+  padding-left: 20px;
+}
+
+/* The launch, then what the last launch found, stacked: the button on its own
+   line, the answer under it where a sentence has the width to be a sentence. */
+.scan__go {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
 }
 
 .scan__btn {
   flex: none;
+  align-self: flex-start;
   height: 44px;
   padding: 0 22px;
   font-size: 15px;
 }
 
+/* flex: none — the bar is a column now, and a 320px basis would be 320px of
+   height under a one-line answer. */
 .scan__progress,
 .scan__result {
-  flex: 1 1 320px;
+  flex: none;
   min-width: 0;
   font-size: 13px;
   color: var(--ink-2);
@@ -195,15 +281,67 @@
   margin-bottom: 8px;
 }
 
-@media (max-width: 760px) {
-  .scan {
-    padding: 16px;
+/* One column: the panel above the list, and it stops being sticky — a stuck
+   panel would cover the list it filters. The facets lie in two columns of
+   their own, sources across both: stacked singly, four groups of one control
+   each made a very tall, mostly empty card. */
+@media (max-width: 1150px) {
+  .search__layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  /* minmax(0, …), not 1fr: a bare 1fr track grows to its widest child's
-     min-content instead of squeezing it into the card. */
-  .scan__grid {
+  .facets {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    row-gap: 14px;
+    position: static;
+  }
+
+  .facets__head {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+
+  /* Hairlines would cut across the two columns unevenly at this width: the
+     captions do the grouping on their own. */
+  .facet {
+    padding: 0;
+    border-top: none;
+  }
+
+  .facet--sources {
+    grid-column: 1 / -1;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .scan__go {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .results {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}
+
+/* Narrow enough that two facet columns would squeeze the salary ticks: one. */
+@media (max-width: 820px) {
+  .facets {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facet--sources {
+    padding-top: 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  .facets {
+    padding: 14px;
   }
 
   .scan__btn {
@@ -264,7 +402,9 @@
   justify-content: space-between;
   gap: 10px 16px;
   flex-wrap: wrap;
-  margin: 36px 0 12px;
+  /* The launch bar sits directly above it now; 36px of air under a button
+     read as a new section rather than the same one. */
+  margin: 0 0 12px;
 }
 
 .listbar--filters {

@@ -34,6 +34,43 @@ export interface SearchFilters {
   conditions: Conditions
 }
 
+/** Where vacancies come from, as the form groups them.
+ *
+ *  Three groups, because that is how a user thinks about a vacancy's origin,
+ *  not how the pipeline names its readers: `telegram` and `telethon` are one
+ *  choice («Telegram») — hiding a single channel is the owner's switch on the
+ *  admin page, never the user's. The group with one source is its own
+ *  checkbox: a «select all» over a single item is the same click twice. */
+export interface SourceGroup {
+  key: 'boards' | 'companies' | 'telegram'
+  title: string
+  sources: readonly string[]
+  /** One checkbox over several readers, rather than a row of checkboxes: the
+   *  pipeline reads Telegram twice (channels, chats), but which channel is
+   *  read is the owner's switch on the admin page — the user chooses the
+   *  whole of Telegram or none of it. */
+  one?: boolean
+}
+
+export const SOURCE_GROUPS: readonly SourceGroup[] = [
+  { key: 'boards', title: 'Доски вакансий', sources: ['hh', 'habr', 'geekjob'] },
+  { key: 'companies', title: 'Сайты компаний', sources: ['company'] },
+  { key: 'telegram', title: 'Telegram', sources: ['telegram', 'telethon'], one: true },
+]
+
+/** Every source the form can ask for. A row from a name missing here is not
+ *  hidden by the choice: a source added server-side must not vanish from a
+ *  selection stored before it existed. */
+export const ALL_SOURCES: readonly string[] = SOURCE_GROUPS.flatMap((g) => g.sources)
+
+/** What a source's checkbox says. Not the scan report's titles (SOURCE_TITLES
+ *  in SearchPage): there a Telegram channel and a chat are named apart. */
+export const SOURCE_OPTION_TITLES: Record<string, string> = {
+  hh: 'hh.ru',
+  habr: 'Хабр Карьера',
+  geekjob: 'geekjob',
+}
+
 /** What the user asks of a vacancy. The same values go into the next scan's
  *  request and filter the rows already found, so the list never shows what
  *  the panel above it says to leave out. */
@@ -50,6 +87,9 @@ export interface Conditions {
   /** A source choice, not a property of a row: the employer's group is not
    *  stored, so this one applies to the next scan only. */
   includeGlobal: boolean
+  /** Which sources to read — and which found rows to show: a choice, but one
+   *  the list obeys too, so the rows of a switched-off source leave it. */
+  sources: string[]
 }
 
 export const DEFAULT_CONDITIONS: Conditions = {
@@ -59,6 +99,7 @@ export const DEFAULT_CONDITIONS: Conditions = {
   accreditedOnly: false,
   city: null,
   includeGlobal: false,
+  sources: [...ALL_SOURCES],
 }
 
 const flag = (value: unknown, fallback: boolean) =>
@@ -94,6 +135,12 @@ function loadConditions(value: unknown): Conditions {
     accreditedOnly: flag(c.accreditedOnly, DEFAULT_CONDITIONS.accreditedOnly),
     city: typeof c.city === 'string' ? c.city : null,
     includeGlobal: flag(c.includeGlobal, DEFAULT_CONDITIONS.includeGlobal),
+    // Every known source by default, not what is on screen: a stored choice
+    // may name a source this build does not know, and dropping it silently
+    // would narrow the next scan.
+    sources: Array.isArray(c.sources)
+      ? ALL_SOURCES.filter((name) => (c.sources as unknown[]).includes(name))
+      : [...ALL_SOURCES],
   }
 }
 

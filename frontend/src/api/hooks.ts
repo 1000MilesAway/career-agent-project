@@ -68,6 +68,9 @@ export interface ScanParams {
   cities?: string[]
   /** Also read employers abroad hiring Russian speakers. */
   include_global?: boolean
+  /** Which sources 'all' means; [] — nothing (refused by the server), absent
+   *  — every configured source, for callers that predate the picker. */
+  sources?: string[]
 }
 
 /** The latest scan, polled while it runs.

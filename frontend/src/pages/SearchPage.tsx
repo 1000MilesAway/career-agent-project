@@ -40,10 +40,15 @@ import { Empty, PageHead, Skeleton } from '../components/ui'
 import { useDocumentPanel } from '../components/useDocumentPanel'
 import { StateError } from '../components/Fallback'
 import {
+  ALL_SOURCES,
+  SOURCE_GROUPS,
+  SOURCE_OPTION_TITLES,
   type BucketKey,
   type Conditions,
   type SearchFilters,
   type SortKey,
+  type SourceGroup,
+  DEFAULT_CONDITIONS,
   conditionMiss,
   splitCities,
   loadFilters,
@@ -101,6 +106,65 @@ function sourceLine(name: string, s: SourceScan): string {
 
 function failedSources(sources: Record<string, SourceScan> | undefined): number {
   return Object.values(sources ?? {}).filter((s) => s.error).length
+}
+
+/** Is this row from a source the form switched off? A name the form does not
+ *  know is never "off": a source added on the server must not disappear
+ *  behind a selection stored before it existed. */
+function sourceOff(source: string, chosen: readonly string[]): boolean {
+  return ALL_SOURCES.includes(source) && !chosen.includes(source)
+}
+
+/** One category of sources, with its own «все».
+ *
+ *  A category with a single source draws no second row that repeats its own
+ *  title: the checkbox is the category, and ticking it is «выбрать все» over a
+ *  set of one. Several sources get the title, the «все» link and a checkbox
+ *  each — the link reads the group, not one row. */
+function SourceGroupBox({
+  group,
+  chosen,
+  onToggle,
+  onToggleGroup,
+}: {
+  group: SourceGroup
+  chosen: readonly string[]
+  onToggle: (name: string) => void
+  onToggleGroup: (group: SourceGroup) => void
+}) {
+  const all = group.sources.every((name) => chosen.includes(name))
+  if (group.sources.length === 1 || group.one) {
+    return (
+      <label className="check sources__own">
+        <input type="checkbox" checked={all} onChange={() => onToggleGroup(group)} />
+        {group.title}
+      </label>
+    )
+  }
+  return (
+    <div className="sources__group">
+      <div className="sources__head">
+        <span className="sources__title">{group.title}</span>
+        <button
+          className="linkish sources__all"
+          aria-pressed={all}
+          onClick={() => onToggleGroup(group)}
+        >
+          {all ? 'скрыть все' : 'выбрать все'}
+        </button>
+      </div>
+      {group.sources.map((name) => (
+        <label className="check sources__item" key={name}>
+          <input
+            type="checkbox"
+            checked={chosen.includes(name)}
+            onChange={() => onToggle(name)}
+          />
+          {SOURCE_OPTION_TITLES[name] ?? name}
+        </label>
+      ))}
+    </div>
+  )
 }
 
 /** «разберём 1 вакансию / 3 вакансии / 5 вакансий». */
@@ -174,6 +238,9 @@ export function SearchPage() {
   const [showInactive, setShowInactive] = useState(initialFilters.showInactive)
   const [showHidden, setShowHidden] = useState(initialFilters.showHidden)
   const [showMismatch, setShowMismatch] = useState(initialFilters.showMismatch)
+  // Rows of a source the form switched off. Folded — never dropped: the
+  // choice is the user's, and one click has to bring them back.
+  const [showOffSources, setShowOffSources] = useState(false)
   const [chosenConditions, setConditions] = useState<Conditions>(initialFilters.conditions)
   // A city never typed here is the one the CV gives — derived, not copied
   // into state, so editing the CV moves it until the user picks their own.
@@ -182,6 +249,12 @@ export function SearchPage() {
     () => ({ ...chosenConditions, city: chosenConditions.city ?? resumeCity }),
     [chosenConditions, resumeCity],
   )
+  // Said on the button while a scan runs: «во всех источниках» over a form
+  // with one source ticked read as a promise the scan was not keeping.
+  const allSourcesChosen = conditions.sources.length === ALL_SOURCES.length
+  // Cheap and honest: both objects are built by loadFilters, key order and
+  // all, so the strings match while nothing has been touched.
+  const canReset = JSON.stringify(chosenConditions) !== JSON.stringify(DEFAULT_CONDITIONS)
   const [confirmClear, setConfirmClear] = useState(false)
 
   // Hoisted, not `data?.found ?? []`: a fresh [] on every render makes every
@@ -197,7 +270,7 @@ export function SearchPage() {
   // One pass over the list: the split feeds the counters, the bucket filter
   // and the rendered rows alike. `base` keeps the payload's order, so a
   // toggled-in group lands where its rows were found rather than at the end.
-  const { counts, base, scored, misses, untriaged, fresh, freshFolded } = useMemo(() => {
+  const { counts, base, scored, misses, untriaged, fresh, freshFolded, offSources } = useMemo(() => {
     const shownGroups: Record<Group, boolean> = {
       kept: true,
       // Dropped and inactive rows are not shown at all for now, against the
@@ -229,7 +302,14 @@ export function SearchPage() {
     // the conditions): the summary names both, so the numbers add up.
     const fresh = new Set<string>()
     let freshFolded = 0
+    // Counted whether or not they are shown, so the toggle that brings them
+    // back keeps its number while they are on screen.
+    let offSources = 0
     for (const row of rows) {
+      if (sourceOff(row.source, conditions.sources)) {
+        offSources++
+        if (!showOffSources) continue
+      }
       const miss = conditionMiss(row, conditions)
       if (miss) misses.set(row.id, miss)
       const group = groupOf(row, miss)
@@ -243,8 +323,8 @@ export function SearchPage() {
         untriaged.push(row.id)
       if (shownGroups[group]) base.push(row)
     }
-    return { counts, base, scored, misses, untriaged, fresh, freshFolded }
-  }, [rows, conditions, showHidden, newSince])
+    return { counts, base, scored, misses, untriaged, fresh, freshFolded, offSources }
+  }, [rows, conditions, showHidden, showOffSources, newSince])
   // A filter with nothing left to show lets itself go rather than leave an
   // empty list behind a summary that says «новых 0».
   const showOnlyNew = onlyNew && fresh.size > 0
@@ -281,6 +361,8 @@ export function SearchPage() {
     sort,
     hideScored,
     [...visibleBuckets].map(String).sort().join(','),
+    JSON.stringify(conditions.sources),
+    showOffSources,
     showDropped,
     showMismatch,
     showInactive,
@@ -348,6 +430,28 @@ export function SearchPage() {
     persist({ conditions: next })
   }
 
+  /** Back to how the panel opens — the conditions, not the row filters below
+   *  the list: those are their own switches with their own buttons. */
+  function resetConditions() {
+    changeConditions(DEFAULT_CONDITIONS)
+  }
+
+  function toggleSource(name: string) {
+    const next = conditions.sources.includes(name)
+      ? conditions.sources.filter((source) => source !== name)
+      : [...conditions.sources, name]
+    changeConditions({ sources: next })
+  }
+
+  /** The category's «все»: with every source of it on, it switches the lot
+   *  off; otherwise it takes them all. One button, because a category of two
+   *  or three does not need a third state nobody asked for. */
+  function toggleSourceGroup(group: SourceGroup) {
+    const all = group.sources.every((name) => conditions.sources.includes(name))
+    const rest = conditions.sources.filter((name) => !group.sources.includes(name))
+    changeConditions({ sources: all ? rest : [...rest, ...group.sources] })
+  }
+
   function toggleBucket(key: BucketKey) {
     const next = new Set(visibleBuckets)
     if (next.has(key)) next.delete(key)
@@ -393,6 +497,7 @@ export function SearchPage() {
     try {
       const job = await startScan({
         source: 'all',
+        sources: conditions.sources,
         salary_min: conditions.salary,
         any_salary: conditions.anySalary,
         remote_only: conditions.remoteOnly,
@@ -477,77 +582,132 @@ export function SearchPage() {
   const shown = ordered.slice(0, limit)
 
   return (
-    <div className="page">
+    <div className="page search">
       <PageHead title="Поиск" />
 
-      <section className="card scan" aria-label="Параметры поиска">
-        <div className="scan__head">
-          <h2 className="scan__title">Условия</h2>
-        </div>
+      {/* Filters as a facet panel on the left of the results — the shape every
+          job board has, and the one that reads without a legend: conditions in
+          one column, what they found beside them. Each facet starts with its
+          own caption line, so the groups line up down the panel. */}
+      <div className="search__layout">
+        <aside className="card facets" aria-label="Параметры поиска">
+          <div className="facets__head">
+            <h2 className="facets__title">Условия</h2>
+            {/* Only when something differs from how the panel opens: a reset
+                that is always there says «you changed something» when you did
+                not. */}
+            {canReset ? (
+              <button className="linkish facets__reset" onClick={resetConditions}>
+                сбросить
+              </button>
+            ) : null}
+          </div>
 
-        <div className="scan__grid">
-          <SalaryInput
-            value={conditions.salary}
-            anySalary={conditions.anySalary}
-            onChange={(salary) => changeConditions({ salary })}
-            onAnySalaryChange={(anySalary) => changeConditions({ anySalary })}
-          />
+          {/* No facet caption here: the field's own label («Зарплата от») sits
+              on that line and names the group. */}
+          <div className="facet">
+            <SalaryInput
+              value={conditions.salary}
+              anySalary={conditions.anySalary}
+              onChange={(salary) => changeConditions({ salary })}
+              onAnySalaryChange={(anySalary) => changeConditions({ anySalary })}
+            />
+          </div>
 
-          <div className="scan__side">
-            <div className="scan__field">
-              <label className="scan__label" htmlFor="scan-city">
-                Город
-              </label>
-              <CitySelect
-                id="scan-city"
-                value={conditions.city ?? ''}
-                emptyLabel="Любой город"
-                onChange={(city) => changeConditions({ city })}
+          <div className="facet">
+            <label className="facet__label" htmlFor="scan-city">
+              Город
+            </label>
+            <CitySelect
+              id="scan-city"
+              value={conditions.city ?? ''}
+              emptyLabel="Любой город"
+              onChange={(city) => changeConditions({ city })}
+            />
+            <label className="toggle facet__toggle">
+              <input
+                type="checkbox"
+                checked={conditions.remoteOnly}
+                onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
               />
-            </div>
+              Удалёнка
+            </label>
+          </div>
 
-            <div className="scan__field" role="group" aria-labelledby="scan-opts">
-              <span className="scan__label" id="scan-opts">
-                Вакансии
-              </span>
-              <div className="scan__opts">
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={conditions.remoteOnly}
-                    onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
-                  />
-                  Удалёнка
-                </label>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={conditions.accreditedOnly}
-                    onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
-                  />
-                  ИТ-аккредитованные
-                </label>
-                {/* A source choice, not a property of a row — the employer's
-                    group is not stored — so it cannot filter what was found. */}
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={conditions.includeGlobal}
-                    onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
-                  />
-                  Зарубежные
-                </label>
-              </div>
+          <div className="facet" role="group" aria-labelledby="scan-employer">
+            <span className="facet__label" id="scan-employer">
+              Работодатель
+            </span>
+            <label className="toggle facet__toggle">
+              <input
+                type="checkbox"
+                checked={conditions.accreditedOnly}
+                onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
+              />
+              ИТ-аккредитованные
+            </label>
+            {/* A source choice, not a property of a row — the employer's group
+                is not stored — so it cannot filter what was found. */}
+            <label className="toggle facet__toggle">
+              <input
+                type="checkbox"
+                checked={conditions.includeGlobal}
+                onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
+              />
+              Зарубежные
+            </label>
+          </div>
+
+          {/* Sources are a facet like the rest — the next scan reads only the
+              ticked ones, and the list shows only their rows. A column of
+              checkboxes, not a cloud of pills: three boards and two platforms
+              wrapped into five rows of varying width and stopped reading as
+              groups. */}
+          <div
+            className="facet facet--sources"
+            role="group"
+            aria-labelledby="scan-sources"
+          >
+            <span className="facet__label" id="scan-sources">
+              Источники
+            </span>
+            <div className="sources">
+              {SOURCE_GROUPS.map((group) => (
+                <SourceGroupBox
+                  key={group.key}
+                  group={group}
+                  chosen={conditions.sources}
+                  onToggle={toggleSource}
+                  onToggleGroup={toggleSourceGroup}
+                />
+              ))}
             </div>
           </div>
-        </div>
+        </aside>
 
         {/* The launch and its outcome share one row: the result is the answer
-            to the button, so it sits next to it rather than a section below. */}
+            to the button, so it sits next to it rather than a section below.
+            A grid child of its own, in the results column beside the panel. */}
         <div className="scan__go">
-          <button className="btn scan__btn" onClick={scan} disabled={isScanning}>
-            {isScanning ? 'Ищу во всех источниках…' : 'Найти вакансии'}
+          {/* No sources ticked is a scan that can read nowhere: the button
+              says so with its state instead of queueing a job that fails. */}
+          <button
+            className="btn scan__btn"
+            onClick={scan}
+            disabled={isScanning || !conditions.sources.length}
+            title={
+              conditions.sources.length ? undefined : 'Выберите хотя бы один источник'
+            }
+          >
+            {isScanning
+              ? allSourcesChosen
+                ? 'Ищу во всех источниках…'
+                : 'Ищу в выбранных источниках…'
+              : 'Найти вакансии'}
           </button>
+          {!conditions.sources.length && !isScanning ? (
+            <span className="muted">Искать негде: выберите хотя бы один источник.</span>
+          ) : null}
           {isScanning ? (
             <div className="scan__progress" role="status">
               <span className="scan__bar" aria-hidden="true" />
@@ -631,9 +791,8 @@ export function SearchPage() {
             </div>
           ) : null}
         </div>
-      </section>
 
-      <section aria-label="Найденные вакансии">
+        <section className="results" aria-label="Найденные вакансии">
         <div className="listbar">
           <div className="listbar__title">
             <h2>Найденные</h2>
@@ -734,6 +893,15 @@ export function SearchPage() {
               ) : null}
             </div>
             <div className="listbar__groups">
+              {offSources ? (
+                <button
+                  className="linkish listbar__dropped"
+                  onClick={() => setShowOffSources(!showOffSources)}
+                >
+                  {showOffSources ? 'убрать' : 'показать'} другие источники (
+                  {offSources})
+                </button>
+              ) : null}
               {counts.hidden ? (
                 <button
                   className="linkish listbar__dropped"
@@ -862,7 +1030,8 @@ export function SearchPage() {
             </span>
           </div>
         ) : null}
-      </section>
+        </section>
+      </div>
 
       <ConfirmDialog
         open={confirmClear}
