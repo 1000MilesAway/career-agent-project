@@ -1,7 +1,9 @@
-/* The search page: a facet panel of conditions on the left, the launch and
-   the list beside it. The shape job boards use — hh, Хабр Карьера,
-   LinkedIn — because it reads without a legend: what the user asks in one
-   column, what they got in the other. */
+/* Each column has its own flow: a long report cannot push down the results. */
+.search .page__head {
+  align-items: center;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
 
 .search__layout {
   display: grid;
@@ -12,19 +14,22 @@
   align-items: start;
 }
 
-/* Sticky: the list runs long, and the panel is where the user goes back to.
-   Two grid rows, so the launch bar and the results share the second column. */
-.facets {
+.search__sidebar {
   grid-column: 1;
-  grid-row: 1 / span 2;
-  position: sticky;
-  top: 16px;
+  grid-row: 1;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.facets {
   display: grid;
   /* minmax(0, …), not the implicit auto track: that one widens to the widest
      child's min-content and pushed the salary field out of the card. */
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   padding: 16px 18px 18px;
+  margin-bottom: 0;
 }
 
 /* The panel's own title and its reset: the reset appears only once something
@@ -86,13 +91,11 @@
 
 .results {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   min-width: 0;
 }
 
-/* Sources: one column of checkbox rows, grouped by category. Not a cloud of
-   pills — three boards and two platforms wrapped into five rows of varying
-   width and stopped reading as groups. */
+/* Match the other conditions while keeping each source on its own row. */
 .sources {
   display: grid;
   gap: 14px;
@@ -127,26 +130,32 @@
    one is the same click twice, and the label would otherwise repeat the
    category name a line below itself. */
 .sources__own {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-2);
+  justify-self: start;
 }
 
 /* Rows of a category are indented under its title: the nesting is the group,
    so a source is never read as a sibling of the category above it. */
 .sources__item {
-  padding-left: 20px;
+  justify-self: start;
+  margin-left: 12px;
 }
 
-/* The launch, then what the last launch found, stacked: the button on its own
-   line, the answer under it where a sentence has the width to be a sentence. */
+/* The report stays below the conditions, separate from the vacancy list. */
 .scan__go {
-  grid-column: 2;
-  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.scan__go:empty {
+  display: none;
 }
 
 .scan__btn {
@@ -187,6 +196,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* An indeterminate bar: the scan has no progress to report, only that it is
@@ -285,7 +295,7 @@
    panel would cover the list it filters. The facets lie in two columns of
    their own, sources across both: stacked singly, four groups of one control
    each made a very tall, mostly empty card. */
-@media (max-width: 1150px) {
+@media (max-width: 1050px) {
   .search__layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -297,6 +307,11 @@
     column-gap: 28px;
     row-gap: 14px;
     position: static;
+  }
+
+  .search__sidebar {
+    grid-column: 1;
+    grid-row: 1;
   }
 
   .facets__head {
@@ -317,25 +332,29 @@
     border-top: 1px solid var(--line);
   }
 
-  .scan__go {
-    grid-column: 1;
-    grid-row: 2;
+  .sources {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
   }
 
   .results {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: 2;
   }
 }
 
 /* Narrow enough that two facet columns would squeeze the salary ticks: one. */
-@media (max-width: 820px) {
+@media (max-width: 600px) {
   .facets {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .facet--sources {
     padding-top: 14px;
+  }
+
+  .sources {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -345,7 +364,8 @@
   }
 
   .scan__btn {
-    width: 100%;
+    padding: 0 14px;
+    font-size: 14px;
   }
 }
 
@@ -408,13 +428,32 @@
 }
 
 .listbar--filters {
-  margin: 0 0 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.listbar--filters > .seg {
+  justify-self: start;
+  flex-wrap: wrap;
+}
+
+.listbar--filters .listbar__view {
+  justify-content: space-between;
+}
+
+.listbar__groups:empty {
+  display: none;
 }
 
 .listbar__title {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .listbar__title h2 {

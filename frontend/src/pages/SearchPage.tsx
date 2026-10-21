@@ -135,7 +135,7 @@ function SourceGroupBox({
   const all = group.sources.every((name) => chosen.includes(name))
   if (group.sources.length === 1 || group.one) {
     return (
-      <label className="check sources__own">
+      <label className="toggle sources__own">
         <input type="checkbox" checked={all} onChange={() => onToggleGroup(group)} />
         {group.title}
       </label>
@@ -154,7 +154,7 @@ function SourceGroupBox({
         </button>
       </div>
       {group.sources.map((name) => (
-        <label className="check sources__item" key={name}>
+        <label className="toggle sources__item" key={name}>
           <input
             type="checkbox"
             checked={chosen.includes(name)}
@@ -270,61 +270,67 @@ export function SearchPage() {
   // One pass over the list: the split feeds the counters, the bucket filter
   // and the rendered rows alike. `base` keeps the payload's order, so a
   // toggled-in group lands where its rows were found rather than at the end.
-  const { counts, base, scored, misses, untriaged, fresh, freshFolded, offSources } = useMemo(() => {
-    const shownGroups: Record<Group, boolean> = {
-      kept: true,
-      // Dropped and inactive rows are not shown at all for now, against the
-      // «отсев никогда не молчит» rule: the owner's call of 2026-10-02, until
-      // the pipeline is redesigned (docs/decisions.md). Still counted, so the
-      // rows are one line away from coming back.
-      dropped: false,
-      // The conditions above the list are a filter like any other: to see
-      // what they leave out, the user loosens them (2026-10-02).
-      mismatch: false,
-      inactive: false,
-      hidden: showHidden,
-    }
-    const counts: Record<Group, number> = {
-      kept: 0,
-      dropped: 0,
-      mismatch: 0,
-      inactive: 0,
-      hidden: 0,
-    }
-    const base: FoundVacancy[] = []
-    const misses = new Map<string, string>()
-    // What «Умный отбор» would pay for: the server's own selection
-    // (shortlist, no verdict, not closed, not hidden) narrowed to the rows the
-    // conditions keep — a row they fold away is not worth a paid verdict.
-    const untriaged: string[] = []
-    let scored = 0
-    // New rows the list shows, and new rows it folds (closed, old, not under
-    // the conditions): the summary names both, so the numbers add up.
-    const fresh = new Set<string>()
-    let freshFolded = 0
-    // Counted whether or not they are shown, so the toggle that brings them
-    // back keeps its number while they are on screen.
-    let offSources = 0
-    for (const row of rows) {
-      if (sourceOff(row.source, conditions.sources)) {
-        offSources++
-        if (!showOffSources) continue
+  const { counts, base, scored, misses, untriaged, fresh, freshFolded, offSources } =
+    useMemo(() => {
+      const shownGroups: Record<Group, boolean> = {
+        kept: true,
+        // Dropped and inactive rows are not shown at all for now, against the
+        // «отсев никогда не молчит» rule: the owner's call of 2026-10-02, until
+        // the pipeline is redesigned (docs/decisions.md). Still counted, so the
+        // rows are one line away from coming back.
+        dropped: false,
+        // The conditions above the list are a filter like any other: to see
+        // what they leave out, the user loosens them (2026-10-02).
+        mismatch: false,
+        inactive: false,
+        hidden: showHidden,
       }
-      const miss = conditionMiss(row, conditions)
-      if (miss) misses.set(row.id, miss)
-      const group = groupOf(row, miss)
-      counts[group]++
-      if (newSince !== null && row.found_at && Date.parse(row.found_at) >= newSince) {
-        if (group === 'kept') fresh.add(row.id)
-        else if (group !== 'hidden') freshFolded++
+      const counts: Record<Group, number> = {
+        kept: 0,
+        dropped: 0,
+        mismatch: 0,
+        inactive: 0,
+        hidden: 0,
       }
-      if (group === 'kept' && row.score != null) scored++
-      if (group === 'kept' && row.stage === 'shortlist' && !row.triage && row.score == null)
-        untriaged.push(row.id)
-      if (shownGroups[group]) base.push(row)
-    }
-    return { counts, base, scored, misses, untriaged, fresh, freshFolded, offSources }
-  }, [rows, conditions, showHidden, showOffSources, newSince])
+      const base: FoundVacancy[] = []
+      const misses = new Map<string, string>()
+      // What «Умный отбор» would pay for: the server's own selection
+      // (shortlist, no verdict, not closed, not hidden) narrowed to the rows the
+      // conditions keep — a row they fold away is not worth a paid verdict.
+      const untriaged: string[] = []
+      let scored = 0
+      // New rows the list shows, and new rows it folds (closed, old, not under
+      // the conditions): the summary names both, so the numbers add up.
+      const fresh = new Set<string>()
+      let freshFolded = 0
+      // Counted whether or not they are shown, so the toggle that brings them
+      // back keeps its number while they are on screen.
+      let offSources = 0
+      for (const row of rows) {
+        if (sourceOff(row.source, conditions.sources)) {
+          offSources++
+          if (!showOffSources) continue
+        }
+        const miss = conditionMiss(row, conditions)
+        if (miss) misses.set(row.id, miss)
+        const group = groupOf(row, miss)
+        counts[group]++
+        if (newSince !== null && row.found_at && Date.parse(row.found_at) >= newSince) {
+          if (group === 'kept') fresh.add(row.id)
+          else if (group !== 'hidden') freshFolded++
+        }
+        if (group === 'kept' && row.score != null) scored++
+        if (
+          group === 'kept' &&
+          row.stage === 'shortlist' &&
+          !row.triage &&
+          row.score == null
+        )
+          untriaged.push(row.id)
+        if (shownGroups[group]) base.push(row)
+      }
+      return { counts, base, scored, misses, untriaged, fresh, freshFolded, offSources }
+    }, [rows, conditions, showHidden, showOffSources, newSince])
   // A filter with nothing left to show lets itself go rather than leave an
   // empty list behind a summary that says «новых 0».
   const showOnlyNew = onlyNew && fresh.size > 0
@@ -583,121 +589,14 @@ export function SearchPage() {
 
   return (
     <div className="page search">
-      <PageHead title="Поиск" />
-
-      {/* Filters as a facet panel on the left of the results — the shape every
-          job board has, and the one that reads without a legend: conditions in
-          one column, what they found beside them. Each facet starts with its
-          own caption line, so the groups line up down the panel. */}
-      <div className="search__layout">
-        <aside className="card facets" aria-label="Параметры поиска">
-          <div className="facets__head">
-            <h2 className="facets__title">Условия</h2>
-            {/* Only when something differs from how the panel opens: a reset
-                that is always there says «you changed something» when you did
-                not. */}
-            {canReset ? (
-              <button className="linkish facets__reset" onClick={resetConditions}>
-                сбросить
-              </button>
-            ) : null}
-          </div>
-
-          {/* No facet caption here: the field's own label («Зарплата от») sits
-              on that line and names the group. */}
-          <div className="facet">
-            <SalaryInput
-              value={conditions.salary}
-              anySalary={conditions.anySalary}
-              onChange={(salary) => changeConditions({ salary })}
-              onAnySalaryChange={(anySalary) => changeConditions({ anySalary })}
-            />
-          </div>
-
-          <div className="facet">
-            <label className="facet__label" htmlFor="scan-city">
-              Город
-            </label>
-            <CitySelect
-              id="scan-city"
-              value={conditions.city ?? ''}
-              emptyLabel="Любой город"
-              onChange={(city) => changeConditions({ city })}
-            />
-            <label className="toggle facet__toggle">
-              <input
-                type="checkbox"
-                checked={conditions.remoteOnly}
-                onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
-              />
-              Удалёнка
-            </label>
-          </div>
-
-          <div className="facet" role="group" aria-labelledby="scan-employer">
-            <span className="facet__label" id="scan-employer">
-              Работодатель
-            </span>
-            <label className="toggle facet__toggle">
-              <input
-                type="checkbox"
-                checked={conditions.accreditedOnly}
-                onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
-              />
-              ИТ-аккредитованные
-            </label>
-            {/* A source choice, not a property of a row — the employer's group
-                is not stored — so it cannot filter what was found. */}
-            <label className="toggle facet__toggle">
-              <input
-                type="checkbox"
-                checked={conditions.includeGlobal}
-                onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
-              />
-              Зарубежные
-            </label>
-          </div>
-
-          {/* Sources are a facet like the rest — the next scan reads only the
-              ticked ones, and the list shows only their rows. A column of
-              checkboxes, not a cloud of pills: three boards and two platforms
-              wrapped into five rows of varying width and stopped reading as
-              groups. */}
-          <div
-            className="facet facet--sources"
-            role="group"
-            aria-labelledby="scan-sources"
-          >
-            <span className="facet__label" id="scan-sources">
-              Источники
-            </span>
-            <div className="sources">
-              {SOURCE_GROUPS.map((group) => (
-                <SourceGroupBox
-                  key={group.key}
-                  group={group}
-                  chosen={conditions.sources}
-                  onToggle={toggleSource}
-                  onToggleGroup={toggleSourceGroup}
-                />
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        {/* The launch and its outcome share one row: the result is the answer
-            to the button, so it sits next to it rather than a section below.
-            A grid child of its own, in the results column beside the panel. */}
-        <div className="scan__go">
-          {/* No sources ticked is a scan that can read nowhere: the button
-              says so with its state instead of queueing a job that fails. */}
+      <PageHead
+        title="Поиск"
+        actions={
           <button
             className="btn scan__btn"
             onClick={scan}
             disabled={isScanning || !conditions.sources.length}
-            title={
-              conditions.sources.length ? undefined : 'Выберите хотя бы один источник'
-            }
+            title={conditions.sources.length ? undefined : 'Выберите хотя бы один источник'}
           >
             {isScanning
               ? allSourcesChosen
@@ -705,331 +604,433 @@ export function SearchPage() {
                 : 'Ищу в выбранных источниках…'
               : 'Найти вакансии'}
           </button>
-          {!conditions.sources.length && !isScanning ? (
-            <span className="muted">Искать негде: выберите хотя бы один источник.</span>
-          ) : null}
-          {isScanning ? (
-            <div className="scan__progress" role="status">
-              <span className="scan__bar" aria-hidden="true" />
-              Источники читаются параллельно, модель не вызывается. Можно уйти на другую
-              страницу — поиск продолжится, итог появится здесь.
-            </div>
-          ) : null}
+        }
+      />
 
-          {scanError && !isScanning ? (
-            <div className="scan__result scan__source--err" role="alert">
-              Поиск не удался: {scanError}
+      {/* Filters as a facet panel on the left of the results — the shape every
+          job board has, and the one that reads without a legend: conditions in
+          one column, what they found beside them. Each facet starts with its
+          own caption line, so the groups line up down the panel. */}
+      <div className="search__layout">
+        <div className="search__sidebar">
+          <aside className="card facets" aria-label="Параметры поиска">
+            <div className="facets__head">
+              <h2 className="facets__title">Условия</h2>
+              {/* Only when something differs from how the panel opens: a reset
+                that is always there says «you changed something» when you did
+                not. */}
+              {canReset ? (
+                <button className="linkish facets__reset" onClick={resetConditions}>
+                  сбросить
+                </button>
+              ) : null}
             </div>
-          ) : null}
 
-          {/* Folded: the totals are what a glance needs, the per-source lines
+            {/* No facet caption here: the field's own label («Зарплата от») sits
+              on that line and names the group. */}
+            <div className="facet">
+              <SalaryInput
+                value={conditions.salary}
+                anySalary={conditions.anySalary}
+                onChange={(salary) => changeConditions({ salary })}
+                onAnySalaryChange={(anySalary) => changeConditions({ anySalary })}
+              />
+            </div>
+
+            <div className="facet">
+              <label className="facet__label" htmlFor="scan-city">
+                Город
+              </label>
+              <CitySelect
+                id="scan-city"
+                value={conditions.city ?? ''}
+                emptyLabel="Любой город"
+                onChange={(city) => changeConditions({ city })}
+              />
+              <label className="toggle facet__toggle">
+                <input
+                  type="checkbox"
+                  checked={conditions.remoteOnly}
+                  onChange={(e) => changeConditions({ remoteOnly: e.target.checked })}
+                />
+                Удалёнка
+              </label>
+              <label className="toggle facet__toggle">
+                <input
+                  type="checkbox"
+                  checked={conditions.accreditedOnly}
+                  onChange={(e) => changeConditions({ accreditedOnly: e.target.checked })}
+                />
+                ИТ-аккредитованные
+              </label>
+              {/* A source choice, not a property of a row — the employer's group
+                is not stored — so it cannot filter what was found. */}
+              <label className="toggle facet__toggle">
+                <input
+                  type="checkbox"
+                  checked={conditions.includeGlobal}
+                  onChange={(e) => changeConditions({ includeGlobal: e.target.checked })}
+                />
+                Зарубежные
+              </label>
+            </div>
+
+            {/* Source controls use the same toggle as the other conditions. */}
+            <div
+              className="facet facet--sources"
+              role="group"
+              aria-labelledby="scan-sources"
+            >
+              <span className="facet__label" id="scan-sources">
+                Источники
+              </span>
+              <div className="sources">
+                {SOURCE_GROUPS.map((group) => (
+                  <SourceGroupBox
+                    key={group.key}
+                    group={group}
+                    chosen={conditions.sources}
+                    onToggle={toggleSource}
+                    onToggleGroup={toggleSourceGroup}
+                  />
+                ))}
+              </div>
+            </div>
+          </aside>
+
+          <div className="scan__go">
+            {!conditions.sources.length && !isScanning ? (
+              <span className="muted">Искать негде: выберите хотя бы один источник.</span>
+            ) : null}
+            {isScanning ? (
+              <div className="scan__progress" role="status">
+                <span className="scan__bar" aria-hidden="true" />
+                Источники читаются параллельно, модель не вызывается. Можно уйти на другую
+                страницу — поиск продолжится, итог появится здесь.
+              </div>
+            ) : null}
+
+            {scanError && !isScanning ? (
+              <div className="scan__result scan__source--err" role="alert">
+                Поиск не удался: {scanError}
+              </div>
+            ) : null}
+
+            {/* Folded: the totals are what a glance needs, the per-source lines
               only matter when a number looks wrong. A failed source is named in
               the summary, so folding never hides an error. */}
-          {scanNote && !isScanning ? (
-            <div className="scan__result">
-              <div className="scan__fresh" role="status">
-                {scanJob?.finished_at
-                  ? `Поиск ${whenText(scanJob.finished_at)}: `
-                  : 'Поиск: '}
-                {fresh.size ? (
-                  <button
-                    className="linkish"
-                    aria-pressed={showOnlyNew}
-                    onClick={() => setOnlyNew(!showOnlyNew)}
-                    title={
-                      showOnlyNew
-                        ? 'Показать весь список'
-                        : 'Показать в списке только новые'
-                    }
-                  >
-                    {showOnlyNew ? 'показаны только новые' : 'новых в списке'}{' '}
-                    <b className="num">{fresh.size}</b>
-                  </button>
-                ) : (
-                  <>новых вакансий нет</>
-                )}
-                {freshFolded ? (
-                  <span className="muted">
-                    {' '}
-                    · ещё <span className="num">{freshFolded}</span> закрыты или не под
-                    условия
-                  </span>
-                ) : null}
-              </div>
-              {isRefreshing ? (
-                <div className="scan__progress" role="status">
-                  <span className="scan__bar" aria-hidden="true" />
-                  Дочитываю источники, где данные устарели, — новые вакансии добавятся в
-                  список сами.
-                </div>
-              ) : null}
-              <details className="scan__report">
-                <summary>
-                  найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
-                  <b className="num">{scanNote.kept ?? 0}</b>
-                  {failedSources(scanNote.sources) ? (
-                    <span className="scan__source--err">
+            {scanNote && !isScanning ? (
+              <div className="scan__result">
+                <div className="scan__fresh" role="status">
+                  {scanJob?.finished_at
+                    ? `Поиск ${whenText(scanJob.finished_at)}: `
+                    : 'Поиск: '}
+                  {fresh.size ? (
+                    <button
+                      className="linkish"
+                      aria-pressed={showOnlyNew}
+                      onClick={() => setOnlyNew(!showOnlyNew)}
+                      title={
+                        showOnlyNew
+                          ? 'Показать весь список'
+                          : 'Показать в списке только новые'
+                      }
+                    >
+                      {showOnlyNew ? 'показаны только новые' : 'новых в списке'}{' '}
+                      <b className="num">{fresh.size}</b>
+                    </button>
+                  ) : (
+                    <>новых вакансий нет</>
+                  )}
+                  {freshFolded ? (
+                    <span className="muted">
                       {' '}
-                      · не прочитано источников: {failedSources(scanNote.sources)}
+                      · ещё <span className="num">{freshFolded}</span> закрыты или не под
+                      условия
                     </span>
                   ) : null}
-                  <span className="scan__more">подробнее</span>
-                </summary>
-                {scanNote.duplicates ? (
-                  <p className="scan__total">
-                    Уже найдены в другом месте: {scanNote.duplicates}.
-                  </p>
+                </div>
+                {isRefreshing ? (
+                  <div className="scan__progress" role="status">
+                    <span className="scan__bar" aria-hidden="true" />
+                    Дочитываю источники, где данные устарели, — новые вакансии добавятся в
+                    список сами.
+                  </div>
                 ) : null}
-                <ul className="scan__sources">
-                  {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
-                    <li key={name} className={s.error ? 'scan__source--err' : undefined}>
-                      {sourceLine(name, s)}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </div>
-          ) : null}
-        </div>
-
-        <section className="results" aria-label="Найденные вакансии">
-        <div className="listbar">
-          <div className="listbar__title">
-            <h2>Найденные</h2>
-            {rows.length ? (
-              <span className="muted num">
-                {counts.kept} · оценено {scored}
-              </span>
+                <details className="scan__report">
+                  <summary>
+                    найдено <b className="num">{scanNote.collected}</b>, прошло фильтры{' '}
+                    <b className="num">{scanNote.kept ?? 0}</b>
+                    {failedSources(scanNote.sources) ? (
+                      <span className="scan__source--err">
+                        {' '}
+                        · не прочитано источников: {failedSources(scanNote.sources)}
+                      </span>
+                    ) : null}
+                    <span className="scan__more">подробнее</span>
+                  </summary>
+                  {scanNote.duplicates ? (
+                    <p className="scan__total">
+                      Уже найдены в другом месте: {scanNote.duplicates}.
+                    </p>
+                  ) : null}
+                  <ul className="scan__sources">
+                    {Object.entries(scanNote.sources ?? {}).map(([name, s]) => (
+                      <li key={name} className={s.error ? 'scan__source--err' : undefined}>
+                        {sourceLine(name, s)}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
             ) : null}
           </div>
-          {rows.length ? (
-            <button
-              className="btn btn--quiet btn--small"
-              onClick={() => setConfirmClear(true)}
-              title="Убрать из списка всё, кроме избранного"
-            >
-              Очистить
-            </button>
-          ) : null}
         </div>
+        <section className="results" aria-label="Найденные вакансии">
+          <div className="listbar">
+            <div className="listbar__title">
+              <h2>Найденные</h2>
+              {rows.length ? (
+                <span className="muted num">
+                  {counts.kept} · оценено {scored}
+                </span>
+              ) : null}
+            </div>
+            {rows.length ? (
+              <button
+                className="btn btn--quiet btn--small"
+                onClick={() => setConfirmClear(true)}
+                title="Убрать из списка всё, кроме избранного"
+              >
+                Очистить
+              </button>
+            ) : null}
+          </div>
 
-        {/* The step between a free scan and paid evaluations, set apart from
+          {/* The step between a free scan and paid evaluations, set apart from
             the list controls: a small ghost button among filters read as one
             more filter, and people evaluated unsorted lists one by one. */}
-        {untriaged.length ? (
-          <div className="triage-cta">
-            <div className="triage-cta__text">
-              <p className="triage-cta__title">Умный отбор</p>
-              <p className="muted">
-                Разберём <span className="num">{untriaged.length}</span>{' '}
-                {vacanciesWord(untriaged.length)} по вашему резюме: что стоит посмотреть, а
-                что мимо.
-              </p>
+          {untriaged.length ? (
+            <div className="triage-cta">
+              <div className="triage-cta__text">
+                <p className="triage-cta__title">Умный отбор</p>
+                <p className="muted">
+                  Разберём <span className="num">{untriaged.length}</span>{' '}
+                  {vacanciesWord(untriaged.length)} по вашему резюме: что стоит посмотреть,
+                  а что мимо.
+                </p>
+              </div>
+              <button
+                className="btn triage-cta__btn"
+                onClick={triage}
+                disabled={isTriaging}
+              >
+                {isTriaging ? 'Отбираю…' : 'Отобрать лучшие'}
+              </button>
             </div>
-            <button className="btn triage-cta__btn" onClick={triage} disabled={isTriaging}>
-              {isTriaging ? 'Отбираю…' : 'Отобрать лучшие'}
-            </button>
-          </div>
-        ) : null}
+          ) : null}
 
-        {rows.length ? (
-          <div className="listbar listbar--filters">
-            {anyJudged ? (
-              <div className="seg" role="group" aria-label="Вердикт отсева">
-                {(['worth', 'maybe', 'skip'] as const).map((bucket) => (
+          {rows.length ? (
+            <div className="listbar listbar--filters">
+              {anyJudged ? (
+                <div className="seg" role="group" aria-label="Вердикт отсева">
+                  {(['worth', 'maybe', 'skip'] as const).map((bucket) => (
+                    <button
+                      key={bucket}
+                      className="seg__item"
+                      aria-pressed={visibleBuckets.has(bucket)}
+                      onClick={() => toggleBucket(bucket)}
+                    >
+                      <span className={`dot dot--${bucket}`} aria-hidden="true" />
+                      {BUCKET_TITLES[bucket]}
+                      <span className="seg__count">{bucketCounts.get(bucket) ?? 0}</span>
+                    </button>
+                  ))}
+                  {bucketCounts.get(null) ? (
+                    <button
+                      className="seg__item"
+                      aria-pressed={visibleBuckets.has(null)}
+                      onClick={() => toggleBucket(null)}
+                    >
+                      <span className="dot" aria-hidden="true" />
+                      без вердикта
+                      <span className="seg__count">{bucketCounts.get(null)}</span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <span className="muted">Умный отбор ещё не запускался.</span>
+              )}
+              <div className="listbar__view">
+                <div className="seg" role="group" aria-label="Порядок списка">
                   <button
-                    key={bucket}
                     className="seg__item"
-                    aria-pressed={visibleBuckets.has(bucket)}
-                    onClick={() => toggleBucket(bucket)}
+                    aria-pressed={sort === 'fresh'}
+                    onClick={() => chooseSort('fresh')}
+                    title="В том порядке, в каком вакансии найдены: новые сверху"
                   >
-                    <span className={`dot dot--${bucket}`} aria-hidden="true" />
-                    {BUCKET_TITLES[bucket]}
-                    <span className="seg__count">{bucketCounts.get(bucket) ?? 0}</span>
+                    свежие
                   </button>
-                ))}
-                {bucketCounts.get(null) ? (
                   <button
                     className="seg__item"
-                    aria-pressed={visibleBuckets.has(null)}
-                    onClick={() => toggleBucket(null)}
+                    aria-pressed={sort === 'score'}
+                    onClick={() => chooseSort('score')}
+                    title="Оценённые сверху, от лучшего балла; дальше — по вердикту отсева"
                   >
-                    <span className="dot" aria-hidden="true" />
-                    без вердикта
-                    <span className="seg__count">{bucketCounts.get(null)}</span>
+                    по баллу
+                  </button>
+                </div>
+                {scoredShown.length || hideScored ? (
+                  <label
+                    className="toggle"
+                    title="Убрать вакансии с полной оценкой — оставить очередь на оценку"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={hideScored}
+                      onChange={toggleHideScored}
+                    />
+                    скрыть оценённые <span className="num">{scoredShown.length}</span>
+                  </label>
+                ) : null}
+              </div>
+              <div className="listbar__groups">
+                {offSources ? (
+                  <button
+                    className="linkish listbar__dropped"
+                    onClick={() => setShowOffSources(!showOffSources)}
+                  >
+                    {showOffSources ? 'убрать' : 'показать'} другие источники ({offSources})
+                  </button>
+                ) : null}
+                {counts.hidden ? (
+                  <button
+                    className="linkish listbar__dropped"
+                    onClick={() => toggleGroup('hidden')}
+                  >
+                    {showHidden ? 'убрать' : 'показать'} скрытые ({counts.hidden})
                   </button>
                 ) : null}
               </div>
-            ) : (
-              <span className="muted">Умный отбор ещё не запускался.</span>
-            )}
-            <div className="listbar__view">
-              <div className="seg" role="group" aria-label="Порядок списка">
-                <button
-                  className="seg__item"
-                  aria-pressed={sort === 'fresh'}
-                  onClick={() => chooseSort('fresh')}
-                  title="В том порядке, в каком вакансии найдены: новые сверху"
-                >
-                  свежие
-                </button>
-                <button
-                  className="seg__item"
-                  aria-pressed={sort === 'score'}
-                  onClick={() => chooseSort('score')}
-                  title="Оценённые сверху, от лучшего балла; дальше — по вердикту отсева"
-                >
-                  по баллу
-                </button>
-              </div>
-              {scoredShown.length || hideScored ? (
-                <label
-                  className="toggle"
-                  title="Убрать вакансии с полной оценкой — оставить очередь на оценку"
-                >
-                  <input type="checkbox" checked={hideScored} onChange={toggleHideScored} />
-                  скрыть оценённые <span className="num">{scoredShown.length}</span>
-                </label>
-              ) : null}
             </div>
-            <div className="listbar__groups">
-              {offSources ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => setShowOffSources(!showOffSources)}
-                >
-                  {showOffSources ? 'убрать' : 'показать'} другие источники (
-                  {offSources})
-                </button>
-              ) : null}
-              {counts.hidden ? (
-                <button
-                  className="linkish listbar__dropped"
-                  onClick={() => toggleGroup('hidden')}
-                >
-                  {showHidden ? 'убрать' : 'показать'} скрытые ({counts.hidden})
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {rows.length === 0 ? (
-          <div className="card">
-            <Empty title="Пока пусто">
-              <p>Задайте зарплату и условия выше и запустите поиск — это бесплатно.</p>
-            </Empty>
-          </div>
-        ) : ordered.length === 0 ? (
-          <div className="card">
-            <Empty title="Под фильтр ничего не попало">
-              {hideScored ? (
-                <p>Оценённые скрыты — снимите «скрыть оценённые».</p>
-              ) : (
-                <p>Ослабьте условия, включите другие вердикты или покажите скрытые.</p>
-              )}
-            </Empty>
-          </div>
-        ) : (
-          <>
-            {changes ? (
-              <div className="reorder" role="status">
-                <span>
-                  Порядок устарел, изменений: <b className="num">{changes}</b>. Сам список
-                  не перестраивается, чтобы строки не уезжали из-под курсора.
-                </span>
-                <button
-                  className="btn btn--ghost btn--small"
-                  onClick={() => setEpoch((current) => current + 1)}
-                >
-                  Пересортировать
-                </button>
-              </div>
-            ) : null}
-            <div className="vlist">
-              {shown.map((vacancy) => (
-                <VacancyRow
-                  key={vacancy.id}
-                  vacancy={vacancy}
-                  isNew={fresh.has(vacancy.id)}
-                  mismatch={misses.get(vacancy.id)}
-                  actions={
-                    <>
-                      {vacancy.outdated ? (
+          {rows.length === 0 ? (
+            <div className="card">
+              <Empty title="Пока пусто">
+                <p>Задайте зарплату и условия и запустите поиск — это бесплатно.</p>
+              </Empty>
+            </div>
+          ) : ordered.length === 0 ? (
+            <div className="card">
+              <Empty title="Под фильтр ничего не попало">
+                {hideScored ? (
+                  <p>Оценённые скрыты — снимите «скрыть оценённые».</p>
+                ) : (
+                  <p>Ослабьте условия, включите другие вердикты или покажите скрытые.</p>
+                )}
+              </Empty>
+            </div>
+          ) : (
+            <>
+              {changes ? (
+                <div className="reorder" role="status">
+                  <span>
+                    Порядок устарел, изменений: <b className="num">{changes}</b>. Сам список
+                    не перестраивается, чтобы строки не уезжали из-под курсора.
+                  </span>
+                  <button
+                    className="btn btn--ghost btn--small"
+                    onClick={() => setEpoch((current) => current + 1)}
+                  >
+                    Пересортировать
+                  </button>
+                </div>
+              ) : null}
+              <div className="vlist">
+                {shown.map((vacancy) => (
+                  <VacancyRow
+                    key={vacancy.id}
+                    vacancy={vacancy}
+                    isNew={fresh.has(vacancy.id)}
+                    mismatch={misses.get(vacancy.id)}
+                    actions={
+                      <>
+                        {vacancy.outdated ? (
+                          <button
+                            className="btn btn--quiet btn--small"
+                            onClick={() => openReport(vacancy, true)}
+                            disabled={isBusy(`${vacancy.id}:report`)}
+                            title="Оценка сделана по прежней версии резюме"
+                          >
+                            Переоценить
+                          </button>
+                        ) : null}
+                        <button
+                          className="btn btn--ghost btn--small"
+                          onClick={() => openReport(vacancy)}
+                          disabled={isBusy(`${vacancy.id}:report`)}
+                          title={
+                            vacancy.score != null
+                              ? 'Открыть готовый отчёт'
+                              : 'Полная оценка вакансии'
+                          }
+                        >
+                          {isBusy(`${vacancy.id}:report`)
+                            ? 'Считаю…'
+                            : vacancy.score != null
+                              ? 'Отчёт'
+                              : 'Оценить'}
+                        </button>
                         <button
                           className="btn btn--quiet btn--small"
-                          onClick={() => openReport(vacancy, true)}
-                          disabled={isBusy(`${vacancy.id}:report`)}
-                          title="Оценка сделана по прежней версии резюме"
+                          onClick={() => toggleHidden(vacancy)}
+                          title={
+                            vacancy.hidden
+                              ? 'Вернуть в список'
+                              : 'Не интересно: убрать из списка. Вернуть можно из «скрытых»'
+                          }
                         >
-                          Переоценить
+                          {vacancy.hidden ? 'Вернуть' : 'Скрыть'}
                         </button>
-                      ) : null}
-                      <button
-                        className="btn btn--ghost btn--small"
-                        onClick={() => openReport(vacancy)}
-                        disabled={isBusy(`${vacancy.id}:report`)}
-                        title={
-                          vacancy.score != null
-                            ? 'Открыть готовый отчёт'
-                            : 'Полная оценка вакансии'
-                        }
-                      >
-                        {isBusy(`${vacancy.id}:report`)
-                          ? 'Считаю…'
-                          : vacancy.score != null
-                            ? 'Отчёт'
-                            : 'Оценить'}
-                      </button>
-                      <button
-                        className="btn btn--quiet btn--small"
-                        onClick={() => toggleHidden(vacancy)}
-                        title={
-                          vacancy.hidden
-                            ? 'Вернуть в список'
-                            : 'Не интересно: убрать из списка. Вернуть можно из «скрытых»'
-                        }
-                      >
-                        {vacancy.hidden ? 'Вернуть' : 'Скрыть'}
-                      </button>
-                      <button
-                        className={
-                          vacancy.saved
-                            ? 'btn btn--quiet btn--small btn--icon star star--on'
-                            : 'btn btn--quiet btn--small btn--icon star'
-                        }
-                        onClick={() => toggleSave(vacancy)}
-                        aria-pressed={vacancy.saved}
-                        aria-label={vacancy.saved ? 'В избранном' : 'В избранное'}
-                        title={
-                          vacancy.saved
-                            ? 'Уже в избранном — нажмите, чтобы убрать'
-                            : 'Отложить: материалы и статусы готовятся там'
-                        }
-                      >
-                        <StarIcon filled={vacancy.saved} />
-                      </button>
-                    </>
-                  }
-                />
-              ))}
-            </div>
-          </>
-        )}
+                        <button
+                          className={
+                            vacancy.saved
+                              ? 'btn btn--quiet btn--small btn--icon star star--on'
+                              : 'btn btn--quiet btn--small btn--icon star'
+                          }
+                          onClick={() => toggleSave(vacancy)}
+                          aria-pressed={vacancy.saved}
+                          aria-label={vacancy.saved ? 'В избранном' : 'В избранное'}
+                          title={
+                            vacancy.saved
+                              ? 'Уже в избранном — нажмите, чтобы убрать'
+                              : 'Отложить: материалы и статусы готовятся там'
+                          }
+                        >
+                          <StarIcon filled={vacancy.saved} />
+                        </button>
+                      </>
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
-        {ordered.length > shown.length ? (
-          <div className="more">
-            <button
-              className="btn btn--ghost"
-              onClick={() => setLimit((current) => current + PAGE_SIZE)}
-            >
-              Показать ещё {Math.min(PAGE_SIZE, ordered.length - shown.length)}
-            </button>
-            <span className="muted num">
-              показано {shown.length} из {ordered.length}
-            </span>
-          </div>
-        ) : null}
+          {ordered.length > shown.length ? (
+            <div className="more">
+              <button
+                className="btn btn--ghost"
+                onClick={() => setLimit((current) => current + PAGE_SIZE)}
+              >
+                Показать ещё {Math.min(PAGE_SIZE, ordered.length - shown.length)}
+              </button>
+              <span className="muted num">
+                показано {shown.length} из {ordered.length}
+              </span>
+            </div>
+          ) : null}
         </section>
       </div>
 
