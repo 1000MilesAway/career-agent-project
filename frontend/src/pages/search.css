@@ -14,6 +14,24 @@
   align-items: start;
 }
 
+/* Center the feed against the viewport, accounting for the 60px menu rail
+   and the 300px filters plus their 24px gutter. At smaller widths, keep the
+   normal flowing layout rather than squeeze the vacancy text further. */
+@media (min-width: 1280px) {
+  .search {
+    --feed-width: min(720px, calc(100vw - 816px));
+    width: calc(var(--feed-width) + 324px);
+    max-width: none;
+    margin-left: calc(50vw - var(--feed-width) / 2 - 384px);
+    margin-right: 0;
+    padding: 36px 0 96px;
+  }
+
+  .search__layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+}
+
 .search__sidebar {
   grid-column: 1;
   grid-row: 1;

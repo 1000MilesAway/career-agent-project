@@ -262,7 +262,7 @@ function Cabinet() {
 /** Pages with a list of their own in the sidebar's place: the sections fold
  *  into a strip of icons, so there is one sidebar on screen, not two. */
 function isRail(pathname: string) {
-  return pathname === '/chat' || pathname.startsWith('/chat/')
+  return pathname === '/search' || pathname === '/chat' || pathname.startsWith('/chat/')
 }
 
 /** An admin page, or the cabinet's home for anyone else. Waits for the
